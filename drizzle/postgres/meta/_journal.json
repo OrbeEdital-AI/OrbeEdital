@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794240077431,
+      "tag": "0000_motionless_blue_shield",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794240350236,
+      "tag": "0001_small_slipstream",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794314992158,
+      "tag": "0002_certain_sheva_callister",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794315491156,
+      "tag": "0003_worried_aqueduct",
+      "breakpoints": true
+    }
+  ]
+}
