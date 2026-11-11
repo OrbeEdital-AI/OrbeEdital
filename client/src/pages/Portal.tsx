@@ -49,9 +49,9 @@ export default function Portal() {
           : ""
       );
     };
-    window.addEventListener("licitahub:restore-search", restore);
+    window.addEventListener("orbeedital:restore-search", restore);
     return () =>
-      window.removeEventListener("licitahub:restore-search", restore);
+      window.removeEventListener("orbeedital:restore-search", restore);
   }, []);
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
@@ -131,7 +131,7 @@ export default function Portal() {
         <div className="max-w-md rounded-2xl border bg-white p-8 text-center shadow-sm">
           <Shield className="mx-auto h-10 w-10 text-cyan-700" />
           <h1 className="mt-4 text-xl font-bold text-[#102B4E]">
-            Entre para acessar o LicitaHub
+            Entre para acessar o OrbeEdital
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             Sua sessão não está autenticada. Faça login para continuar.
@@ -279,7 +279,7 @@ export default function Portal() {
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-800">
-              LicitaHub / Portal
+              OrbeEdital / Portal
             </p>
             <h1 className="mt-1 text-xl font-bold text-[#102B4E]">{title}</h1>
           </div>

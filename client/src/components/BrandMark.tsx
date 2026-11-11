@@ -1,6 +1,6 @@
 export type BrandMarkProps = {
   className?: string;
-  /** Exibe o wordmark LICITAHUB ao lado do símbolo. */
+  /** Exibe o wordmark ORBEEDITAL ao lado do símbolo. */
   showWordmark?: boolean;
   /** Nome acessível do símbolo quando o wordmark estiver oculto. */
   title?: string;
@@ -9,7 +9,7 @@ export type BrandMarkProps = {
 export function BrandMark({
   className = "",
   showWordmark = true,
-  title = "LicitaHub",
+  title = "OrbeEdital",
 }: BrandMarkProps) {
   return (
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
@@ -31,7 +31,7 @@ export function BrandMark({
       </svg>
       {showWordmark && (
         <span className="text-[15px] font-extrabold tracking-[0.13em] text-[#102B4E]">
-          LICITA<span className="text-[#1388B8]">HUB</span>
+          ORBE<span className="text-[#1388B8]">EDITAL</span>
         </span>
       )}
     </span>

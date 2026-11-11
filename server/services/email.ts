@@ -67,7 +67,7 @@ function getGmailSmtpConfiguration() {
     throw new EmailDeliveryError("configuration_invalid");
   }
 
-  const from = process.env.LICITAHUB_EMAIL_FROM?.trim() || `LicitaHub <${user}>`;
+  const from = process.env.LICITAHUB_EMAIL_FROM?.trim() || `OrbeEdital <${user}>`;
   if (/[\r\n]/.test(from)) throw new EmailDeliveryError("configuration_invalid");
   return { user, appPassword, from };
 }
@@ -103,7 +103,7 @@ function template(title: string, name: string, link: string, actionLabel: string
   const safeName = escapeHtml(name || "");
   const safeLink = escapeHtml(link);
   return {
-    html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f4f8fb;font-family:Arial,sans-serif;color:#1e293b"><main style="max-width:560px;margin:32px auto;padding:32px;background:#fff;border:1px solid #e2e8f0"><p style="font-size:13px;font-weight:bold;letter-spacing:.08em;color:#087eaa">LICITAHUB</p><h1 style="font-size:24px;color:#102b4e">${title}</h1><p>Olá${safeName ? `, ${safeName}` : ""}.</p><p>Para continuar, use o botão abaixo. Este link expira em ${expiry} e só pode ser usado uma vez.</p><p style="margin:28px 0"><a href="${safeLink}" style="display:inline-block;background:#087eaa;color:#fff;text-decoration:none;padding:12px 18px;font-weight:bold">${actionLabel}</a></p><p style="font-size:13px;color:#64748b">Se o botão não funcionar, copie este endereço para o navegador:<br><span>${safeLink}</span></p><p style="font-size:13px;color:#64748b">Se você não solicitou esta mensagem, ignore-a. Nunca compartilhe este link.</p></main></body></html>`,
+    html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f4f8fb;font-family:Arial,sans-serif;color:#1e293b"><main style="max-width:560px;margin:32px auto;padding:32px;background:#fff;border:1px solid #e2e8f0"><p style="font-size:13px;font-weight:bold;letter-spacing:.08em;color:#087eaa">ORBEEDITAL</p><h1 style="font-size:24px;color:#102b4e">${title}</h1><p>Olá${safeName ? `, ${safeName}` : ""}.</p><p>Para continuar, use o botão abaixo. Este link expira em ${expiry} e só pode ser usado uma vez.</p><p style="margin:28px 0"><a href="${safeLink}" style="display:inline-block;background:#087eaa;color:#fff;text-decoration:none;padding:12px 18px;font-weight:bold">${actionLabel}</a></p><p style="font-size:13px;color:#64748b">Se o botão não funcionar, copie este endereço para o navegador:<br><span>${safeLink}</span></p><p style="font-size:13px;color:#64748b">Se você não solicitou esta mensagem, ignore-a. Nunca compartilhe este link.</p></main></body></html>`,
     text: `${title}\n\nOlá${name ? `, ${name}` : ""}.\n\nAcesse este link para continuar: ${link}\n\nO link expira em ${expiry} e só pode ser usado uma vez. Se você não solicitou esta mensagem, ignore-a.`,
   };
 }
@@ -192,7 +192,7 @@ export async function sendVerificationEmail(input: {
   const content = template("Confirme seu e-mail", input.name, link, "Confirmar e-mail", "24 horas");
   await sendTransactionalEmail({
     to: input.to,
-    subject: "Confirme seu e-mail do LicitaHub",
+    subject: "Confirme seu e-mail do OrbeEdital",
     ...content,
     idempotencyKey: `email-verify-${createHash("sha256").update(input.tokenHash).digest("hex")}`,
   });
@@ -208,7 +208,7 @@ export async function sendPasswordResetEmail(input: {
   const content = template("Redefina sua senha", input.name, link, "Criar nova senha", "30 minutos");
   await sendTransactionalEmail({
     to: input.to,
-    subject: "Redefina sua senha do LicitaHub",
+    subject: "Redefina sua senha do OrbeEdital",
     ...content,
     idempotencyKey: `password-reset-${createHash("sha256").update(input.tokenHash).digest("hex")}`,
   });

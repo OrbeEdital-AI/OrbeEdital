@@ -126,7 +126,7 @@ export function AuthPage({ initialMode = "login", onSubmit, onModeChange, onBack
         <aside className="relative hidden overflow-hidden bg-[#102B4E] p-9 text-white sm:flex sm:flex-col sm:justify-between lg:p-12">
           <div aria-hidden="true" className="absolute -bottom-20 -left-24 h-72 w-72 rounded-full border-[35px] border-cyan-300/10" />
           <BrandMark className="relative [&_span]:text-white [&_span_span]:text-[#42D5E8]" />
-          <div className="relative py-10"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#42D5E8]">Compras públicas, com clareza</p><h1 className="mt-4 text-3xl font-bold leading-tight">Sua próxima oportunidade começa com uma boa pesquisa.</h1><p className="mt-4 text-sm leading-6 text-slate-300">Acesse ou crie sua conta para conhecer o LicitaHub.</p></div>
+          <div className="relative py-10"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#42D5E8]">Compras públicas, com clareza</p><h1 className="mt-4 text-3xl font-bold leading-tight">Sua próxima oportunidade começa com uma boa pesquisa.</h1><p className="mt-4 text-sm leading-6 text-slate-300">Acesse ou crie sua conta para conhecer o OrbeEdital.</p></div>
           <p className="relative text-xs text-slate-400">Plataforma em desenvolvimento.</p>
         </aside>
         <section className="px-5 py-8 sm:px-9 sm:py-10 lg:px-14 lg:py-12">
@@ -135,7 +135,7 @@ export function AuthPage({ initialMode = "login", onSubmit, onModeChange, onBack
             <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><LockKeyhole aria-hidden="true" size={14} /> Acesso seguro</span>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-[#102B4E]">{mode === "login" ? "Acesse sua conta" : "Crie sua conta"}</h2>
-          <p className="mt-2 text-sm text-slate-600">{mode === "login" ? "Entre para continuar no LicitaHub." : "Conte um pouco sobre você e sua empresa."}</p>
+          <p className="mt-2 text-sm text-slate-600">{mode === "login" ? "Entre para continuar no OrbeEdital." : "Conte um pouco sobre você e sua empresa."}</p>
           <div aria-label="Escolha entre entrar e criar conta" className="mt-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1" role="group">
             {(["login", "register"] as const).map((tab) => <button aria-pressed={mode === tab} className={`rounded-md px-3 py-2 text-sm font-semibold transition ${mode === tab ? "bg-white text-[#102B4E] shadow-sm" : "text-slate-500 hover:text-slate-800"}`} key={tab} onClick={() => changeMode(tab)} type="button">{tab === "login" ? "Entrar" : "Criar conta"}</button>)}
           </div>

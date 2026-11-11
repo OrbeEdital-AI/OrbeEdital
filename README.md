@@ -1,4 +1,4 @@
-# LicitaHub — Inteligência em Licitações Públicas
+# OrbeEdital — Inteligência em Licitações Públicas
 
 React / Express / tRPC / Drizzle starter, adapted from the Sandbox web-db-user template.
 

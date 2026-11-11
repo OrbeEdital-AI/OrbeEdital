@@ -80,7 +80,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
 
       <section className="bg-[#102B4E]">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-7 px-5 py-14 sm:px-8 md:flex-row md:items-center">
-          <div><h2 className="text-2xl font-bold text-white">Prepare sua empresa para encontrar novas oportunidades.</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Conheça o LicitaHub e acompanhe a evolução da plataforma.</p></div>
+          <div><h2 className="text-2xl font-bold text-white">Prepare sua empresa para encontrar novas oportunidades.</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Conheça o OrbeEdital e acompanhe a evolução da plataforma.</p></div>
           <button className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#42D5E8] px-5 py-3 font-semibold text-[#102B4E] transition hover:bg-cyan-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={onGetStarted} type="button">Quero conhecer <ArrowRight aria-hidden="true" size={17} /></button>
         </div>
       </section>

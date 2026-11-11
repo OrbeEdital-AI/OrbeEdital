@@ -13,7 +13,7 @@ const requireUser = t.middleware(async ({ ctx, next }) => {
 });
 const requireVerifiedEmail = t.middleware(async ({ ctx, next }) => {
   if (!ctx.user?.emailVerifiedAt) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Confirme seu e-mail para acessar os recursos do LicitaHub." });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Confirme seu e-mail para acessar os recursos do OrbeEdital." });
   }
   return next({ ctx: { ...ctx, user: ctx.user } });
 });
@@ -23,7 +23,7 @@ function requireRoles(roles: readonly string[]) {
   return t.middleware(async ({ ctx, next }) => {
     if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
     if (!ctx.user.emailVerifiedAt) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Confirme seu e-mail para acessar os recursos do LicitaHub." });
+      throw new TRPCError({ code: "FORBIDDEN", message: "Confirme seu e-mail para acessar os recursos do OrbeEdital." });
     }
     if (!roles.includes(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     return next({ ctx: { ...ctx, user: ctx.user } });

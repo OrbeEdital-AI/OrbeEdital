@@ -23,7 +23,7 @@ function configureSmtp() {
   vi.stubEnv("LICITAHUB_EMAIL_PROVIDER", "smtp");
   vi.stubEnv("LICITAHUB_SMTP_USER", "remetente@gmail.com");
   vi.stubEnv("LICITAHUB_SMTP_APP_PASSWORD", "abcd efgh ijkl mnop");
-  vi.stubEnv("LICITAHUB_PUBLIC_BASE_URL", "https://licitahub.example");
+  vi.stubEnv("LICITAHUB_PUBLIC_BASE_URL", "https://orbeedital.example");
   vi.stubEnv("LICITAHUB_EMAIL_FROM", "");
 }
 
@@ -54,10 +54,10 @@ describe("transactional email delivery", () => {
       auth: { user: "remetente@gmail.com", pass: "abcdefghijklmnop" },
     }));
     expect(mailMocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
-      from: "LicitaHub <remetente@gmail.com>",
+      from: "OrbeEdital <remetente@gmail.com>",
       to: input.to,
-      subject: "Confirme seu e-mail do LicitaHub",
-      html: expect.stringContaining("https://licitahub.example/verify-email?token="),
+      subject: "Confirme seu e-mail do OrbeEdital",
+      html: expect.stringContaining("https://orbeedital.example/verify-email?token="),
       text: expect.stringContaining("24 horas"),
     }));
     expect(mailMocks.sendMail.mock.calls[0][0].html).toContain("&lt;Pessoa&gt; &amp; teste");
@@ -68,8 +68,8 @@ describe("transactional email delivery", () => {
     await sendPasswordResetEmail(input);
 
     expect(mailMocks.sendMail).toHaveBeenCalledWith(expect.objectContaining({
-      subject: "Redefina sua senha do LicitaHub",
-      html: expect.stringContaining("https://licitahub.example/reset-password?token="),
+      subject: "Redefina sua senha do OrbeEdital",
+      html: expect.stringContaining("https://orbeedital.example/reset-password?token="),
       text: expect.stringContaining("30 minutos"),
     }));
   });
@@ -95,7 +95,7 @@ describe("transactional email delivery", () => {
   it("retains the future Resend transport without creating an SMTP connection", async () => {
     vi.stubEnv("LICITAHUB_EMAIL_PROVIDER", "resend");
     vi.stubEnv("LICITAHUB_RESEND_API_KEY", "test-resend-key-not-a-real-secret");
-    vi.stubEnv("LICITAHUB_EMAIL_FROM", "LicitaHub <noreply@example.com>");
+    vi.stubEnv("LICITAHUB_EMAIL_FROM", "OrbeEdital <noreply@example.com>");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 

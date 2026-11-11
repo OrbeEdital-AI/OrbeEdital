@@ -34,7 +34,7 @@ export function SavedSearches() {
                   className="text-sm font-semibold text-cyan-800"
                   onClick={() => {
                     window.dispatchEvent(
-                      new CustomEvent("licitahub:restore-search", {
+                      new CustomEvent("orbeedital:restore-search", {
                         detail: { criteria: s.criteria },
                       })
                     );

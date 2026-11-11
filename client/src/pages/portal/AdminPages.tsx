@@ -49,7 +49,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   return (
     <>
       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
-        <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no LicitaHub, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
+        <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no OrbeEdital, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
       </div>
       <div className="grid gap-4">
         {query.data?.sources.map(source => (
@@ -311,7 +311,7 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-[#102B4E]">Operação LicitaHub</h2>
+        <h2 className="text-xl font-bold text-[#102B4E]">Operação OrbeEdital</h2>
         <p className="mt-1 text-sm text-slate-500">
           Indicadores calculados a partir dos dados efetivamente persistidos;
           pagamentos e MRR dependem do gateway ainda não conectado.

@@ -62,7 +62,7 @@ export function getPool(): Pool {
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
-    application_name: "licitahub",
+    application_name: "orbeedital",
   };
   pool = new Pool(config);
   pool.on("error", (error: NodeJS.ErrnoException) => {

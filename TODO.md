@@ -1,9 +1,9 @@
-# TODO — LicitaHub
+# TODO — OrbeEdital
 
 Cada resultado é marcado como concluído somente após evidência de sua entrega; os itens ainda sem todos os critérios atendidos permanecem abertos. As APIs oficiais iniciais são PNCP e Compras.gov.br. Nenhum registro de demonstração será apresentado como oportunidade real; campos ausentes permanecerão como “não informado”. A persistência do produto é exclusivamente no PostgreSQL externo Supabase, depois de validar conexão autenticada; a tabela `users` criada automaticamente pelo starter no MySQL gerenciado ficará sem uso. O cadastro público não concede superadmin; a promoção da conta administrativa configurada exige comando local explícito depois que o titular tiver sido verificado por um operador.
 
 ## 1. Site público, identidade e navegação responsiva
-- [x] Criar identidade visual profissional que transmita confiança, tecnologia, segurança e credibilidade, com nome LICITAHUB (provisório) e posicionamento “Inteligência em licitações públicas”. Priorizar azul-marinho, azul, branco e cinza.
+- [x] Criar identidade visual profissional que transmita confiança, tecnologia, segurança e credibilidade, com nome ORBEEDITAL e posicionamento “Inteligência em licitações públicas”. Priorizar azul-marinho, azul, branco e cinza.
 - [ ] Criar site institucional público com página inicial, apresentação da plataforma, funcionalidades, planos e preços, perguntas frequentes, contato, login, cadastro, termos de uso e política de privacidade.
 - [ ] Implementar experiência SaaS B2B organizada e intuitiva, adequada a empresas sem conhecimento técnico em licitações: navegação por módulos, menu lateral em telas apropriadas, indicadores, tabelas filtráveis/ordenáveis, busca global e responsividade em computadores, tablets e celulares.
 - [ ] Usar português brasileiro, moeda Real (R$), datas DD/MM/AAAA e fuso de Brasília em interfaces, mensagens, registros e relatórios destinados ao usuário.
