@@ -1,9 +1,14 @@
 import { randomBytes } from "node:crypto";
-import type { Request, Response } from "express";
+
+type CsrfResponse = {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(body?: string): void;
+};
 
 const CSRF_COOKIE_NAME = "licitahub_csrf";
 
-export default function handler(_req: Request, res: Response): void {
+export default function handler(_req: unknown, res: CsrfResponse): void {
   const token = randomBytes(32).toString("hex");
 
   res.setHeader("Content-Type", "application/json; charset=utf-8");
