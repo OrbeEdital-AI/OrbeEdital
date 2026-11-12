@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -5,7 +6,7 @@ import Home from "@/pages/Home";
 import AuthRoute from "@/pages/AuthRoute";
 import Portal from "@/pages/Portal";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "@/pages/EmailAuthPages";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
@@ -32,6 +33,14 @@ function LegalPage({ kind }: { kind: "terms" | "privacy" }) {
   );
 }
 
+function AdminAlias() {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    navigate("/app/admin");
+  }, [navigate]);
+  return <div className="grid min-h-screen place-items-center text-slate-500">Abrindo administração…</div>;
+}
+
 function Router() {
   return <Switch>
     <Route path="/" component={Home}/>
@@ -44,6 +53,8 @@ function Router() {
     <Route path="/app/*" component={Portal}/>
     <Route path="/terms"><LegalPage kind="terms"/></Route>
     <Route path="/privacy"><LegalPage kind="privacy"/></Route>
+    <Route path="/admin" component={AdminAlias}/>
+    <Route path="/admin/*" component={AdminAlias}/>
     <Route path="/404" component={NotFound}/>
     <Route component={NotFound}/>
   </Switch>;
