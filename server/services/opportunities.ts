@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sum } from "drizzle-orm";
 import {
   companyMembers,
   connectors,
+  syncRuns,
   favorites,
   opportunities,
   opportunityHistory,
@@ -29,6 +30,25 @@ export type OpportunityFilters = {
   page?: number;
   pageSize?: number;
 };
+
+export const OPPORTUNITIES_PAGE_SIZE = 25;
+const OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
+
+export function brazilDateParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  return Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, Number(part.value)])) as { year: number; month: number; day: number };
+}
+
+export function brazilDayBounds(value: Date) {
+  const { year, month, day } = brazilDateParts(value);
+  const start = new Date(`${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}T00:00:00-03:00`);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
+export function brazilGreeting(value: Date) {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(value));
+  return hour >= 5 && hour < 12 ? "Bom dia" : hour >= 12 && hour < 18 ? "Boa tarde" : "Boa noite";
+}
 
 const publicConnectorSeeds = [
   { code: "pncp", name: "PNCP — API de Consulta", baseUrl: "https://pncp.gov.br/api/consulta", integrationType: "official_api" },
@@ -99,13 +119,13 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
   const db = getDb();
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(50, Math.max(1, filters.pageSize ?? 20));
+  const pageSize = OPPORTUNITIES_PAGE_SIZE;
   const [totalRow] = await db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where);
   const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code })
     .from(opportunities)
     .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .where(where)
-    .orderBy(asc(opportunities.proposalDeadline), desc(opportunities.publicationDate))
+    .orderBy(asc(opportunities.proposalDeadline), desc(opportunities.publicationDate), asc(opportunities.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const ids = rows.map(row => row.opportunity.id);
@@ -115,6 +135,7 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
     total: totalRow?.total ?? 0,
     page,
     pageSize,
+    totalPages: Math.max(1, Math.ceil(Number(totalRow?.total ?? 0) / pageSize)),
     items: rows.map(row => {
       return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: favoriteIds.has(row.opportunity.id) };
     }),
@@ -164,18 +185,22 @@ export async function getDashboardSummary(user: SafeUser) {
   await ensureBuiltInConnectors();
   const db = getDb();
   const now = new Date();
-  const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const today = brazilDayBounds(now);
+  const nextWeek = new Date(today.end.getTime() + 7 * 24 * 60 * 60 * 1000);
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const [all, open, closing, fresh, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
+  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows, lastRuns] = await Promise.all([
     db.select({ n: count() }).from(opportunities),
-    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"]))),
-    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lte(opportunities.proposalDeadline, week))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
+    db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count() }).from(favorites).where(eq(favorites.userId, user.id)),
-    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"])).groupBy(opportunities.state).orderBy(desc(count())).limit(8),
+    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, OPEN_STATUSES)).groupBy(opportunities.state).orderBy(desc(count())).limit(8),
     db.select({ label: opportunities.modality, n: count() }).from(opportunities).groupBy(opportunities.modality).orderBy(desc(count())).limit(8),
     db.select().from(connectors).orderBy(asc(connectors.name)),
+    db.select({ run: syncRuns, sourceCode: connectors.code }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(100),
   ]);
   const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name })
     .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
@@ -186,13 +211,21 @@ export async function getDashboardSummary(user: SafeUser) {
   return {
     total: all[0]?.n ?? 0,
     open: open[0]?.n ?? 0,
-    closingSoon: closing[0]?.n ?? 0,
+    closingToday: closingToday[0]?.n ?? 0,
+    closingSoon: closingSoon[0]?.n ?? 0,
     new24h: fresh[0]?.n ?? 0,
+    withoutDeadline: withoutDeadline[0]?.n ?? 0,
     estimatedValue: value[0]?.n ?? "0",
     favorites: savedCount[0]?.n ?? 0,
     byState: byState.filter(row => row.label).map(row => ({ label: row.label as string, value: row.n })),
     byModality: byModality.filter(row => row.label).map(row => ({ label: row.label as string, value: row.n })),
-    sources: sourceRows.map(source => ({ code: source.code, name: source.name, status: source.status, lastRunAt: source.lastRunAt, importedCount: source.importedCount, errorCount: source.errorCount })),
+    sources: sourceRows.filter(source => source.enabled || lastRuns.some(row => row.sourceCode === source.code)).map(source => {
+      const runs = lastRuns.filter(row => row.sourceCode === source.code);
+      const lastSuccessful = runs.find(row => ["completed", "succeeded", "success"].includes(row.run.status));
+      const lastFailed = runs.find(row => ["failed", "error"].includes(row.run.status));
+      const status = !source.enabled ? "disabled" : lastFailed && (!lastSuccessful || new Date(lastFailed.run.startedAt) > new Date(lastSuccessful.run.startedAt)) ? "error" : lastSuccessful ? "active" : "pending";
+      return { code: source.code, name: source.name, status, lastRunAt: lastSuccessful?.run.finishedAt ?? null, importedCount: source.importedCount, errorCount: lastFailed?.run.errorCount ?? source.errorCount };
+    }),
     recent,
   };
 }

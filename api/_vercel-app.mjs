@@ -1512,7 +1512,7 @@ async function searchPncpOpen(options) {
 }
 
 // server/services/opportunities.ts
-import { and as and3, asc, count, desc as desc2, eq as eq3, gte, ilike, inArray, lte, or, sum } from "drizzle-orm";
+import { and as and3, asc, count, desc as desc2, eq as eq3, gte, ilike, inArray, isNull, lt, lte, or, sum } from "drizzle-orm";
 
 // server/connectors/presentation.ts
 function asRecord(value) {
@@ -1568,6 +1568,17 @@ function normalizeProcurementStatus(rawValue, fallback = "unknown") {
 }
 
 // server/services/opportunities.ts
+var OPPORTUNITIES_PAGE_SIZE = 25;
+var OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
+function brazilDateParts(value) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+  return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+}
+function brazilDayBounds(value) {
+  const { year, month, day } = brazilDateParts(value);
+  const start = /* @__PURE__ */ new Date(`${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}T00:00:00-03:00`);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1e3) };
+}
 var publicConnectorSeeds = [
   { code: "pncp", name: "PNCP \u2014 API de Consulta", baseUrl: "https://pncp.gov.br/api/consulta", integrationType: "official_api" },
   { code: "compras.gov.br", name: "Compras.gov.br \u2014 Dados Abertos", baseUrl: "https://dadosabertos.compras.gov.br", integrationType: "official_api" }
@@ -1630,9 +1641,9 @@ async function searchOpportunities(filters, userId) {
   const db = getDb();
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(50, Math.max(1, filters.pageSize ?? 20));
+  const pageSize = OPPORTUNITIES_PAGE_SIZE;
   const [totalRow] = await db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(where);
-  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(where).orderBy(asc(opportunities.proposalDeadline), desc2(opportunities.publicationDate)).limit(pageSize).offset((page - 1) * pageSize);
+  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(where).orderBy(asc(opportunities.proposalDeadline), desc2(opportunities.publicationDate), asc(opportunities.id)).limit(pageSize).offset((page - 1) * pageSize);
   const ids = rows.map((row) => row.opportunity.id);
   const saved = ids.length ? await db.select({ id: favorites.opportunityId }).from(favorites).where(and3(eq3(favorites.userId, userId), inArray(favorites.opportunityId, ids))) : [];
   const favoriteIds = new Set(saved.map((row) => row.id));
@@ -1640,6 +1651,7 @@ async function searchOpportunities(filters, userId) {
     total: totalRow?.total ?? 0,
     page,
     pageSize,
+    totalPages: Math.max(1, Math.ceil(Number(totalRow?.total ?? 0) / pageSize)),
     items: rows.map((row) => {
       return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: favoriteIds.has(row.opportunity.id) };
     })
@@ -1677,18 +1689,22 @@ async function getDashboardSummary(user) {
   await ensureBuiltInConnectors();
   const db = getDb();
   const now = /* @__PURE__ */ new Date();
-  const week = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1e3);
+  const today = brazilDayBounds(now);
+  const nextWeek = new Date(today.end.getTime() + 7 * 24 * 60 * 60 * 1e3);
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
-  const [all, open, closing, fresh, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
+  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows, lastRuns] = await Promise.all([
     db.select({ n: count() }).from(opportunities),
-    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"]))),
-    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), lte(opportunities.proposalDeadline, week))),
+    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
+    db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count() }).from(favorites).where(eq3(favorites.userId, user.id)),
-    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"])).groupBy(opportunities.state).orderBy(desc2(count())).limit(8),
+    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, OPEN_STATUSES)).groupBy(opportunities.state).orderBy(desc2(count())).limit(8),
     db.select({ label: opportunities.modality, n: count() }).from(opportunities).groupBy(opportunities.modality).orderBy(desc2(count())).limit(8),
-    db.select().from(connectors).orderBy(asc(connectors.name))
+    db.select().from(connectors).orderBy(asc(connectors.name)),
+    db.select({ run: syncRuns, sourceCode: connectors.code }).from(syncRuns).innerJoin(connectors, eq3(syncRuns.connectorId, connectors.id)).orderBy(desc2(syncRuns.startedAt)).limit(100)
   ]);
   const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).orderBy(desc2(opportunities.publicationDate)).limit(6);
   const recent = recentRows.map((row) => {
@@ -1697,13 +1713,21 @@ async function getDashboardSummary(user) {
   return {
     total: all[0]?.n ?? 0,
     open: open[0]?.n ?? 0,
-    closingSoon: closing[0]?.n ?? 0,
+    closingToday: closingToday[0]?.n ?? 0,
+    closingSoon: closingSoon[0]?.n ?? 0,
     new24h: fresh[0]?.n ?? 0,
+    withoutDeadline: withoutDeadline[0]?.n ?? 0,
     estimatedValue: value[0]?.n ?? "0",
     favorites: savedCount[0]?.n ?? 0,
     byState: byState.filter((row) => row.label).map((row) => ({ label: row.label, value: row.n })),
     byModality: byModality.filter((row) => row.label).map((row) => ({ label: row.label, value: row.n })),
-    sources: sourceRows.map((source) => ({ code: source.code, name: source.name, status: source.status, lastRunAt: source.lastRunAt, importedCount: source.importedCount, errorCount: source.errorCount })),
+    sources: sourceRows.filter((source) => source.enabled || lastRuns.some((row) => row.sourceCode === source.code)).map((source) => {
+      const runs = lastRuns.filter((row) => row.sourceCode === source.code);
+      const lastSuccessful = runs.find((row) => ["completed", "succeeded", "success"].includes(row.run.status));
+      const lastFailed = runs.find((row) => ["failed", "error"].includes(row.run.status));
+      const status = !source.enabled ? "disabled" : lastFailed && (!lastSuccessful || new Date(lastFailed.run.startedAt) > new Date(lastSuccessful.run.startedAt)) ? "error" : lastSuccessful ? "active" : "pending";
+      return { code: source.code, name: source.name, status, lastRunAt: lastSuccessful?.run.finishedAt ?? null, importedCount: source.importedCount, errorCount: lastFailed?.run.errorCount ?? source.errorCount };
+    }),
     recent
   };
 }
@@ -2086,7 +2110,7 @@ var opportunitySearchSchema = z2.object({
   deadlineTo: z2.string().datetime().optional(),
   onlyOpen: z2.boolean().optional(),
   page: z2.number().int().min(1).max(1e5).optional(),
-  pageSize: z2.number().int().min(1).max(50).optional()
+  pageSize: z2.number().int().min(25).max(25).optional()
 }).refine((value) => value.minValue === void 0 || value.maxValue === void 0 || value.minValue <= value.maxValue, { message: "O valor m\xEDnimo n\xE3o pode superar o m\xE1ximo." });
 var profileUpdateSchema = z2.object({
   legalName: z2.string().trim().min(2).max(240),
