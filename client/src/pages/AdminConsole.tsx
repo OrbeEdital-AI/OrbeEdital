@@ -52,6 +52,15 @@ function CustomerDirectory() {
     { retry: false, placeholderData: previous => previous }
   );
   const data = query.data;
+  const utils = trpc.useUtils();
+  const updateRole = trpc.adminUsers.updateRole.useMutation({
+    onSuccess: async result => {
+      toast.success(result.updated ? "Perfil atualizado e registrado na auditoria." : "O usuário já possui esse perfil.");
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
