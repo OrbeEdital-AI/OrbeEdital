@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft, CreditCard, Database, LayoutDashboard,
-  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole,
+  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import BrandMark from "@/components/BrandMark";
 import { AdminOverview, FinancePage, SourcesPage } from "@/pages/portal/AdminPages";
+import AdminAuditPage from "@/pages/AdminAuditPage";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "settings";
+type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings";
 
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
@@ -17,6 +18,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "sources", label: "Fontes de dados", icon: Database },
   { id: "finance", label: "Planos e financeiro", icon: Wallet },
   { id: "permissions", label: "Acessos e permissões", icon: ShieldCheck },
+  { id: "audit", label: "Auditoria e segurança", icon: History },
   { id: "settings", label: "Configurações gerais", icon: LockKeyhole },
 ];
 
@@ -164,6 +166,7 @@ export default function AdminConsole() {
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
         {section === "permissions" && <PermissionsPage/>}
+        {section === "audit" && <AdminAuditPage/>}
         {section === "settings" && <SettingsPage/>}
       </div>
     </main>
