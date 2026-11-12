@@ -70,7 +70,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   <ExternalLink size={12} />
                 </a>
                 <p className="mt-2 text-xs text-slate-500">
-                  Última execução: {date(source.lastRunAt)} · Próxima estimada:{" "}
+                  Última sincronização: {date(source.lastRunAt)} · Próxima estimada:{" "}
                   {source.configuration?.scheduledTaskUid
                     ? date(source.nextRunAt)
                     : "não agendada"}{" "}
@@ -78,6 +78,11 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   {source.errorCount} · Duração média:{" "}
                   {source.averageDurationMs ?? "—"} ms
                 </p>
+                {(() => {
+                  const callback = query.data?.scheduleEvents.find(event => event.entityId === source.code);
+                  const status = callback?.action === "source.schedule.completed" ? "sincronização concluída" : callback ? "falha na sincronização" : "nenhum callback registrado pelo aplicativo";
+                  return <p className="mt-1 text-xs text-slate-600">Último callback externo confirmado: {callback ? date(callback.createdAt) + " · " + status : status}</p>;
+                })()}
               </div>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">
                 {source.status}
