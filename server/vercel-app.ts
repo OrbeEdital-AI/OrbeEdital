@@ -1,6 +1,7 @@
 import express from "express";
 import { parse as parseCookieHeader } from "cookie";
 import * as cookieModule from "cookie";
+import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import {
   CSRF_COOKIE_NAME,
@@ -39,24 +40,20 @@ function adaptVercelRequest(req: VercelRequestLike) {
     const forwarded = req.headers["x-forwarded-for"];
     req.ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress;
   }
-  if (!req.get) {
-    req.get = (name: string) => {
-      const value = req.headers[name.toLowerCase()];
-      return Array.isArray(value) ? value[0] : value;
-    };
-  }
+  if (!req.get) req.get = (name: string) => {
+    const value = req.headers[name.toLowerCase()];
+    return Array.isArray(value) ? value[0] : value;
+  };
   return req;
 }
 
 function adaptVercelResponse(res: VercelResponseLike) {
   if (!res.locals) res.locals = {};
-  if (!res.set) {
-    res.set = (field: string | Record<string, string>, value?: string) => {
-      if (typeof field === "string" && value !== undefined) res.setHeader(field, value);
-      else if (typeof field === "object") for (const [name, headerValue] of Object.entries(field)) res.setHeader(name, headerValue);
-      return res;
-    };
-  }
+  if (!res.set) res.set = (field: string | Record<string, string>, value?: string) => {
+    if (typeof field === "string" && value !== undefined) res.setHeader(field, value);
+    else if (typeof field === "object") for (const [name, headerValue] of Object.entries(field)) res.setHeader(name, headerValue);
+    return res;
+  };
   if (!res.status) res.status = (code: number) => { res.statusCode = code; return res; };
   if (!res.type) res.type = (value: string) => { res.setHeader("Content-Type", `${value}; charset=utf-8`); return res; };
   if (!res.json) res.json = (body: unknown) => {
@@ -86,44 +83,31 @@ function adaptVercelResponse(res: VercelResponseLike) {
 }
 
 const app = express();
-
 app.set("trust proxy", 1);
-app.use((_req: any, res: any, next: any) => {
-  res.set("Referrer-Policy", "no-referrer");
-  next();
-});
+app.use((_req: any, res: any, next: any) => { res.set("Referrer-Policy", "no-referrer"); next(); });
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
-
 app.get("/api/health", (_req: any, res: any) => res.json({ status: "ok" }));
 app.post("/api/scheduled/sync", async (req: any, res: any) => {
   try {
     const result = await handleScheduledSync(req);
     res.set("Cache-Control", "no-store").status(200).json(result);
   } catch (error) {
-    if (error instanceof ScheduledAuthError) {
-      res.status(401).json({ error: "Scheduled task authentication failed." });
-      return;
-    }
+    if (error instanceof ScheduledAuthError) { res.status(401).json({ error: "Scheduled task authentication failed." }); return; }
     console.error("Scheduled synchronization failed.");
     res.status(500).json({ error: "Scheduled synchronization failed." });
   }
 });
 app.get("/api/auth/csrf", (req: any, res: any) => {
   const token = newCsrfToken();
-  const options = getSessionCookieOptions(req);
-  res.cookie(CSRF_COOKIE_NAME, token, { ...options, httpOnly: false, maxAge: 60 * 60 * 1000 });
+  res.cookie(CSRF_COOKIE_NAME, token, { ...getSessionCookieOptions(req), httpOnly: false, maxAge: 60 * 60 * 1000 });
   res.set("Cache-Control", "no-store").json({ token });
 });
-app.get("/api/platform/config.js", (_req: any, res: any) => {
-  res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
-});
+app.get("/api/platform/config.js", (_req: any, res: any) => res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript()));
 app.use("/api/trpc", (req: any, res: any, next: any) => {
   if (req.method !== "POST") return next();
   const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const csrfCookie = cookies[CSRF_COOKIE_NAME];
-  const csrfHeader = req.get("x-csrf-token");
-  if (!constantTimeStringEqual(csrfCookie, csrfHeader)) {
+  if (!constantTimeStringEqual(cookies[CSRF_COOKIE_NAME], req.get("x-csrf-token"))) {
     res.status(403).json({ error: { message: "Validação de segurança expirada. Recarregue a página." } });
     return;
   }
@@ -131,8 +115,30 @@ app.use("/api/trpc", (req: any, res: any, next: any) => {
 });
 app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 
+const trpcHandler = createHTTPHandler({
+  router: appRouter,
+  basePath: "/api/trpc/",
+  createContext: ({ req, res }) => createContext({ req: req as any, res: adaptVercelResponse(res as any) as any, info: {} as any }),
+});
+
 export default app;
 
 export function handleVercelRequest(req: VercelRequestLike, res: VercelResponseLike): void {
   app(adaptVercelRequest(req) as any, adaptVercelResponse(res) as any);
+}
+
+export function handleTrpcRequest(req: VercelRequestLike, res: VercelResponseLike): void {
+  const request = adaptVercelRequest(req);
+  const response = adaptVercelResponse(res);
+  if (request.method === "POST") {
+    const rawCookie = request.headers.cookie;
+    const cookies = parseCookieHeader(Array.isArray(rawCookie) ? rawCookie[0] ?? "" : rawCookie ?? "");
+    if (!constantTimeStringEqual(cookies[CSRF_COOKIE_NAME], request.get("x-csrf-token"))) {
+      response.statusCode = 403;
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.end(JSON.stringify({ error: { message: "Validação de segurança expirada. Recarregue a página." } }));
+      return;
+    }
+  }
+  trpcHandler(request as any, response as any);
 }
