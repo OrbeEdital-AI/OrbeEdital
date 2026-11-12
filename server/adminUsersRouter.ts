@@ -1,6 +1,6 @@
-import { count, desc, eq, ilike, or } from "drizzle-orm";
+import { count, desc, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { companies, companyMembers, users } from "../drizzle/schema";
+import { users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
 
@@ -31,12 +31,9 @@ export const adminUsersRouter = router({
           emailVerifiedAt: users.emailVerifiedAt,
           createdAt: users.createdAt,
           lastSignedIn: users.lastSignedIn,
-          companyName: companies.legalName,
-          companyId: companies.id,
+          companyName: sql<string | null>`(select c.legal_name from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = ${users.id} order by cm.created_at asc limit 1)`,
         })
           .from(users)
-          .leftJoin(companyMembers, eq(companyMembers.userId, users.id))
-          .leftJoin(companies, eq(companies.id, companyMembers.companyId))
           .where(where)
           .orderBy(desc(users.createdAt), desc(users.id))
           .limit(input.pageSize)
