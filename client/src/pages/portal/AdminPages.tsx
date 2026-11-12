@@ -339,12 +339,16 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
     );
   const data = query.data!;
   const enabledSources = data.sources.filter((source: any) => source.enabled).length;
+  const disabledSources = data.sources.filter((source: any) => !source.enabled).length;
   const sourcesWithErrors = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0).length;
+  const activeSourceRows = data.sources.filter((source: any) => source.enabled);
+  const inactiveSourceRows = data.sources.filter((source: any) => !source.enabled);
   const cards = [
     ["Usuários cadastrados", data.users],
     ["Oportunidades no catálogo", data.opportunities],
     ["Fontes cadastradas", data.sourceCount],
-    ["Fontes habilitadas", enabledSources],
+    ["Fontes ativas", enabledSources],
+    ["Fontes desativadas", disabledSources],
     ["Fontes com histórico de erro", sourcesWithErrors],
     ["Assinaturas ativas", data.activeSubscribers],
   ] as const;
@@ -384,24 +388,27 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
             Gerenciar fontes →
           </Link>
         </div>
-        <div className="mt-4 divide-y">
-          {data.sources.map((source: any) => (
-            <div
-              className="flex flex-wrap items-center justify-between gap-2 py-3"
-              key={source.code}
-            >
-              <div>
-                <p className="font-medium">{source.name}</p>
-                <p className="text-xs text-slate-500">
-                  Última execução: {date(source.lastRunAt)} · Novos registros:{" "}
-                  {source.importedCount} · Erros: {source.errorCount}
-                </p>
+        <div className="mt-5 space-y-5">
+          {[
+            { title: "Ativas", rows: activeSourceRows, description: "Fontes habilitadas para sincronização.", tone: "text-emerald-800" },
+            { title: "Desativadas", rows: inactiveSourceRows, description: "Fontes pausadas e fora da rotina de sincronização.", tone: "text-slate-600" },
+          ].map(group => (
+            <div key={group.title}>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div><h4 className={`text-sm font-bold ${group.tone}`}>{group.title}</h4><p className="text-xs text-slate-500">{group.description}</p></div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{group.rows.length}</span>
               </div>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs ${source.status === "active" ? "bg-emerald-50 text-emerald-800" : source.status === "error" ? "bg-rose-50 text-rose-800" : "bg-slate-100 text-slate-600"}`}
-              >
-                {source.status}
-              </span>
+              <div className="divide-y rounded-xl border border-slate-200 bg-slate-50/70 px-4">
+                {group.rows.length ? group.rows.map((source: any) => (
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-3" key={source.code}>
+                    <div>
+                      <p className="font-medium text-slate-800">{source.name}</p>
+                      <p className="text-xs text-slate-500">Última execução: {date(source.lastRunAt)} · Importados: {source.importedCount} · Erros: {source.errorCount}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${source.status === "error" ? "bg-rose-50 text-rose-800" : source.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>{source.status === "error" ? "Com falha" : source.enabled ? "Ativa" : "Desativada"}</span>
+                  </div>
+                )) : <p className="py-4 text-sm text-slate-500">Nenhuma fonte nesta categoria.</p>}
+              </div>
             </div>
           ))}
         </div>
