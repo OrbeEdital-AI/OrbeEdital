@@ -1,8 +1,7 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql, sum } from "drizzle-orm";
 import {
   companyMembers,
   connectors,
-  syncRuns,
   favorites,
   opportunities,
   opportunityHistory,
@@ -188,20 +187,59 @@ export async function getDashboardSummary(user: SafeUser) {
   const today = brazilDayBounds(now);
   const nextWeek = new Date(today.end.getTime() + 7 * 24 * 60 * 60 * 1000);
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows, lastRuns] = await Promise.all([
+  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
     db.select({ n: count() }).from(opportunities),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
+    db.select({ n: count() }).from(opportunities).where(or(gte(opportunities.publicationDate, day), gte(opportunities.lastSourceUpdateAt, day))),
     db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count() }).from(favorites).where(eq(favorites.userId, user.id)),
     db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, OPEN_STATUSES)).groupBy(opportunities.state).orderBy(desc(count())).limit(8),
     db.select({ label: opportunities.modality, n: count() }).from(opportunities).groupBy(opportunities.modality).orderBy(desc(count())).limit(8),
     db.select().from(connectors).orderBy(asc(connectors.name)),
-    db.select({ run: syncRuns, sourceCode: connectors.code }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(100),
   ]);
+  const latestRuns = await db.execute(sql`
+    SELECT DISTINCT ON (connector_id)
+      connector_id,
+      status,
+      started_at,
+      finished_at,
+      fetched_count,
+      inserted_count,
+      updated_count,
+      error_count,
+      error_summary
+    FROM public.sync_runs
+    ORDER BY connector_id, started_at DESC
+  `) as unknown as Array<{
+    connector_id: string;
+    status: string;
+    started_at: Date | string;
+    finished_at: Date | string | null;
+    fetched_count: number;
+    inserted_count: number;
+    updated_count: number;
+    error_count: number;
+    error_summary: string | null;
+  }>;
+  const historicalErrors = await db.execute(sql`
+    SELECT
+      connector_id,
+      COUNT(*) FILTER (WHERE status IN ('failed', 'error'))::int AS failed_runs,
+      COALESCE(SUM(error_count) FILTER (WHERE status IN ('failed', 'error')), 0)::int AS historical_error_count,
+      MAX(started_at) FILTER (WHERE status IN ('failed', 'error')) AS last_failure_at
+    FROM public.sync_runs
+    GROUP BY connector_id
+  `) as unknown as Array<{
+    connector_id: string;
+    failed_runs: number;
+    historical_error_count: number;
+    last_failure_at: Date | string | null;
+  }>;
+  const latestByConnector = new Map(latestRuns.map(run => [run.connector_id, run]));
+  const historicalByConnector = new Map(historicalErrors.map(row => [row.connector_id, row]));
   const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name })
     .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .orderBy(desc(opportunities.publicationDate)).limit(6);
@@ -219,12 +257,26 @@ export async function getDashboardSummary(user: SafeUser) {
     favorites: savedCount[0]?.n ?? 0,
     byState: byState.filter(row => row.label).map(row => ({ label: row.label as string, value: row.n })),
     byModality: byModality.filter(row => row.label).map(row => ({ label: row.label as string, value: row.n })),
-    sources: sourceRows.filter(source => source.enabled || lastRuns.some(row => row.sourceCode === source.code)).map(source => {
-      const runs = lastRuns.filter(row => row.sourceCode === source.code);
-      const lastSuccessful = runs.find(row => ["completed", "succeeded", "success"].includes(row.run.status));
-      const lastFailed = runs.find(row => ["failed", "error"].includes(row.run.status));
-      const status = !source.enabled ? "disabled" : lastFailed && (!lastSuccessful || new Date(lastFailed.run.startedAt) > new Date(lastSuccessful.run.startedAt)) ? "error" : lastSuccessful ? "active" : "pending";
-      return { code: source.code, name: source.name, status, lastRunAt: lastSuccessful?.run.finishedAt ?? null, importedCount: source.importedCount, errorCount: lastFailed?.run.errorCount ?? source.errorCount };
+    sources: sourceRows.filter(source => source.enabled || latestByConnector.has(source.id)).map(source => {
+      const latest = latestByConnector.get(source.id);
+      const historical = historicalByConnector.get(source.id);
+      const latestFailed = latest && ["failed", "error"].includes(latest.status);
+      const latestSucceeded = latest && ["completed", "succeeded", "success"].includes(latest.status);
+      const status = !source.enabled ? "disabled" : latestFailed ? "error" : latestSucceeded ? "active" : "pending";
+      return {
+        code: source.code,
+        name: source.name,
+        status,
+        lastRunAt: latest?.finished_at ?? null,
+        lastRunStatus: latest?.status ?? null,
+        lastRunErrorCount: latestFailed ? latest.error_count : 0,
+        lastRunErrorSummary: latestFailed ? latest.error_summary : null,
+        historicalErrorRuns: historical?.failed_runs ?? 0,
+        historicalErrorCount: historical?.historical_error_count ?? 0,
+        lastFailureAt: historical?.last_failure_at ?? null,
+        importedCount: source.importedCount,
+        errorCount: latestFailed ? latest.error_count : 0,
+      };
     }),
     recent,
   };
