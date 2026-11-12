@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  Activity, ArrowLeft, Building2, CreditCard, Database, LayoutDashboard,
+  ArrowLeft, CreditCard, Database, LayoutDashboard,
   LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
