@@ -32,7 +32,9 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       deliveryNotice = result.verificationEmailSent ? "sent" : "unavailable";
     }
     await utils.auth.me.invalidate();
-    navigate(verificationRequired ? `/verify-email${deliveryNotice ? `?delivery=${deliveryNotice}` : ""}` : "/app");
+    const requestedPath = new URLSearchParams(window.location.search).get("next");
+    const nextPath = requestedPath?.startsWith("/app/admin") ? requestedPath : "/app";
+    navigate(verificationRequired ? `/verify-email${deliveryNotice ? `?delivery=${deliveryNotice}` : ""}` : nextPath);
   };
 
   return (

@@ -157,7 +157,7 @@ export default function Portal() {
           </p>
           <Link
             className="mt-5 inline-flex rounded-lg bg-[#102B4E] px-5 py-2.5 font-semibold text-white"
-            href="/login"
+            href={isAdminShell ? `/login?next=${encodeURIComponent(path)}` : "/login"}
           >
             Ir para login
           </Link>
