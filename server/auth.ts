@@ -143,11 +143,20 @@ export async function findUserForLogin(email: string) {
       .limit(1);
     return user;
   } catch (error) {
-    const details = error as { code?: unknown; name?: unknown; message?: unknown };
+    const details = error as {
+      code?: unknown;
+      name?: unknown;
+      message?: unknown;
+      cause?: { code?: unknown; name?: unknown; message?: unknown };
+    };
+    const cause = details.cause;
     console.error("[auth] PostgreSQL user lookup failed", {
       code: typeof details.code === "string" ? details.code : "UNCLASSIFIED",
       name: typeof details.name === "string" ? details.name : "Error",
       message: typeof details.message === "string" ? details.message : "Unknown database error",
+      causeCode: typeof cause?.code === "string" ? cause.code : "UNCLASSIFIED",
+      causeName: typeof cause?.name === "string" ? cause.name : "UnknownCause",
+      causeMessage: typeof cause?.message === "string" ? cause.message : "Unknown database cause",
     });
     throw error;
   }
