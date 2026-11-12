@@ -200,7 +200,7 @@ export async function getDashboardSummary(user: SafeUser) {
     db.select({ label: opportunities.modality, n: count() }).from(opportunities).groupBy(opportunities.modality).orderBy(desc(count())).limit(8),
     db.select().from(connectors).orderBy(asc(connectors.name)),
   ]);
-  const latestRuns = await db.execute(sql`
+  const latestRunResult = await db.execute(sql`
     SELECT DISTINCT ON (connector_id)
       connector_id,
       status,
@@ -213,7 +213,8 @@ export async function getDashboardSummary(user: SafeUser) {
       error_summary
     FROM public.sync_runs
     ORDER BY connector_id, started_at DESC
-  `) as unknown as Array<{
+  `);
+  const latestRuns = latestRunResult.rows as Array<{
     connector_id: string;
     status: string;
     started_at: Date | string;
@@ -224,7 +225,7 @@ export async function getDashboardSummary(user: SafeUser) {
     error_count: number;
     error_summary: string | null;
   }>;
-  const historicalErrors = await db.execute(sql`
+  const historicalErrorResult = await db.execute(sql`
     SELECT
       connector_id,
       COUNT(*) FILTER (WHERE status IN ('failed', 'error'))::int AS failed_runs,
@@ -232,7 +233,8 @@ export async function getDashboardSummary(user: SafeUser) {
       MAX(started_at) FILTER (WHERE status IN ('failed', 'error')) AS last_failure_at
     FROM public.sync_runs
     GROUP BY connector_id
-  `) as unknown as Array<{
+  `);
+  const historicalErrors = historicalErrorResult.rows as Array<{
     connector_id: string;
     failed_runs: number;
     historical_error_count: number;
