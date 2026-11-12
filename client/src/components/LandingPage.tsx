@@ -2,7 +2,6 @@ import {
   ArrowRight,
   Bookmark,
   Check,
-  ChevronRight,
   FileSearch,
   Filter,
   Landmark,
@@ -56,8 +55,6 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             <BrandMark />
           </a>
           <nav aria-label="Navegação principal" className="flex items-center gap-3 sm:gap-7">
-            <a className="hidden text-sm font-medium text-slate-600 transition hover:text-cyan-700 sm:inline" href="#beneficios">Benefícios</a>
-            <a className="hidden text-sm font-medium text-slate-600 transition hover:text-cyan-700 sm:inline" href="#como-funciona">Como funciona</a>
             {onLogin && (
               <button className="rounded-full px-3 py-2 text-sm font-semibold text-[#153454] transition hover:bg-slate-100" onClick={onLogin} type="button">
                 Entrar
@@ -91,9 +88,6 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
               <button className="group inline-flex items-center justify-center gap-3 rounded-full bg-gradient-to-r from-cyan-400 to-teal-300 px-7 py-4 font-bold text-[#08253d] shadow-xl shadow-cyan-950/30 transition hover:-translate-y-1 hover:shadow-cyan-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={onGetStarted} type="button">
                 Começar agora <ArrowRight aria-hidden="true" size={18} className="transition group-hover:translate-x-1" />
               </button>
-              <a className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-7 py-4 font-semibold text-white transition hover:border-white/40 hover:bg-white/10" href="#como-funciona">
-                Veja como encontrar editais <ChevronRight aria-hidden="true" size={17} />
-              </a>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-slate-400">
               <span className="inline-flex items-center gap-2"><ShieldCheck size={15} className="text-teal-300" /> Fontes oficiais identificadas</span>
@@ -227,9 +221,9 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             <a href="/terms" className="transition hover:text-cyan-700">Termos e Condições de Uso</a>
             <a href="/privacy" className="transition hover:text-cyan-700">Política de Privacidade</a>
           </div>
-          <div className="max-w-sm text-xs leading-5 text-slate-400 md:text-right">
-            <p>© {new Date().getFullYear()} OrbeEdital. Todos os direitos reservados.</p>
-            <p className="mt-1">O conteúdo da plataforma tem caráter informativo. A íntegra do edital, seus requisitos e prazos devem ser conferidos diretamente na fonte oficial responsável.</p>
+          <div className="max-w-md text-xs leading-5 text-slate-500 md:text-right">
+            <p className="font-semibold text-slate-600">Pesquisa e organização de oportunidades em compras públicas.</p>
+            <p className="mt-1">© {new Date().getFullYear()} OrbeEdital. Todos os direitos reservados.</p>
           </div>
         </div>
       </footer>
