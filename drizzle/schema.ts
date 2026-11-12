@@ -50,9 +50,11 @@ export const users = pgTable(
     role: userRoleEnum("role").default("user").notNull(),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     lastSignedIn: timestamp("last_signed_in", { withTimezone: true }),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    suspensionReason: text("suspension_reason"),
     ...timestamps,
   },
-  table => [uniqueIndex("users_email_unique").on(table.email), index("users_role_idx").on(table.role)],
+  table => [uniqueIndex("users_email_unique").on(table.email), index("users_role_idx").on(table.role), index("users_suspended_idx").on(table.suspendedAt)],
 );
 
 export const companies = pgTable(

@@ -102,3 +102,14 @@ Esta execução parte da branch `feat/admin-general-panel` e segue o prompt admi
 Não serão criadas tabelas fictícias, números simulados, credenciais novas ou migrations destrutivas. Funcionalidades que dependem de gateway, provedor de suporte, armazenamento de documentos ou autorização externa permanecerão claramente marcadas como pendentes. Alterações administrativas sensíveis continuarão exigindo procedimentos protegidos no servidor e registro em `audit_logs` quando já houver suporte no modelo.
 
 A navegação administrativa ficará sob `/app/admin`, com subrotas para usuários, oportunidades, fontes, financeiro e auditoria. A página administrativa manterá a identidade visual do Portal do assinante: azul-marinho, ciano, cartões de dados, estados de carregamento/erro/vazio e responsividade. A branch será validada com typecheck, testes e build; depois poderá ser revisada em PR/Preview, sem merge na `main` nem publicação em produção nesta etapa.
+
+
+## Addendum — hardening administrativo: usuários, auditoria e execuções
+
+A etapa atual permanece na branch `feat/admin-general-panel` e não publica o bundle da aplicação em produção. Foi aplicada no Supabase `orbeedital` somente a migration aditiva `add_user_suspension_controls`, que adiciona `users.suspended_at`, `users.suspension_reason` e o índice `users_suspended_idx`; nenhum dado existente foi removido ou reescrito.
+
+Usuários suspensos não podem iniciar novas sessões e sessões existentes deixam de produzir um usuário autenticado. O backend expõe suspensão e reativação somente para `superadmin`/`admin`, exige motivo mínimo, impede auto-suspensão e protege o último superadministrador ativo. A interface administrativa filtra ativos/suspensos, mostra o estado e solicita confirmação antes da ação.
+
+`server/services/adminAudit.ts` centraliza eventos administrativos. Suspensão, reativação, execução manual de fonte, ativação/desativação, frequência e associação de tarefa agendada registram ator, entidade, ação e metadados seguros em `audit_logs`; nenhum token, senha ou segredo é registrado. O histórico de sincronizações usa procedure protegida, filtros por fonte/status/período, paginação e contadores persistidos de cada `sync_run`.
+
+A migration foi aplicada e verificada no projeto Supabase `lhkjrsinhdezpzcrmjrv`. `pnpm check`, `pnpm test` (33 testes) e `pnpm build` passaram. O bundle gerado localmente não faz parte da entrega versionada; o código da aplicação ainda aguarda Preview/revisão antes de qualquer publicação.

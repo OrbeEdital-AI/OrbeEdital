@@ -1,7 +1,7 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { and, count, desc, eq, ilike, inArray, or, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sum } from "drizzle-orm";
 import { z } from "zod";
 import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
 import {
@@ -24,9 +24,10 @@ import {
   verifyEmailAction,
 } from "./services/authActions";
 import { getDb } from "./db";
+import { recordAdminAudit } from "./services/adminAudit";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
+import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure, userAdminProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import {
   deleteSavedSearch,
@@ -123,6 +124,9 @@ export const appRouter = router({
     login: publicProcedure.input(loginSchema).mutation(async ({ input, ctx }) => {
       const user = await findUserForLogin(input.email);
       if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha incorretos." });
+      }
+      if (user.suspendedAt) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha incorretos." });
       }
       try {
@@ -238,18 +242,20 @@ export const appRouter = router({
     users: sourceOperatorProcedure.input(z.object({
       search: z.string().trim().max(120).optional(),
       role: z.enum(["user", "superadmin", "admin", "source_operator", "support", "finance"]).optional(),
+      status: z.enum(["active", "suspended"]).optional(),
       page: z.number().int().min(1).default(1),
       pageSize: z.number().int().min(10).max(100).default(25),
     }).optional()).query(async ({ input }) => {
       const filter = input ?? { page: 1, pageSize: 25 };
       const conditions = [
         filter.role ? eq(users.role, filter.role) : undefined,
+        filter.status === "active" ? isNull(users.suspendedAt) : filter.status === "suspended" ? lte(users.suspendedAt, new Date()) : undefined,
         filter.search ? or(ilike(users.name, `%${filter.search}%`), ilike(users.email, `%${filter.search}%`)) : undefined,
       ].filter(Boolean) as any[];
       const where = conditions.length ? and(...conditions) : undefined;
       const db = getDb();
       const [items, total] = await Promise.all([
-        db.select({ id: users.id, email: users.email, name: users.name, phone: users.phone, role: users.role, emailVerifiedAt: users.emailVerifiedAt, lastSignedIn: users.lastSignedIn, createdAt: users.createdAt, updatedAt: users.updatedAt })
+        db.select({ id: users.id, email: users.email, name: users.name, phone: users.phone, role: users.role, emailVerifiedAt: users.emailVerifiedAt, lastSignedIn: users.lastSignedIn, suspendedAt: users.suspendedAt, suspensionReason: users.suspensionReason, createdAt: users.createdAt, updatedAt: users.updatedAt })
           .from(users).where(where).orderBy(desc(users.createdAt)).limit(filter.pageSize).offset((filter.page - 1) * filter.pageSize),
         db.select({ n: count() }).from(users).where(where),
       ]);
@@ -266,6 +272,31 @@ export const appRouter = router({
         if (!companyByUser.has(membership.userId)) companyByUser.set(membership.userId, membership.legalName);
       }
       return { items: items.map(user => ({ ...user, companyName: companyByUser.get(user.id) ?? null })), page: filter.page, pageSize: filter.pageSize, total: total[0]?.n ?? 0, totalPages: Math.max(1, Math.ceil(Number(total[0]?.n ?? 0) / filter.pageSize)) };
+    }),
+    suspendUser: userAdminProcedure.input(z.object({ userId: z.string().uuid(), reason: z.string().trim().min(3).max(500) })).mutation(async ({ input, ctx }) => {
+      if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Você não pode suspender a própria conta." });
+      const db = getDb();
+      const [target] = await db.select({ id: users.id, role: users.role, suspendedAt: users.suspendedAt }).from(users).where(eq(users.id, input.userId)).limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+      if (target.role === "superadmin") {
+        const [{ n }] = await db.select({ n: count() }).from(users).where(and(eq(users.role, "superadmin"), isNull(users.suspendedAt)));
+        if (Number(n ?? 0) <= 1) throw new TRPCError({ code: "FORBIDDEN", message: "Não é permitido suspender o último superadministrador ativo." });
+      }
+      if (target.suspendedAt) return { changed: false as const };
+      const suspendedAt = new Date();
+      await db.update(users).set({ suspendedAt, suspensionReason: input.reason, updatedAt: suspendedAt }).where(eq(users.id, input.userId));
+      await recordAdminAudit({ actorUserId: ctx.user.id, action: "user.suspended", entityType: "user", entityId: input.userId, details: { reason: input.reason, role: target.role } });
+      return { changed: true as const };
+    }),
+    reactivateUser: userAdminProcedure.input(z.object({ userId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      const [target] = await db.select({ id: users.id, role: users.role, suspendedAt: users.suspendedAt }).from(users).where(eq(users.id, input.userId)).limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+      if (!target.suspendedAt) return { changed: false as const };
+      const updatedAt = new Date();
+      await db.update(users).set({ suspendedAt: null, suspensionReason: null, updatedAt }).where(eq(users.id, input.userId));
+      await recordAdminAudit({ actorUserId: ctx.user.id, action: "user.reactivated", entityType: "user", entityId: input.userId, details: { role: target.role } });
+      return { changed: true as const };
     }),
     opportunities: sourceOperatorProcedure.input(z.object({
       search: z.string().trim().max(160).optional(),
@@ -307,25 +338,57 @@ export const appRouter = router({
         ]);
         return { sources, runs };
       }),
+      runs: sourceOperatorProcedure.input(z.object({
+        sourceCode: z.enum(["pncp", "compras.gov.br"]).optional(),
+        status: z.string().trim().max(40).optional(),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(10).max(100).default(25),
+      }).optional()).query(async ({ input }) => {
+        const filter = input ?? { page: 1, pageSize: 25 };
+        const conditions = [
+          filter.sourceCode ? eq(connectors.code, filter.sourceCode) : undefined,
+          filter.status ? eq(syncRuns.status, filter.status) : undefined,
+          filter.from ? gte(syncRuns.startedAt, new Date(`${filter.from}T00:00:00-03:00`)) : undefined,
+          filter.to ? lte(syncRuns.startedAt, new Date(`${filter.to}T23:59:59.999-03:00`)) : undefined,
+        ].filter(Boolean) as any[];
+        const where = conditions.length ? and(...conditions) : undefined;
+        const db = getDb();
+        const [items, total] = await Promise.all([
+          db.select({ run: syncRuns, sourceName: connectors.name, sourceCode: connectors.code })
+            .from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).where(where)
+            .orderBy(desc(syncRuns.startedAt)).limit(filter.pageSize).offset((filter.page - 1) * filter.pageSize),
+          db.select({ n: count() }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).where(where),
+        ]);
+        return { items, page: filter.page, pageSize: filter.pageSize, total: total[0]?.n ?? 0, totalPages: Math.max(1, Math.ceil(Number(total[0]?.n ?? 0) / filter.pageSize)) };
+      }),
       run: sourceOperatorProcedure.input(z.object({
         sourceCode: z.enum(["pncp", "compras.gov.br"]),
         daysBack: z.number().int().min(1).max(30).default(7),
         modalityCodes: z.array(z.number().int().min(1).max(15)).min(1).max(3).default([6]),
         maxPages: z.number().int().min(1).max(3).default(1),
-      })).mutation(({ input }) => syncConnector(input.sourceCode, input)),
+      })).mutation(async ({ input, ctx }) => {
+        const result = await syncConnector(input.sourceCode, input);
+        await recordAdminAudit({ actorUserId: ctx.user.id, action: "source.sync.manual", entityType: "connector", entityId: input.sourceCode, details: { daysBack: input.daysBack, modalityCount: input.modalityCodes.length, maxPages: input.maxPages, inserted: result.inserted, updated: result.updated, skipped: result.skipped, pagesFetched: result.pagesFetched } });
+        return result;
+      }),
       configure: sourceOperatorProcedure.input(z.object({
         code: z.enum(["pncp", "compras.gov.br"]),
         enabled: z.boolean().optional(),
         frequencySeconds: z.number().int().min(300).max(86_400).optional(),
-      })).mutation(async ({ input }) => {
+      })).mutation(async ({ input, ctx }) => {
         await ensureBuiltInConnectors();
+        const [before] = await getDb().select({ enabled: connectors.enabled, frequencySeconds: connectors.frequencySeconds }).from(connectors).where(eq(connectors.code, input.code)).limit(1);
         const changes: { enabled?: boolean; frequencySeconds?: number; updatedAt: Date } = { updatedAt: new Date() };
         if (input.enabled !== undefined) changes.enabled = input.enabled;
         if (input.frequencySeconds !== undefined) changes.frequencySeconds = input.frequencySeconds;
         const [source] = await getDb().update(connectors).set(changes).where(eq(connectors.code, input.code)).returning();
+        if (!source) throw new TRPCError({ code: "NOT_FOUND", message: "Fonte não cadastrada." });
+        await recordAdminAudit({ actorUserId: ctx.user.id, action: "source.configured", entityType: "connector", entityId: source.id, details: { code: source.code, changed: { enabled: input.enabled !== undefined, frequencySeconds: input.frequencySeconds !== undefined }, before: { enabled: before?.enabled ?? null, frequencySeconds: before?.frequencySeconds ?? null }, after: { enabled: source.enabled, frequencySeconds: source.frequencySeconds } } });
         return source;
       }),
-      setScheduledTask: sourceOperatorProcedure.input(z.object({ code: z.enum(["pncp", "compras.gov.br"]), taskUid: z.string().trim().max(200) })).mutation(async ({ input }) => {
+      setScheduledTask: sourceOperatorProcedure.input(z.object({ code: z.enum(["pncp", "compras.gov.br"]), taskUid: z.string().trim().max(200) })).mutation(async ({ input, ctx }) => {
         await ensureBuiltInConnectors();
         const [current] = await getDb().select().from(connectors).where(eq(connectors.code, input.code)).limit(1);
         if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Fonte não cadastrada." });
@@ -334,6 +397,7 @@ export const appRouter = router({
         if (input.taskUid) nextConfiguration.scheduledTaskUid = input.taskUid;
         else delete nextConfiguration.scheduledTaskUid;
         const [updated] = await getDb().update(connectors).set({ configuration: nextConfiguration, updatedAt: new Date() }).where(eq(connectors.id, current.id)).returning();
+        await recordAdminAudit({ actorUserId: ctx.user.id, action: "source.scheduled_task.updated", entityType: "connector", entityId: current.id, details: { code: input.code, configured: Boolean(input.taskUid), replaced: Boolean(configuration.scheduledTaskUid) } });
         return updated;
       }),
     }),

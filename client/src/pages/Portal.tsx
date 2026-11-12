@@ -101,6 +101,7 @@ export default function Portal() {
   const canViewAdmin = ["superadmin", "admin", "source_operator"].includes(
     me?.role ?? ""
   );
+  const canManageUsers = ["superadmin", "admin"].includes(me?.role ?? "");
   const sections = useMemo(
     () => [
       { label: "Visão geral", href: "/app", icon: LayoutDashboard },
@@ -324,7 +325,7 @@ export default function Portal() {
         <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
           <Switch>
             <Route path="/app/admin/users">
-              <UsersPage isAdmin={canViewAdmin} />
+              <UsersPage isAdmin={canViewAdmin} canManageUsers={canManageUsers} />
             </Route>
             <Route path="/app/admin/opportunities">
               <AdminOpportunitiesPage isAdmin={canViewAdmin} />

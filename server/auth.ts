@@ -211,7 +211,7 @@ export async function getUserFromRequest(
     )
     .limit(1);
   const user = rows[0]?.user;
-  if (!user) return null;
+  if (!user || user.suspendedAt) return null;
   const { passwordHash: _passwordHash, ...safeUser } = user;
   return safeUser;
 }

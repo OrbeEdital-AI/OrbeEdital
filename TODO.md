@@ -245,3 +245,13 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 - [ ] Testes focados cobrem paginação, filtros, timezone, indicadores e apresentação de valores.
 - [ ] O relatório final lista problemas, correções, arquivos, testes, limitações, situação do PostgreSQL e integrações.
 - [ ] Criar commit na branch exclusiva e disponibilizar somente Preview/PR para revisão; não fazer merge nem publicar em produção.
+
+
+## Addendum — hardening administrativo entregue nesta etapa
+
+- [x] Adicionar migration PostgreSQL aditiva para `users.suspended_at`, `users.suspension_reason` e índice de situação; migration `add_user_suspension_controls` aplicada e verificada no Supabase `orbeedital`, sem exclusão ou reescrita de dados.
+- [x] Implementar suspensão e reativação protegidas no backend, com filtro de situação na listagem, motivo obrigatório, confirmação na UI, bloqueio de novas sessões, invalidação de sessões existentes, impedimento de auto-suspensão e proteção do último superadministrador ativo.
+- [x] Centralizar auditoria administrativa em `server/services/adminAudit.ts` e registrar suspensão, reativação, execução manual de fonte, ativação/desativação, frequência e associação de tarefa agendada com ator, entidade, ação e metadados seguros.
+- [x] Criar histórico detalhado de `sync_runs` com filtros por fonte, status e período, paginação, início/fim, status, registros capturados, novos, atualizados, ignorados quando persistidos e erros.
+- [ ] Ampliar a auditoria para futuras mutations de planos, assinaturas, pagamentos, permissões e demais módulos ainda não implementados.
+- [ ] Implementar retentativa/reprocessamento seletivo de execuções e investigação/correção administrativa de duplicidades.

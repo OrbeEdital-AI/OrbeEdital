@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { CircleAlert, ExternalLink, RefreshCw, Search } from "lucide-react";
+import { Ban, CheckCircle2, CircleAlert, ExternalLink, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import BrandMark from "@/components/BrandMark";
@@ -28,6 +28,12 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const [frequencyMinutes, setFrequencyMinutes] = useState<
     Record<string, string>
   >({});
+  const [runPage, setRunPage] = useState(1);
+  const [runSource, setRunSource] = useState<"" | "pncp" | "compras.gov.br">("");
+  const [runStatus, setRunStatus] = useState("");
+  const [runFrom, setRunFrom] = useState("");
+  const [runTo, setRunTo] = useState("");
+  const runsQuery = trpc.admin.sources.runs.useQuery({ page: runPage, pageSize: 25, sourceCode: runSource || undefined, status: runStatus || undefined, from: runFrom || undefined, to: runTo || undefined }, { enabled: isAdmin });
   const saveTask = trpc.admin.sources.setScheduledTask.useMutation({
     onSuccess: async () => {
       toast.success(
@@ -92,14 +98,15 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               <button
                 disabled={!source.enabled || run.isPending}
                 className="inline-flex items-center gap-2 rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                onClick={() =>
+                onClick={() => {
+                  if (!window.confirm(`Executar sincronização manual de ${source.name}? A consulta respeitará os limites configurados da fonte.`)) return;
                   run.mutate({
                     sourceCode: source.code as "pncp" | "compras.gov.br",
                     daysBack: 7,
                     modalityCodes: [6],
                     maxPages: 1,
-                  })
-                }
+                  });
+                }}
               >
                 <RefreshCw
                   className={run.isPending ? "animate-spin" : ""}
@@ -109,12 +116,13 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               </button>
               <button
                 className="rounded-lg border px-3 py-2 text-sm"
-                onClick={() =>
+                onClick={() => {
+                  if (source.enabled && !window.confirm(`Desativar ${source.name}? A coleta automática ficará pausada.`)) return;
                   configure.mutate({
                     code: source.code as "pncp" | "compras.gov.br",
                     enabled: !source.enabled,
-                  })
-                }
+                  });
+                }}
               >
                 {source.enabled ? "Desativar" : "Ativar"}
               </button>
@@ -254,6 +262,16 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
           </p>
         )}
       </section>
+      <section className="rounded-xl border bg-white p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div><h3 className="font-semibold">Histórico detalhado de sincronizações</h3><p className="mt-1 text-xs text-slate-500">Consulta persistida no PostgreSQL, com filtros e paginação.</p></div>
+          <label className="ml-auto text-xs text-slate-600">Fonte<select className="ml-2 rounded-lg border px-2 py-1.5 text-sm" value={runSource} onChange={event => { setRunSource(event.target.value as typeof runSource); setRunPage(1); }}><option value="">Todas</option><option value="pncp">PNCP</option><option value="compras.gov.br">Compras.gov.br</option></select></label>
+          <label className="text-xs text-slate-600">Status<input className="ml-2 w-28 rounded-lg border px-2 py-1.5 text-sm" value={runStatus} onChange={event => { setRunStatus(event.target.value); setRunPage(1); }} placeholder="completed" /></label>
+          <label className="text-xs text-slate-600">De<input type="date" className="ml-2 rounded-lg border px-2 py-1.5 text-sm" value={runFrom} onChange={event => { setRunFrom(event.target.value); setRunPage(1); }} /></label>
+          <label className="text-xs text-slate-600">Até<input type="date" className="ml-2 rounded-lg border px-2 py-1.5 text-sm" value={runTo} onChange={event => { setRunTo(event.target.value); setRunPage(1); }} /></label>
+        </div>
+        {runsQuery.isLoading ? <Loading label="Carregando histórico…" /> : runsQuery.error ? <ErrorState message={runsQuery.error.message} onRetry={() => runsQuery.refetch()} /> : runsQuery.data?.items.length ? <><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[920px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Fonte</th><th>Status</th><th>Início</th><th>Fim</th><th>Capturados</th><th>Novos</th><th>Atualizados</th><th>Ignorados</th><th>Erros</th></tr></thead><tbody>{runsQuery.data.items.map(item => <tr className="border-t" key={item.run.id}><td className="py-2">{item.sourceName}</td><td>{item.run.status}</td><td>{dateTime(item.run.startedAt)}</td><td>{dateTime(item.run.finishedAt)}</td><td>{item.run.fetchedCount}</td><td>{item.run.insertedCount}</td><td>{item.run.updatedCount}</td><td>{typeof item.run.metadata.skipped === "number" ? item.run.metadata.skipped : "—"}</td><td>{item.run.errorCount}</td></tr>)}</tbody></table></div><AdminPagination page={runsQuery.data.page} totalPages={runsQuery.data.totalPages} total={Number(runsQuery.data.total)} onChange={setRunPage} /></> : <p className="mt-4 text-sm text-slate-500">Nenhuma execução corresponde aos filtros informados.</p>}
+      </section>
     </>
   );
 }
@@ -268,11 +286,15 @@ function AdminPagination({ page, totalPages, total, onChange }: { page: number; 
   </div>;
 }
 
-export function UsersPage({ isAdmin }: { isAdmin: boolean }) {
+export function UsersPage({ isAdmin, canManageUsers }: { isAdmin: boolean; canManageUsers: boolean }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<"" | "user" | "admin" | "superadmin" | "source_operator" | "support" | "finance">("");
-  const query = trpc.admin.users.useQuery({ page, pageSize: 25, search: search || undefined, role: role || undefined }, { enabled: isAdmin });
+  const [status, setStatus] = useState<"" | "active" | "suspended">("");
+  const utils = trpc.useUtils();
+  const query = trpc.admin.users.useQuery({ page, pageSize: 25, search: search || undefined, role: role || undefined, status: status || undefined }, { enabled: isAdmin });
+  const suspend = trpc.admin.suspendUser.useMutation({ onSuccess: async () => { toast.success("Usuário suspenso."); await utils.admin.users.invalidate(); await utils.admin.audit.invalidate(); }, onError: e => toast.error(e.message) });
+  const reactivate = trpc.admin.reactivateUser.useMutation({ onSuccess: async () => { toast.success("Usuário reativado."); await utils.admin.users.invalidate(); await utils.admin.audit.invalidate(); }, onError: e => toast.error(e.message) });
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading) return <Loading label="Carregando usuários…" />;
   if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
@@ -284,8 +306,11 @@ export function UsersPage({ isAdmin }: { isAdmin: boolean }) {
       <label className="text-xs font-medium text-slate-600">Perfil
         <select className="mt-1 block rounded-lg border px-3 py-2 text-sm" value={role} onChange={event => { setRole(event.target.value as typeof role); setPage(1); }}><option value="">Todos</option><option value="user">Cliente</option><option value="admin">Admin</option><option value="superadmin">Superadmin</option><option value="source_operator">Operador de fontes</option><option value="support">Suporte</option><option value="finance">Financeiro</option></select>
       </label>
+      <label className="text-xs font-medium text-slate-600">Situação
+        <select className="mt-1 block rounded-lg border px-3 py-2 text-sm" value={status} onChange={event => { setStatus(event.target.value as typeof status); setPage(1); }}><option value="">Todas</option><option value="active">Ativos</option><option value="suspended">Suspensos</option></select>
+      </label>
     </div>
-    <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Usuário</th><th>Empresa</th><th>Perfil</th><th>Verificação</th><th>Último acesso</th><th>Cadastro</th></tr></thead><tbody>{query.data?.items.map(user => <tr className="border-t" key={user.id}><td className="py-3"><p className="font-medium text-[#102B4E]">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td><td>{user.companyName || "Não vinculada"}</td><td><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{user.role}</span></td><td>{user.emailVerifiedAt ? <span className="text-emerald-700">Confirmado</span> : <span className="text-amber-700">Pendente</span>}</td><td>{date(user.lastSignedIn)}</td><td>{date(user.createdAt)}</td></tr>)}</tbody></table></div>
+    <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[1120px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Usuário</th><th>Empresa</th><th>Perfil</th><th>Situação</th><th>Verificação</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>{query.data?.items.map(user => <tr className="border-t" key={user.id}><td className="py-3"><p className="font-medium text-[#102B4E]">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td><td>{user.companyName || "Não vinculada"}</td><td><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{user.role}</span></td><td>{user.suspendedAt ? <span className="inline-flex items-center gap-1 text-rose-700"><Ban size={14} /> Suspenso</span> : <span className="inline-flex items-center gap-1 text-emerald-700"><CheckCircle2 size={14} /> Ativo</span>}</td><td>{user.emailVerifiedAt ? <span className="text-emerald-700">Confirmado</span> : <span className="text-amber-700">Pendente</span>}</td><td>{date(user.lastSignedIn)}</td><td>{canManageUsers && (user.suspendedAt ? <button className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-800" disabled={reactivate.isPending} onClick={() => { if (window.confirm(`Reativar a conta de ${user.name}?`)) reactivate.mutate({ userId: user.id }); }}><CheckCircle2 size={14} /> Reativar</button> : <button className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-800" disabled={suspend.isPending || user.role === "superadmin"} title={user.role === "superadmin" ? "A proteção de superadministradores impede esta ação pela interface." : undefined} onClick={() => { const reason = window.prompt(`Motivo da suspensão de ${user.name}:`); if (reason?.trim() && window.confirm("Confirmar suspensão? Esta ação impede o login e será registrada na auditoria.")) suspend.mutate({ userId: user.id, reason: reason.trim() }); }}><Ban size={14} /> Suspender</button>)}</td></tr>)}</tbody></table></div>
     <AdminPagination page={query.data?.page ?? 1} totalPages={query.data?.totalPages ?? 1} total={Number(query.data?.total ?? 0)} onChange={setPage} />
   </section>;
 }
