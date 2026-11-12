@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft, CreditCard, Database, LayoutDashboard,
@@ -132,13 +132,16 @@ export default function AdminConsole() {
   const [section, setSection] = useState<Section>("overview");
   const me = auth.user as (typeof auth.user & { role?: string; name?: string; email?: string }) | null;
   const allowed = me?.role === "superadmin";
+
+  useEffect(() => {
+    if (!auth.loading && !auth.user) navigate("/admin/login");
+  }, [auth.loading, auth.user, navigate]);
   const greeting = useMemo(() => {
     const hour = Number(new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", hourCycle: "h23", timeZone: "America/Sao_Paulo" }).format(new Date()));
     return hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   }, []);
 
-  if (auth.loading) return <div className="grid min-h-screen place-items-center text-slate-500">Verificando sua sessão…</div>;
-  if (!auth.user) return <div className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="rounded-xl border bg-white p-8 text-center"><h1 className="text-xl font-bold text-[#102B4E]">Entre para continuar</h1><p className="mt-2 text-sm text-slate-500">Faça login com uma conta autorizada.</p><Link href="/login" className="mt-5 inline-flex rounded-lg bg-[#102B4E] px-5 py-2.5 text-white">Ir para login</Link></div></div>;
+  if (auth.loading || !auth.user) return <div className="grid min-h-screen place-items-center text-slate-500">Abrindo acesso administrativo…</div>;
   if (!me?.emailVerifiedAt || !allowed) return <AccessDenied />;
 
   const logout = async () => { await auth.logout(); navigate("/"); };
