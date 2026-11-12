@@ -31,6 +31,14 @@ export const date = (value: Date | string | null | undefined) =>
         timeZone: "America/Sao_Paulo",
       }).format(new Date(value))
     : "Não informado";
+export const dateTime = (value: Date | string | null | undefined) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      }).format(new Date(value))
+    : "Não informado";
 export const brazilGreeting = (value = new Date()) => {
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(value));
   return hour >= 5 && hour < 12 ? "Bom dia" : hour >= 12 && hour < 18 ? "Boa tarde" : "Boa noite";

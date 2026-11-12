@@ -135,10 +135,10 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 
 ## 14. Painel administrativo e gestão operacional
 
-- [ ] Disponibilizar painel administrativo apenas a administradores autorizados, independente do portal do assinante.
+- [x] Disponibilizar painel administrativo apenas a perfis autorizados no backend, dentro do shell visual do portal do assinante. A branch `feat/admin-general-panel` inclui rotas protegidas e telas administrativas reais.
 - [ ] Dashboard administrativo mostra total de licitações cadastradas, novas no dia, licitações por estado/modalidade, total de fontes integradas, fontes ativas/com falhas, última sincronização por fonte, usuários, assinantes ativos, assinaturas vencidas, receita mensal recorrente, receita acumulada, cancelamentos e novas assinaturas.
-- [ ] Permitir consultar todas as oportunidades, pesquisar registros, editar/corrigir quando necessário, excluir indevidas com registro de auditoria, identificar duplicidades e consultar fonte original e histórico.
-- [ ] Permitir cadastrar/editar usuários, bloqueá-los/desbloqueá-los, consultar assinaturas, alterar planos, conceder acesso manual, consultar histórico de pagamentos e atividades, gerenciar permissões.
+- [x] Permitir consultar oportunidades cadastradas e pesquisar registros com paginação, fonte, órgão, UF, datas e link de origem quando persistidos. Edição, exclusão e detecção de duplicidades permanecem pendentes.
+- [ ] Permitir cadastrar/editar usuários, bloqueá-los/desbloqueá-los, consultar assinaturas, alterar planos, conceder acesso manual, consultar histórico de pagamentos e atividades, gerenciar permissões. A listagem paginada por busca, perfil e verificação foi entregue; status de suspensão ainda depende de coluna/modelo próprio.
 - [ ] Criar perfis administrativos superadministrador, administrador, operador de fontes, suporte e financeiro, com permissões individuais por módulo.
 
 ## 15. Gestão financeira e de assinaturas
@@ -179,7 +179,7 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 ## 19. Segurança, privacidade e LGPD
 
 - [ ] Implementar autenticação segura, recuperação de senha, verificação de e-mail, controle de sessão, rotas protegidas, controle de permissões por perfil e proteção contra acessos indevidos.
-- [ ] Registrar atividades administrativas e aplicar políticas de acesso ao banco de dados.
+- [x] Expor a trilha `audit_logs` em consulta administrativa protegida, com ator, ação, entidade, detalhes e data; geração completa para novas ações administrativas permanece em evolução.
 - [ ] Proteger dados pessoais, minimizar dados coletados e não armazenar dados sensíveis desnecessários.
 - [ ] Disponibilizar política de privacidade, termos de uso, política de cookies e gestão de consentimento.
 - [ ] Implementar procedimentos de exclusão de conta e dados pessoais conforme legislação aplicável, com feedback e auditoria apropriados.
@@ -241,7 +241,7 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 
 ## Validação e entrega
 
-- [ ] Typecheck, testes automatizados e build passam na branch.
+- [x] Typecheck (`pnpm check`), suíte automatizada (`33 testes`) e build de produção passam na branch após a primeira entrega do painel geral.
 - [ ] Testes focados cobrem paginação, filtros, timezone, indicadores e apresentação de valores.
 - [ ] O relatório final lista problemas, correções, arquivos, testes, limitações, situação do PostgreSQL e integrações.
 - [ ] Criar commit na branch exclusiva e disponibilizar somente Preview/PR para revisão; não fazer merge nem publicar em produção.

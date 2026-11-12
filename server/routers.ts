@@ -1,9 +1,9 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { count, desc, eq, inArray, sum } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sum } from "drizzle-orm";
 import { z } from "zod";
-import { connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
+import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
 import {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -234,6 +234,68 @@ export const appRouter = router({
         db.select({ n: count() }).from(subscriptions).where(inArray(subscriptions.status, ["cancelled", "canceled"])),
       ]);
       return { users: userCount[0]?.n ?? 0, opportunities: opportunityCount[0]?.n ?? 0, sourceCount: sourceRows.length, sources: sourceRows, activeSubscribers: activeSubscribers[0]?.n ?? 0, canceledSubscriptions: canceledSubscriptions[0]?.n ?? 0 };
+    }),
+    users: sourceOperatorProcedure.input(z.object({
+      search: z.string().trim().max(120).optional(),
+      role: z.enum(["user", "superadmin", "admin", "source_operator", "support", "finance"]).optional(),
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(10).max(100).default(25),
+    }).optional()).query(async ({ input }) => {
+      const filter = input ?? { page: 1, pageSize: 25 };
+      const conditions = [
+        filter.role ? eq(users.role, filter.role) : undefined,
+        filter.search ? or(ilike(users.name, `%${filter.search}%`), ilike(users.email, `%${filter.search}%`)) : undefined,
+      ].filter(Boolean) as any[];
+      const where = conditions.length ? and(...conditions) : undefined;
+      const db = getDb();
+      const [items, total] = await Promise.all([
+        db.select({ id: users.id, email: users.email, name: users.name, phone: users.phone, role: users.role, emailVerifiedAt: users.emailVerifiedAt, lastSignedIn: users.lastSignedIn, createdAt: users.createdAt, updatedAt: users.updatedAt })
+          .from(users).where(where).orderBy(desc(users.createdAt)).limit(filter.pageSize).offset((filter.page - 1) * filter.pageSize),
+        db.select({ n: count() }).from(users).where(where),
+      ]);
+      const userIds = items.map(user => user.id);
+      const memberships = userIds.length
+        ? await db.select({ userId: companyMembers.userId, legalName: companies.legalName })
+            .from(companyMembers)
+            .innerJoin(companies, eq(companyMembers.companyId, companies.id))
+            .where(inArray(companyMembers.userId, userIds))
+            .orderBy(companyMembers.createdAt)
+        : [];
+      const companyByUser = new Map<string, string>();
+      for (const membership of memberships) {
+        if (!companyByUser.has(membership.userId)) companyByUser.set(membership.userId, membership.legalName);
+      }
+      return { items: items.map(user => ({ ...user, companyName: companyByUser.get(user.id) ?? null })), page: filter.page, pageSize: filter.pageSize, total: total[0]?.n ?? 0, totalPages: Math.max(1, Math.ceil(Number(total[0]?.n ?? 0) / filter.pageSize)) };
+    }),
+    opportunities: sourceOperatorProcedure.input(z.object({
+      search: z.string().trim().max(160).optional(),
+      sourceCode: z.string().trim().max(80).optional(),
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(10).max(100).default(25),
+    }).optional()).query(async ({ input }) => {
+      const filter = input ?? { page: 1, pageSize: 25 };
+      const conditions = [
+        filter.search ? or(ilike(opportunities.title, `%${filter.search}%`), ilike(opportunities.controlNumber, `%${filter.search}%`), ilike(opportunities.agencyName, `%${filter.search}%`)) : undefined,
+        filter.sourceCode ? eq(connectors.code, filter.sourceCode) : undefined,
+      ].filter(Boolean) as any[];
+      const where = conditions.length ? and(...conditions) : undefined;
+      const db = getDb();
+      const [items, total] = await Promise.all([
+        db.select({ id: opportunities.id, title: opportunities.title, sourceKey: opportunities.sourceKey, controlNumber: opportunities.controlNumber, agencyName: opportunities.agencyName, state: opportunities.state, modality: opportunities.modality, status: opportunities.status, publicationDate: opportunities.publicationDate, proposalDeadline: opportunities.proposalDeadline, sourceUrl: opportunities.sourceUrl, sourceName: connectors.name, sourceCode: connectors.code })
+          .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where).orderBy(desc(opportunities.publicationDate), desc(opportunities.createdAt)).limit(filter.pageSize).offset((filter.page - 1) * filter.pageSize),
+        db.select({ n: count() }).from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where),
+      ]);
+      return { items, page: filter.page, pageSize: filter.pageSize, total: total[0]?.n ?? 0, totalPages: Math.max(1, Math.ceil(Number(total[0]?.n ?? 0) / filter.pageSize)) };
+    }),
+    audit: sourceOperatorProcedure.input(z.object({ page: z.number().int().min(1).default(1), pageSize: z.number().int().min(10).max(100).default(50) }).optional()).query(async ({ input }) => {
+      const filter = input ?? { page: 1, pageSize: 50 };
+      const db = getDb();
+      const [items, total] = await Promise.all([
+        db.select({ id: auditLogs.id, action: auditLogs.action, entityType: auditLogs.entityType, entityId: auditLogs.entityId, details: auditLogs.details, createdAt: auditLogs.createdAt, actorName: users.name, actorEmail: users.email })
+          .from(auditLogs).leftJoin(users, eq(auditLogs.actorUserId, users.id)).orderBy(desc(auditLogs.createdAt)).limit(filter.pageSize).offset((filter.page - 1) * filter.pageSize),
+        db.select({ n: count() }).from(auditLogs),
+      ]);
+      return { items, page: filter.page, pageSize: filter.pageSize, total: total[0]?.n ?? 0, totalPages: Math.max(1, Math.ceil(Number(total[0]?.n ?? 0) / filter.pageSize)) };
     }),
     sources: router({
       list: sourceOperatorProcedure.query(async () => {

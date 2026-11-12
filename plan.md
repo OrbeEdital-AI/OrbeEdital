@@ -93,3 +93,12 @@ Esta etapa é executada na branch `feat/dashboard-opportunities-improvements`, s
 - Indicadores e datas serão derivados de dados persistidos, com timezone explícito e testes unitários para manhã/tarde/noite e limites de prazo.
 - Valores nulos/ausentes serão apresentados como “Valor não informado”, preservando zero real quando existir.
 - Status de fonte será derivado da última execução persistida, sem declarar agendamento como sucesso sem evidência.
+
+
+## Addendum — painel administrativo geral
+
+Esta execução parte da branch `feat/admin-general-panel` e segue o prompt administrativo recebido. A primeira entrega implementará somente comportamentos sustentados pelo schema e pelos serviços já existentes: visão geral com indicadores reais, usuários, oportunidades, fontes, financeiro e auditoria. O painel reutilizará o shell visual do Portal do cliente, o componente `BrandMark`, os procedimentos tRPC protegidos e as tabelas PostgreSQL existentes.
+
+Não serão criadas tabelas fictícias, números simulados, credenciais novas ou migrations destrutivas. Funcionalidades que dependem de gateway, provedor de suporte, armazenamento de documentos ou autorização externa permanecerão claramente marcadas como pendentes. Alterações administrativas sensíveis continuarão exigindo procedimentos protegidos no servidor e registro em `audit_logs` quando já houver suporte no modelo.
+
+A navegação administrativa ficará sob `/app/admin`, com subrotas para usuários, oportunidades, fontes, financeiro e auditoria. A página administrativa manterá a identidade visual do Portal do assinante: azul-marinho, ciano, cartões de dados, estados de carregamento/erro/vazio e responsividade. A branch será validada com typecheck, testes e build; depois poderá ser revisada em PR/Preview, sem merge na `main` nem publicação em produção nesta etapa.

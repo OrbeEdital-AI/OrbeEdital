@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { CircleAlert, ExternalLink, RefreshCw } from "lucide-react";
+import { CircleAlert, ExternalLink, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { date, money, Loading, ErrorState, NoPermission } from "./common";
+import BrandMark from "@/components/BrandMark";
+import { date, dateTime, money, Loading, ErrorState, NoPermission } from "./common";
 export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const query = trpc.admin.sources.list.useQuery(undefined, {
     enabled: isAdmin,
@@ -46,13 +47,17 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
       />
     );
   const scheduledTaskCount = query.data?.sources.filter(source => Boolean(source.configuration?.scheduledTaskUid)).length ?? 0;
+  const activeSources = query.data?.sources.filter(source => source.enabled) ?? [];
+  const inactiveSources = query.data?.sources.filter(source => !source.enabled) ?? [];
   return (
     <>
       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
         <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no OrbeEdital, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
       </div>
-      <div className="grid gap-4">
-        {query.data?.sources.map(source => (
+      <section className="space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-800">Fontes ativas ({activeSources.length})</h3>
+        <div className="grid gap-4">
+        {activeSources.map(source => (
           <article
             className="rounded-xl border border-slate-200 bg-white p-5"
             key={source.code}
@@ -70,9 +75,9 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   <ExternalLink size={12} />
                 </a>
                 <p className="mt-2 text-xs text-slate-500">
-                  Última execução: {date(source.lastRunAt)} · Próxima estimada:{" "}
+                  Última execução: {dateTime(source.lastRunAt)} · Próxima estimada:{" "}
                   {source.configuration?.scheduledTaskUid
-                    ? date(source.nextRunAt)
+                    ? dateTime(source.nextRunAt)
                     : "não agendada"}{" "}
                   · Importados: {source.importedCount} · Erros:{" "}
                   {source.errorCount} · Duração média:{" "}
@@ -194,6 +199,26 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
           </article>
         ))}
       </div>
+        {!activeSources.length && <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Nenhuma fonte ativa.</p>}
+      </section>
+      <section className="space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-[0.14em] text-slate-500">Fontes desativadas ({inactiveSources.length})</h3>
+        <div className="grid gap-4">
+          {inactiveSources.map(source => (
+            <article className="rounded-xl border border-slate-200 bg-white p-5 opacity-90" key={source.code}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-[#0b2442]">{source.name}</h2>
+                  <p className="mt-2 text-xs text-slate-500">Última execução: {dateTime(source.lastRunAt)} · Importados: {source.importedCount} · Erros: {source.errorCount}</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Desativada</span>
+              </div>
+              <button className="mt-4 rounded-lg border px-3 py-2 text-sm" onClick={() => configure.mutate({ code: source.code as "pncp" | "compras.gov.br", enabled: true })}>Ativar fonte</button>
+            </article>
+          ))}
+          {!inactiveSources.length && <p className="rounded-xl border bg-white p-5 text-sm text-slate-500">Nenhuma fonte desativada.</p>}
+        </div>
+      </section>
       <section className="rounded-xl border bg-white p-5">
         <h3 className="font-semibold">Execuções recentes</h3>
         {query.data?.runs.length ? (
@@ -203,7 +228,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                 <tr>
                   <th className="py-2">Fonte</th>
                   <th>Status</th>
-                  <th>Início</th>
+                  <th>Executada em</th>
                   <th>Novos</th>
                   <th>Atualizados</th>
                   <th>Erros</th>
@@ -214,7 +239,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   <tr className="border-t" key={r.run.id}>
                     <td className="py-2">{r.sourceName}</td>
                     <td>{r.run.status}</td>
-                    <td>{date(r.run.startedAt)}</td>
+                    <td>{dateTime(r.run.startedAt)}</td>
                     <td>{r.run.insertedCount}</td>
                     <td>{r.run.updatedCount}</td>
                     <td>{r.run.errorCount}</td>
@@ -231,6 +256,57 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
       </section>
     </>
   );
+}
+
+function AdminPagination({ page, totalPages, total, onChange }: { page: number; totalPages: number; total: number; onChange: (page: number) => void }) {
+  return <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm text-slate-500">
+    <span>{total.toLocaleString("pt-BR")} registros · página {page} de {totalPages}</span>
+    <div className="flex gap-2">
+      <button className="rounded-lg border px-3 py-1.5 disabled:opacity-40" disabled={page <= 1} onClick={() => onChange(page - 1)}>Anterior</button>
+      <button className="rounded-lg border px-3 py-1.5 disabled:opacity-40" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>Próxima</button>
+    </div>
+  </div>;
+}
+
+export function UsersPage({ isAdmin }: { isAdmin: boolean }) {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [role, setRole] = useState<"" | "user" | "admin" | "superadmin" | "source_operator" | "support" | "finance">("");
+  const query = trpc.admin.users.useQuery({ page, pageSize: 25, search: search || undefined, role: role || undefined }, { enabled: isAdmin });
+  if (!isAdmin) return <NoPermission />;
+  if (query.isLoading) return <Loading label="Carregando usuários…" />;
+  if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
+  return <section className="rounded-xl border bg-white p-5">
+    <div className="flex flex-wrap items-end gap-3">
+      <label className="min-w-64 flex-1 text-xs font-medium text-slate-600">Buscar por nome ou e-mail
+        <div className="mt-1 flex items-center rounded-lg border px-3"><Search size={15} className="text-slate-400" /><input className="w-full border-0 px-2 py-2 text-sm outline-none" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Ex.: empresa@dominio.com" /></div>
+      </label>
+      <label className="text-xs font-medium text-slate-600">Perfil
+        <select className="mt-1 block rounded-lg border px-3 py-2 text-sm" value={role} onChange={event => { setRole(event.target.value as typeof role); setPage(1); }}><option value="">Todos</option><option value="user">Cliente</option><option value="admin">Admin</option><option value="superadmin">Superadmin</option><option value="source_operator">Operador de fontes</option><option value="support">Suporte</option><option value="finance">Financeiro</option></select>
+      </label>
+    </div>
+    <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Usuário</th><th>Empresa</th><th>Perfil</th><th>Verificação</th><th>Último acesso</th><th>Cadastro</th></tr></thead><tbody>{query.data?.items.map(user => <tr className="border-t" key={user.id}><td className="py-3"><p className="font-medium text-[#102B4E]">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td><td>{user.companyName || "Não vinculada"}</td><td><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{user.role}</span></td><td>{user.emailVerifiedAt ? <span className="text-emerald-700">Confirmado</span> : <span className="text-amber-700">Pendente</span>}</td><td>{date(user.lastSignedIn)}</td><td>{date(user.createdAt)}</td></tr>)}</tbody></table></div>
+    <AdminPagination page={query.data?.page ?? 1} totalPages={query.data?.totalPages ?? 1} total={Number(query.data?.total ?? 0)} onChange={setPage} />
+  </section>;
+}
+
+export function AdminOpportunitiesPage({ isAdmin }: { isAdmin: boolean }) {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const query = trpc.admin.opportunities.useQuery({ page, pageSize: 25, search: search || undefined }, { enabled: isAdmin });
+  if (!isAdmin) return <NoPermission />;
+  if (query.isLoading) return <Loading label="Carregando editais…" />;
+  if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
+  return <section className="rounded-xl border bg-white p-5"><div className="flex items-end gap-3"><label className="min-w-64 flex-1 text-xs font-medium text-slate-600">Buscar edital, órgão ou número<div className="mt-1 flex items-center rounded-lg border px-3"><Search size={15} className="text-slate-400" /><input className="w-full border-0 px-2 py-2 text-sm outline-none" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="Termo de busca" /></div></label></div><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Edital</th><th>Fonte</th><th>Órgão</th><th>UF</th><th>Publicação</th><th>Prazo</th></tr></thead><tbody>{query.data?.items.map(item => <tr className="border-t" key={item.id}><td className="max-w-sm py-3"><p className="truncate font-medium text-[#102B4E]">{item.title}</p><p className="text-xs text-slate-500">{item.controlNumber || item.sourceKey}</p></td><td>{item.sourceName}</td><td>{item.agencyName || "—"}</td><td>{item.state || "—"}</td><td>{date(item.publicationDate)}</td><td>{date(item.proposalDeadline)}</td></tr>)}</tbody></table></div><AdminPagination page={query.data?.page ?? 1} totalPages={query.data?.totalPages ?? 1} total={Number(query.data?.total ?? 0)} onChange={setPage} /></section>;
+}
+
+export function AuditPage({ isAdmin }: { isAdmin: boolean }) {
+  const [page, setPage] = useState(1);
+  const query = trpc.admin.audit.useQuery({ page, pageSize: 50 }, { enabled: isAdmin });
+  if (!isAdmin) return <NoPermission />;
+  if (query.isLoading) return <Loading label="Carregando auditoria…" />;
+  if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
+  return <section className="rounded-xl border bg-white p-5"><h2 className="font-semibold text-[#102B4E]">Trilha de auditoria</h2><p className="mt-1 text-sm text-slate-500">Eventos persistidos pelo sistema para rastreabilidade administrativa.</p><div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="text-xs text-slate-500"><tr><th className="py-2">Data</th><th>Ator</th><th>Ação</th><th>Entidade</th><th>Detalhes</th></tr></thead><tbody>{query.data?.items.map(item => <tr className="border-t" key={item.id}><td className="py-3">{date(item.createdAt)}</td><td>{item.actorName || item.actorEmail || "Sistema"}</td><td><span className="rounded-full bg-cyan-50 px-2 py-1 text-xs text-cyan-800">{item.action}</span></td><td>{item.entityType}{item.entityId ? ` · ${item.entityId.slice(0, 8)}` : ""}</td><td className="max-w-xs truncate text-xs text-slate-500">{JSON.stringify(item.details)}</td></tr>)}</tbody></table></div><AdminPagination page={query.data?.page ?? 1} totalPages={query.data?.totalPages ?? 1} total={Number(query.data?.total ?? 0)} onChange={setPage} /></section>;
 }
 
 export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
@@ -301,6 +377,8 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
       />
     );
   const data = query.data!;
+  const activeConnectors = data.sources.filter((source: any) => source.enabled);
+  const inactiveConnectors = data.sources.filter((source: any) => !source.enabled);
   const cards = [
     ["Usuários cadastrados", data.users],
     ["Oportunidades no catálogo", data.opportunities],
@@ -310,12 +388,20 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
   ] as const;
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-bold text-[#102B4E]">Operação OrbeEdital</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Indicadores calculados a partir dos dados efetivamente persistidos;
-          pagamentos e MRR dependem do gateway ainda não conectado.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div>
+          <BrandMark className="mb-4" />
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-700">
+            Painel administrativo
+          </p>
+          <h2 className="mt-1 text-xl font-bold text-[#102B4E]">
+            Operação OrbeEdital
+          </h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+            Indicadores calculados a partir dos dados efetivamente persistidos;
+            pagamentos e MRR dependem do gateway ainda não conectado.
+          </p>
+        </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map(([label, value]) => (
@@ -344,8 +430,11 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
             Gerenciar fontes →
           </Link>
         </div>
-        <div className="mt-4 divide-y">
-          {data.sources.map((source: any) => (
+        <div className="mt-4 space-y-5">
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-800">Ativos ({activeConnectors.length})</h4>
+            <div className="mt-2 divide-y rounded-lg border">
+          {activeConnectors.map((source: any) => (
             <div
               className="flex flex-wrap items-center justify-between gap-2 py-3"
               key={source.code}
@@ -364,6 +453,19 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
               </span>
             </div>
           ))}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Desativados ({inactiveConnectors.length})</h4>
+            <div className="mt-2 divide-y rounded-lg border">
+          {inactiveConnectors.map((source: any) => (
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-3" key={source.code}>
+              <div><p className="font-medium">{source.name}</p><p className="text-xs text-slate-500">Última execução: {dateTime(source.lastRunAt)} · Importados: {source.importedCount}</p></div>
+              <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">Desativado</span>
+            </div>
+          ))}
+            </div>
+          </div>
         </div>
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           O status do agendamento não é verificado automaticamente pelo app;

@@ -11,14 +11,18 @@ import {
   Heart,
   LayoutDashboard,
   LogOut,
+  Menu,
+  X,
   Shield,
+  ScrollText,
+  Users,
   Wallet,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import BrandMark from "@/components/BrandMark";
 import type { AnyOpportunity } from "./portal/common";
-import { AdminOverview, FinancePage, SourcesPage } from "./portal/AdminPages";
+import { AdminOverview, AdminOpportunitiesPage, AuditPage, FinancePage, SourcesPage, UsersPage } from "./portal/AdminPages";
 import { ProfilePage, SavedSearches } from "./portal/AccountPages";
 import {
   Dashboard,
@@ -34,6 +38,7 @@ export default function Portal() {
   const [state, setState] = useState("");
   const [source, setSource] = useState<"" | "pncp" | "compras.gov.br">("");
   const [page, setPage] = useState(1);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(true);
   const [verificationFeedback, setVerificationFeedback] = useState("");
   const resendVerification = trpc.auth.requestEmailVerification.useMutation();
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
@@ -86,6 +91,7 @@ export default function Portal() {
     },
   });
   const me = auth.user as (typeof auth.user & { role?: string }) | null;
+  const isAdminShell = path.startsWith("/app/admin");
   const canManageSources = ["superadmin", "admin", "source_operator"].includes(
     me?.role ?? ""
   );
@@ -106,7 +112,12 @@ export default function Portal() {
         icon: Bookmark,
       },
       ...(canViewAdmin
-        ? [{ label: "Administração", href: "/app/admin", icon: Shield }]
+        ? [
+            { label: "Administração", href: "/app/admin", icon: Shield },
+            { label: "Usuários", href: "/app/admin/users", icon: Users },
+            { label: "Editais", href: "/app/admin/opportunities", icon: FileSearch },
+            { label: "Auditoria", href: "/app/admin/audit", icon: ScrollText },
+          ]
         : []),
       ...(canManageSources
         ? [
@@ -123,6 +134,9 @@ export default function Portal() {
     ],
     [canManageSources, canViewFinance, canViewAdmin]
   );
+  const displayedSections = isAdminShell
+    ? sections.filter(item => item.href.startsWith("/app/admin"))
+    : sections;
 
   if (auth.loading)
     return (
@@ -193,7 +207,13 @@ export default function Portal() {
     sections.find(item => item.href === path)?.label ??
     (path === "/app/profile"
       ? "Perfil da empresa"
-      : path.includes("sources")
+      : path.includes("users")
+        ? "Usuários"
+        : path.includes("admin/opportunities")
+          ? "Editais"
+          : path.includes("audit")
+            ? "Auditoria"
+            : path.includes("sources")
         ? "Fontes de dados"
         : path.includes("finance")
           ? "Financeiro"
@@ -242,48 +262,43 @@ export default function Portal() {
     : [];
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa] text-slate-800 md:flex">
-      <aside className="flex flex-col border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between px-5 py-5">
-          <BrandMark />
-          <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-800">
-            Portal
-          </span>
+    <div className={`${isAdminShell ? "bg-[#eef4f8]" : "bg-[#f5f7fa]"} min-h-screen text-slate-800 md:flex`}>
+      <aside className={isAdminShell
+        ? `fixed inset-y-0 left-0 z-30 flex w-72 flex-col bg-[#071b35] text-white shadow-2xl transition-transform duration-200 ${adminMenuOpen ? "translate-x-0" : "-translate-x-full"}`
+        : "flex flex-col border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r"}>
+        <div className={`flex items-center justify-between px-5 py-5 ${isAdminShell ? "border-b border-white/10" : ""}`}>
+          <BrandMark showWordmark={!isAdminShell} />
+          {isAdminShell ? <span className="rounded-full bg-[#12375d] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#6ce5ed]">Admin</span> : <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-800">Portal</span>}
         </div>
         <nav
-          aria-label="Navegação do portal"
-          className="flex flex-col gap-1 px-3 pb-4 md:flex-1 md:overflow-y-auto md:space-y-1"
+          aria-label={isAdminShell ? "Navegação administrativa" : "Navegação do portal"}
+          className={`flex flex-col gap-1 px-3 pb-4 ${isAdminShell ? "flex-1 overflow-y-auto pt-4" : "md:flex-1 md:overflow-y-auto md:space-y-1"}`}
         >
-          {sections.map(({ label, href, icon: Icon }) => (
+          {displayedSections.map(({ label, href, icon: Icon }) => (
             <Link
               key={href}
               href={href}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-[#eaf5fa] text-[#075e7f]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+              onClick={() => isAdminShell && setAdminMenuOpen(false)}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? (isAdminShell ? "bg-[#1b567d] text-white" : "bg-[#eaf5fa] text-[#075e7f]") : (isAdminShell ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900")}`}
             >
               <Icon size={18} />
               {label}
             </Link>
           ))}
         </nav>
-        <div className="mt-auto border-t border-slate-100 p-3 sm:p-4">
-          <Link
-            href="/app/profile"
-            className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${path === "/app/profile" ? "bg-[#eaf5fa] text-[#075e7f]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
-          >
-            <Building2 size={18} />
-            Perfil da empresa
-          </Link>
+        <div className={`mt-auto border-t p-3 sm:p-4 ${isAdminShell ? "border-white/10" : "border-slate-100"}`}>
+          {!isAdminShell && <Link href="/app/profile" className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${path === "/app/profile" ? "bg-[#eaf5fa] text-[#075e7f]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}><Building2 size={18} />Perfil da empresa</Link>}
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#102B4E] font-semibold text-white">
+            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full font-semibold text-white ${isAdminShell ? "bg-[#1595ae]" : "bg-[#102B4E]"}`}>
               {me?.name?.slice(0, 1).toUpperCase() ?? "C"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{me?.name}</p>
-              <p className="truncate text-xs text-slate-500">{me?.email}</p>
+              <p className={`truncate text-sm font-semibold ${isAdminShell ? "text-white" : ""}`}>{me?.name}</p>
+              <p className={`truncate text-xs ${isAdminShell ? "text-slate-300" : "text-slate-500"}`}>{me?.email}</p>
             </div>
           </div>
           <button
-            className="mt-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            className={`mt-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm ${isAdminShell ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
             onClick={() => logout.mutate()}
             type="button"
           >
@@ -292,22 +307,31 @@ export default function Portal() {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
+      {isAdminShell && adminMenuOpen && <button aria-label="Fechar menu administrativo" className="fixed inset-0 z-20 bg-slate-950/40 md:hidden" onClick={() => setAdminMenuOpen(false)} type="button" />}
+      <main className={`min-w-0 flex-1 ${isAdminShell ? "md:pl-0" : ""}`}>
+        <header className={`sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4 backdrop-blur sm:px-8 ${isAdminShell ? "border-[#c8d8e6] bg-[#f7fbfd]/95" : "border-slate-200 bg-white/95"}`}>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-cyan-800">
-              OrbeEdital / Portal
+            {isAdminShell && <button aria-label={adminMenuOpen ? "Fechar menu" : "Abrir menu"} className="mr-3 inline-flex rounded-lg border border-[#bad0df] p-2 text-[#0b2442] md:mr-4" onClick={() => setAdminMenuOpen(value => !value)} type="button">{adminMenuOpen ? <X size={18} /> : <Menu size={18} />}</button>}
+            <p className="inline text-xs font-semibold uppercase tracking-wider text-cyan-800">
+              {isAdminShell ? "Controle central da plataforma" : "OrbeEdital / Portal"}
             </p>
             <h1 className="mt-1 text-xl font-bold text-[#102B4E]">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 sm:inline">
-              Plano e pagamentos: configuração pendente
-            </span>
+            {isAdminShell ? <span className="hidden rounded-full border border-[#b9dce4] bg-[#e7f8fa] px-3 py-1.5 text-xs font-medium text-[#0b6377] sm:inline">Sessão administrativa verificada</span> : <span className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 sm:inline">Plano e pagamentos: configuração pendente</span>}
           </div>
         </header>
         <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
           <Switch>
+            <Route path="/app/admin/users">
+              <UsersPage isAdmin={canViewAdmin} />
+            </Route>
+            <Route path="/app/admin/opportunities">
+              <AdminOpportunitiesPage isAdmin={canViewAdmin} />
+            </Route>
+            <Route path="/app/admin/audit">
+              <AuditPage isAdmin={canViewAdmin} />
+            </Route>
             <Route path="/app/admin/sources">
               <SourcesPage isAdmin={canManageSources} />
             </Route>

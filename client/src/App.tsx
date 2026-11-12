@@ -34,10 +34,11 @@ function LegalPage({ kind }: { kind: "terms" | "privacy" }) {
 }
 
 function AdminAlias() {
-  const [, navigate] = useLocation();
+  const [path, navigate] = useLocation();
   useEffect(() => {
-    navigate("/app/admin");
-  }, [navigate]);
+    const suffix = path.replace(/^\/admin/, "");
+    navigate(`/app/admin${suffix}`);
+  }, [navigate, path]);
   return <div className="grid min-h-screen place-items-center text-slate-500">Abrindo administração…</div>;
 }
 
