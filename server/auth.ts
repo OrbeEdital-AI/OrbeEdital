@@ -135,12 +135,22 @@ export async function createCompanyAccount(
 }
 
 export async function findUserForLogin(email: string) {
-  const [user] = await getDb()
-    .select()
-    .from(users)
-    .where(eq(users.email, email.trim().toLowerCase()))
-    .limit(1);
-  return user;
+  try {
+    const [user] = await getDb()
+      .select()
+      .from(users)
+      .where(eq(users.email, email.trim().toLowerCase()))
+      .limit(1);
+    return user;
+  } catch (error) {
+    const details = error as { code?: unknown; name?: unknown; message?: unknown };
+    console.error("[auth] PostgreSQL user lookup failed", {
+      code: typeof details.code === "string" ? details.code : "UNCLASSIFIED",
+      name: typeof details.name === "string" ? details.name : "Error",
+      message: typeof details.message === "string" ? details.message : "Unknown database error",
+    });
+    throw error;
+  }
 }
 
 export async function touchLastSignedIn(userId: string): Promise<void> {
