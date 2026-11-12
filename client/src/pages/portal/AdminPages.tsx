@@ -45,17 +45,46 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
         onRetry={() => query.refetch()}
       />
     );
-  const scheduledTaskCount = query.data?.sources.filter(source => Boolean(source.configuration?.scheduledTaskUid)).length ?? 0;
+  const allSources = query.data?.sources ?? [];
+  const activeSources = allSources.filter(source => source.enabled);
+  const inactiveSources = allSources.filter(source => !source.enabled);
+  const sourcesWithErrors = allSources.filter(source => source.status === "error" || Number(source.errorCount) > 0);
+  const scheduledTaskCount = allSources.filter(source => Boolean(source.configuration?.scheduledTaskUid)).length;
+  const orderedSources = [...allSources].sort((a, b) => Number(b.enabled) - Number(a.enabled));
   return (
     <>
       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
         <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no OrbeEdital, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
       </div>
-      <div className="grid gap-4">
-        {query.data?.sources.map(source => (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Fontes cadastradas", value: allSources.length, tone: "slate" },
+          { label: "Ativas", value: activeSources.length, tone: "emerald" },
+          { label: "Desativadas", value: inactiveSources.length, tone: "slate" },
+          { label: "Com histórico de erros", value: sourcesWithErrors.length, tone: "rose" },
+        ].map(item => (
+          <article key={item.label} className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
+            <p className="mt-2 text-2xl font-bold text-[#102B4E]">{item.value}</p>
+          </article>
+        ))}
+      </div>
+      <div className="space-y-7">
+        {orderedSources.map((source, index) => (
+          <div key={source.code} className="space-y-4">
+            {(index === 0 || source.enabled !== orderedSources[index - 1]?.enabled) && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-[#102B4E]">{source.enabled ? "Fontes ativas" : "Fontes desativadas"}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{source.enabled ? "Integrações habilitadas para operação e sincronização." : "Integrações cadastradas, mas pausadas. Não executam sincronização manual."}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${source.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
+                  {source.enabled ? activeSources.length : inactiveSources.length} {source.enabled ? "ativas" : "desativadas"}
+                </span>
+              </div>
+            )}
           <article
-            className="rounded-xl border border-slate-200 bg-white p-5"
-            key={source.code}
+            className={`rounded-xl border bg-white p-5 ${source.enabled ? "border-emerald-200" : "border-slate-200 opacity-90"}`}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -84,9 +113,10 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   return <p className="mt-1 text-xs text-slate-600">Último callback externo confirmado: {callback ? date(callback.createdAt) + " · " + status : status}</p>;
                 })()}
               </div>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">
-                {source.status}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${source.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>{source.enabled ? "Ativa" : "Desativada"}</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs ${source.status === "error" ? "bg-rose-50 text-rose-800" : "bg-blue-50 text-blue-800"}`}>Operação: {source.status}</span>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
@@ -197,7 +227,9 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               </p>
             )}
           </article>
+          </div>
         ))}
+        {!orderedSources.length && <div className="rounded-xl border border-dashed bg-white p-10 text-center text-sm text-slate-500">Nenhuma fonte cadastrada.</div>}
       </div>
       <section className="rounded-xl border bg-white p-5">
         <h3 className="font-semibold">Execuções recentes</h3>
