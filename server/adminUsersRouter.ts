@@ -1,6 +1,6 @@
 import { count, desc, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { users } from "../drizzle/schema";
+import { auditLogs, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
 
@@ -43,6 +43,51 @@ export const adminUsersRouter = router({
 
       return {
         items: rows,
+        total: totalRows[0]?.total ?? 0,
+        page: input.page,
+        pageSize: input.pageSize,
+        pageCount: Math.ceil((totalRows[0]?.total ?? 0) / input.pageSize),
+      };
+    }),
+
+  audit: superadminProcedure
+    .input(z.object({
+      query: z.string().trim().max(120).optional(),
+      page: z.number().int().min(1).max(100_000).default(1),
+      pageSize: z.number().int().min(1).max(50).default(25),
+    }))
+    .query(async ({ input }) => {
+      const db = getDb();
+      const search = input.query?.trim();
+      const where = search
+        ? or(
+            ilike(auditLogs.action, `%${search}%`),
+            ilike(auditLogs.entityType, `%${search}%`),
+            ilike(auditLogs.entityId, `%${search}%`),
+          )
+        : undefined;
+      const [items, totalRows] = await Promise.all([
+        db.select({
+          id: auditLogs.id,
+          actorUserId: auditLogs.actorUserId,
+          actorName: users.name,
+          actorEmail: users.email,
+          action: auditLogs.action,
+          entityType: auditLogs.entityType,
+          entityId: auditLogs.entityId,
+          details: auditLogs.details,
+          createdAt: auditLogs.createdAt,
+        })
+          .from(auditLogs)
+          .leftJoin(users, sql`${users.id} = ${auditLogs.actorUserId}`)
+          .where(where)
+          .orderBy(desc(auditLogs.createdAt))
+          .limit(input.pageSize)
+          .offset((input.page - 1) * input.pageSize),
+        db.select({ total: count() }).from(auditLogs).where(where),
+      ]);
+      return {
+        items,
         total: totalRows[0]?.total ?? 0,
         page: input.page,
         pageSize: input.pageSize,
