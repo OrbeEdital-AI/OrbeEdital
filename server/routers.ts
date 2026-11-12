@@ -24,6 +24,7 @@ import {
   verifyEmailAction,
 } from "./services/authActions";
 import { getDb } from "./db";
+import { adminUsersRouter } from "./adminUsersRouter";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
@@ -222,6 +223,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100), criteria: z.record(z.string(), z.unknown()) })).mutation(({ input, ctx }) => saveSearch(ctx.user.id, input.name, input.criteria)),
     delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => deleteSavedSearch(ctx.user.id, input.id)),
   }),
+  adminUsers: adminUsersRouter,
   admin: router({
     overview: sourceOperatorProcedure.query(async () => {
       await ensureBuiltInConnectors();
