@@ -1,6 +1,6 @@
 import { count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { auditLogs, users } from "../drizzle/schema";
+import { auditLogs, authSessions, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -49,6 +49,56 @@ export const adminUsersRouter = router({
         pageSize: input.pageSize,
         pageCount: Math.ceil((totalRows[0]?.total ?? 0) / input.pageSize),
       };
+    }),
+
+  updateRole: superadminProcedure
+    .input(z.object({
+      userId: z.string().uuid(),
+      role: z.enum(["user", "admin", "source_operator", "support", "finance"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const [target] = await tx.select({ id: users.id, role: users.role, email: users.email })
+          .from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+        if (target.role === "superadmin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "A alteração de superadministradores exige procedimento de segurança separado." });
+        }
+        if (target.role === input.role) return { updated: false, role: target.role };
+        await tx.update(users).set({ role: input.role, updatedAt: new Date() }).where(eq(users.id, input.userId));
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "user.role.updated",
+          entityType: "user",
+          entityId: input.userId,
+          details: { previousRole: target.role, newRole: input.role, targetEmail: target.email },
+        });
+        return { updated: true, role: input.role };
+      });
+    }),
+
+  revokeSessions: superadminProcedure
+    .input(z.object({ userId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const [target] = await tx.select({ id: users.id, role: users.role, email: users.email })
+          .from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+        if (target.role === "superadmin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "O encerramento de sessões de superadministrador exige procedimento separado." });
+        }
+        const revoked = await tx.delete(authSessions).where(eq(authSessions.userId, input.userId)).returning({ tokenHash: authSessions.tokenHash });
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "user.sessions.revoked",
+          entityType: "user",
+          entityId: input.userId,
+          details: { targetEmail: target.email, revokedSessionCount: revoked.length },
+        });
+        return { revokedCount: revoked.length };
+      });
     }),
 
   audit: superadminProcedure
