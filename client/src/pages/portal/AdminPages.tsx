@@ -334,86 +334,131 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
   const data = query.data!;
   const activeSources = data.sources.filter((source: any) => source.enabled);
   const inactiveSources = data.sources.filter((source: any) => !source.enabled);
-  const sourcesWithErrors = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0).length;
+  const failedSources = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0);
   const metrics = [
-    { label: "Usuários cadastrados", value: data.users, hint: "Contas na plataforma" },
-    { label: "Oportunidades", value: data.opportunities, hint: "No catálogo" },
-    { label: "Fontes ativas", value: activeSources.length, hint: `${data.sourceCount} cadastradas`, tone: "emerald" },
-    { label: "Assinaturas ativas", value: data.activeSubscribers, hint: "Registros persistidos" },
+    { label: "Usuários", value: data.users, detail: "contas cadastradas" },
+    { label: "Oportunidades", value: data.opportunities, detail: "no catálogo" },
+    { label: "Fontes habilitadas", value: activeSources.length, detail: `de ${data.sourceCount} cadastradas` },
+    { label: "Assinaturas", value: data.activeSubscribers, detail: "registros ativos" },
   ] as const;
 
   return (
-    <div className="space-y-6">
-      <section>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-[#102B4E]">Resumo da plataforma</h2>
-            <p className="mt-1 text-sm text-slate-500">Visão rápida dos principais números operacionais.</p>
-          </div>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">Dados persistidos no OrbeEdital</span>
+    <div className="space-y-5">
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-slate-400">Painel de controle</p>
+          <h2 className="mt-1 text-xl font-bold tracking-tight text-[#102B4E]">Resumo executivo</h2>
+          <p className="mt-1 text-sm text-slate-500">Indicadores essenciais e situação operacional em um só lugar.</p>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map(metric => (
-            <article key={metric.label} className="rounded-xl border border-slate-200 bg-white p-4">
+        <button onClick={() => query.refetch()} disabled={query.isFetching} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50">
+          <RefreshCw size={13} className={query.isFetching ? "animate-spin" : ""} /> Atualizar dados
+        </button>
+      </section>
+
+      <section aria-label="Indicadores principais" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 xl:grid-cols-4 xl:divide-y-0">
+          {metrics.map((metric, index) => (
+            <article key={metric.label} className={`px-4 py-4 sm:px-5 ${index > 1 ? "xl:border-l xl:border-slate-100" : ""}`}>
               <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-              <p className="mt-2 text-2xl font-bold tracking-tight text-[#102B4E]">{Number(metric.value).toLocaleString("pt-BR")}</p>
-              <p className="mt-1 text-xs text-slate-400">{metric.hint}</p>
+              <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-[#102B4E]">{Number(metric.value).toLocaleString("pt-BR")}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{metric.detail}</p>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
-            <h3 className="font-bold text-[#102B4E]">Saúde das integrações</h3>
-            <p className="mt-1 text-sm text-slate-500">Fontes habilitadas e pausadas, sem misturar disponibilidade com estado de execução.</p>
+            <h3 className="text-sm font-bold text-[#102B4E]">Integrações e fontes de dados</h3>
+            <p className="mt-1 text-xs text-slate-500">Separação entre habilitação da fonte e saúde da última operação registrada.</p>
           </div>
-          <Link className="text-sm font-semibold text-cyan-800 hover:underline" href="/app/admin/sources">Gerenciar fontes →</Link>
+          <Link className="text-xs font-semibold text-cyan-800 hover:underline" href="/app/admin/sources">Abrir gestão de fontes →</Link>
         </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500"/><h4 className="text-sm font-semibold text-emerald-900">Ativas</h4></div>
-              <span className="text-xl font-bold text-emerald-900">{activeSources.length}</span>
+        <div className="grid md:grid-cols-2">
+          <div className="p-5 md:border-r md:border-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <h4 className="text-sm font-semibold text-slate-800">Habilitadas</h4>
+              </div>
+              <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">{activeSources.length}</span>
             </div>
-            <p className="mt-1 text-xs text-emerald-800/80">Habilitadas para operação e sincronização.</p>
-            <div className="mt-3 space-y-2">
+            <p className="mt-1 text-xs text-slate-400">Podem participar da rotina de sincronização.</p>
+            <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
               {activeSources.length ? activeSources.map((source: any) => (
-                <div key={source.code} className="flex items-center justify-between gap-2 rounded-md bg-white/80 px-3 py-2">
+                <div key={source.code} className="flex items-center justify-between gap-3 py-2.5">
                   <span className="text-sm font-medium text-slate-700">{source.name}</span>
-                  <span className={`text-xs font-semibold ${source.status === "error" ? "text-rose-700" : "text-emerald-700"}`}>{source.status === "error" ? "Com falha" : "Habilitada"}</span>
+                  <span className={`shrink-0 text-[11px] font-semibold ${source.status === "error" ? "text-rose-700" : "text-emerald-700"}`}>{source.status === "error" ? "Com falha" : "Habilitada"}</span>
                 </div>
-              )) : <p className="rounded-md bg-white/80 px-3 py-3 text-sm text-slate-500">Nenhuma fonte ativa.</p>}
+              )) : <p className="py-3 text-xs text-slate-400">Nenhuma fonte habilitada.</p>}
             </div>
           </div>
-
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-slate-400"/><h4 className="text-sm font-semibold text-slate-800">Desativadas</h4></div>
-              <span className="text-xl font-bold text-slate-800">{inactiveSources.length}</span>
+          <div className="bg-slate-50/60 p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-slate-400" />
+                <h4 className="text-sm font-semibold text-slate-800">Desabilitadas</h4>
+              </div>
+              <span className="rounded-md bg-slate-200/70 px-2 py-1 text-xs font-bold text-slate-700">{inactiveSources.length}</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Cadastradas, mas fora da rotina de sincronização.</p>
-            <div className="mt-3 space-y-2">
+            <p className="mt-1 text-xs text-slate-400">Pausadas e fora da rotina de sincronização.</p>
+            <div className="mt-3 divide-y divide-slate-200 border-y border-slate-200">
               {inactiveSources.length ? inactiveSources.map((source: any) => (
-                <div key={source.code} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <span className="text-sm font-medium text-slate-700">{source.name}</span>
-                  <span className="text-xs font-medium text-slate-500">Pausada</span>
+                <div key={source.code} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="text-sm font-medium text-slate-600">{source.name}</span>
+                  <span className="shrink-0 text-[11px] font-medium text-slate-400">Pausada</span>
                 </div>
-              )) : <p className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">Nenhuma fonte desativada.</p>}
+              )) : <p className="py-3 text-xs text-slate-400">Nenhuma fonte desabilitada.</p>}
             </div>
           </div>
         </div>
-
-        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
-          <span>{data.sourceCount} fontes cadastradas</span>
-          <span className={sourcesWithErrors ? "font-semibold text-rose-700" : "text-emerald-700"}>{sourcesWithErrors} com histórico de erro</span>
-        </div>
-        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
-          O painel registra os callbacks recebidos pelo aplicativo, mas não consulta diretamente o estado interno do agendador. Pagamentos e MRR dependem da conexão de um gateway.
-        </p>
       </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
+        <article className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#102B4E]">Pontos de atenção</h3>
+              <p className="mt-1 text-xs text-slate-500">Itens que merecem acompanhamento operacional.</p>
+            </div>
+            <span className={`rounded-md px-2 py-1 text-xs font-bold ${failedSources.length ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{failedSources.length} alerta(s)</span>
+          </div>
+          {failedSources.length ? (
+            <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
+              {failedSources.map((source: any) => (
+                <div key={source.code} className="flex items-start justify-between gap-3 py-3">
+                  <div><p className="text-sm font-semibold text-slate-700">{source.name}</p><p className="mt-0.5 text-xs text-slate-500">Há falha ou erro registrado no histórico desta fonte.</p></div>
+                  <span className="shrink-0 text-xs font-semibold text-rose-700">Verificar</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-3 rounded-lg bg-emerald-50/70 px-4 py-3">
+              <p className="text-sm font-semibold text-emerald-800">Nenhuma falha registrada nas fontes.</p>
+              <p className="mt-1 text-xs text-emerald-700/80">Continue acompanhando as execuções e os callbacks recebidos.</p>
+            </div>
+          )}
+        </article>
+
+        <article className="rounded-xl border border-slate-200 bg-white p-5">
+          <h3 className="text-sm font-bold text-[#102B4E]">Resumo de disponibilidade</h3>
+          <p className="mt-1 text-xs text-slate-500">Distribuição atual das integrações cadastradas.</p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="mb-1.5 flex justify-between text-xs"><span className="font-medium text-slate-600">Habilitadas</span><span className="font-semibold text-slate-700">{activeSources.length}</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${data.sourceCount ? (activeSources.length / data.sourceCount) * 100 : 0}%` }} /></div>
+            </div>
+            <div>
+              <div className="mb-1.5 flex justify-between text-xs"><span className="font-medium text-slate-600">Desabilitadas</span><span className="font-semibold text-slate-700">{inactiveSources.length}</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-400" style={{ width: `${data.sourceCount ? (inactiveSources.length / data.sourceCount) * 100 : 0}%` }} /></div>
+            </div>
+          </div>
+          <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] leading-5 text-slate-500">{data.sourceCount} fonte(s) cadastrada(s). A disponibilidade do agendador externo não é consultada diretamente por este painel.</p>
+        </article>
+      </section>
+
+      <p className="px-1 text-[11px] leading-5 text-slate-400">Observação: os indicadores refletem os dados persistidos no OrbeEdital. Indicadores financeiros dependem da integração com um gateway de pagamento.</p>
     </div>
   );
 }
