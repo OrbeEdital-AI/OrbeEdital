@@ -301,12 +301,15 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
       />
     );
   const data = query.data!;
+  const enabledSources = data.sources.filter((source: any) => source.enabled).length;
+  const sourcesWithErrors = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0).length;
   const cards = [
     ["Usuários cadastrados", data.users],
     ["Oportunidades no catálogo", data.opportunities],
-    ["Fontes configuradas", data.sourceCount],
+    ["Fontes cadastradas", data.sourceCount],
+    ["Fontes habilitadas", enabledSources],
+    ["Fontes com histórico de erro", sourcesWithErrors],
     ["Assinaturas ativas", data.activeSubscribers],
-    ["Assinaturas canceladas", data.canceledSubscriptions],
   ] as const;
   return (
     <div className="space-y-5">
@@ -317,7 +320,7 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
           pagamentos e MRR dependem do gateway ainda não conectado.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {cards.map(([label, value]) => (
           <article className="rounded-xl border bg-white p-5" key={label}>
             <p className="text-xs text-slate-500">{label}</p>
