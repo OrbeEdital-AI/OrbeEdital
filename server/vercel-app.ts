@@ -18,30 +18,39 @@ import {
 const app = express();
 
 app.set("trust proxy", 1);
-app.use((_req, res, next) => {
+app.use((
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) => {
   res.set("Referrer-Policy", "no-referrer");
   next();
 });
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+app.get("/api/health", (_req: express.Request, res: express.Response) =>
+  res.json({ status: "ok" })
+);
 
-app.post("/api/scheduled/sync", async (req, res) => {
-  try {
-    const result = await handleScheduledSync(req);
-    res.set("Cache-Control", "no-store").status(200).json(result);
-  } catch (error) {
-    if (error instanceof ScheduledAuthError) {
-      res.status(401).json({ error: "Scheduled task authentication failed." });
-      return;
+app.post(
+  "/api/scheduled/sync",
+  async (req: express.Request, res: express.Response) => {
+    try {
+      const result = await handleScheduledSync(req);
+      res.set("Cache-Control", "no-store").status(200).json(result);
+    } catch (error) {
+      if (error instanceof ScheduledAuthError) {
+        res.status(401).json({ error: "Scheduled task authentication failed." });
+        return;
+      }
+      console.error("Scheduled synchronization failed.");
+      res.status(500).json({ error: "Scheduled synchronization failed." });
     }
-    console.error("Scheduled synchronization failed.");
-    res.status(500).json({ error: "Scheduled synchronization failed." });
   }
-});
+);
 
-app.get("/api/auth/csrf", (req, res) => {
+app.get("/api/auth/csrf", (req: express.Request, res: express.Response) => {
   const token = newCsrfToken();
   const options = getSessionCookieOptions(req);
   res.cookie(CSRF_COOKIE_NAME, token, {
@@ -52,28 +61,34 @@ app.get("/api/auth/csrf", (req, res) => {
   res.set("Cache-Control", "no-store").json({ token });
 });
 
-app.get("/api/platform/config.js", (_req, res) => {
-  res
-    .set("Cache-Control", "no-store")
-    .type("application/javascript")
-    .send(publicPlatformScript());
-});
-
-app.use("/api/trpc", (req, res, next) => {
-  if (req.method !== "POST") return next();
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
-  const csrfCookie = cookies[CSRF_COOKIE_NAME];
-  const csrfHeader = req.get("x-csrf-token");
-  if (!constantTimeStringEqual(csrfCookie, csrfHeader)) {
-    res.status(403).json({
-      error: {
-        message: "Validação de segurança expirada. Recarregue a página.",
-      },
-    });
-    return;
+app.get(
+  "/api/platform/config.js",
+  (_req: express.Request, res: express.Response) => {
+    res
+      .set("Cache-Control", "no-store")
+      .type("application/javascript")
+      .send(publicPlatformScript());
   }
-  next();
-});
+);
+
+app.use(
+  "/api/trpc",
+  (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.method !== "POST") return next();
+    const cookies = parseCookieHeader(req.headers.cookie ?? "");
+    const csrfCookie = cookies[CSRF_COOKIE_NAME];
+    const csrfHeader = req.get("x-csrf-token");
+    if (!constantTimeStringEqual(csrfCookie, csrfHeader)) {
+      res.status(403).json({
+        error: {
+          message: "Validação de segurança expirada. Recarregue a página.",
+        },
+      });
+      return;
+    }
+    next();
+  }
+);
 
 app.use(
   "/api/trpc",
