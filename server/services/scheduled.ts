@@ -19,7 +19,8 @@ function requiredEnvironment(name: string): string {
 }
 
 async function resolveScheduledTask(req: Request): Promise<string> {
-  const token = parseCookieHeader(req.headers.cookie ?? "")[COOKIE_NAME];
+  const request = req as unknown as { headers: { cookie?: string } };
+  const token = parseCookieHeader(request.headers.cookie ?? "")[COOKIE_NAME];
   if (!token)
     throw new ScheduledAuthError("Scheduled task credential is missing.");
   const projectId = requiredEnvironment("MANUS_PROJECT_ID");
