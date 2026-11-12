@@ -143,12 +143,6 @@ export function Dashboard({
               </div>
             ))}
           </div>
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            O status do agendamento de produção não é confirmado nesta tela.
-            Fontes disponíveis podem ser sincronizadas manualmente por
-            operadores autorizados; confira uma execução agendada bem-sucedida
-            antes de depender de atualização recorrente.
-          </p>
         </section>
       </div>
     </>
