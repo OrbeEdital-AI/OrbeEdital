@@ -241,11 +241,20 @@ export const appRouter = router({
       list: sourceOperatorProcedure.query(async () => {
         await ensureBuiltInConnectors();
         const db = getDb();
-        const [sources, runs] = await Promise.all([
+        const [sources, runs, scheduleEvents] = await Promise.all([
           db.select().from(connectors).orderBy(connectors.name),
           db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(50),
+          db.select({
+            action: auditLogs.action,
+            entityId: auditLogs.entityId,
+            details: auditLogs.details,
+            createdAt: auditLogs.createdAt,
+          }).from(auditLogs)
+            .where(inArray(auditLogs.action, ["source.schedule.completed", "source.schedule.failed"]))
+            .orderBy(desc(auditLogs.createdAt))
+            .limit(50),
         ]);
-        return { sources, runs };
+        return { sources, runs, scheduleEvents };
       }),
       run: sourceOperatorProcedure.input(z.object({
         sourceCode: z.enum(["pncp", "compras.gov.br"]),
