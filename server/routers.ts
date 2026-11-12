@@ -69,7 +69,7 @@ const opportunitySearchSchema = z.object({
   deadlineTo: z.string().datetime().optional(),
   onlyOpen: z.boolean().optional(),
   page: z.number().int().min(1).max(100_000).optional(),
-  pageSize: z.number().int().min(1).max(50).optional(),
+  pageSize: z.number().int().min(25).max(25).optional(),
 }).refine(value => value.minValue === undefined || value.maxValue === undefined || value.minValue <= value.maxValue, { message: "O valor mínimo não pode superar o máximo." });
 const profileUpdateSchema = z.object({
   legalName: z.string().trim().min(2).max(240),

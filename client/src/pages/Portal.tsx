@@ -30,9 +30,10 @@ import {
 export default function Portal() {
   const auth = useAuth();
   const [path, navigate] = useLocation();
-  const [query, setQuery] = useState("");
+  const [query, setQueryState] = useState("");
   const [state, setState] = useState("");
   const [source, setSource] = useState<"" | "pncp" | "compras.gov.br">("");
+  const [page, setPage] = useState(1);
   const [verificationFeedback, setVerificationFeedback] = useState("");
   const resendVerification = trpc.auth.requestEmailVerification.useMutation();
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
@@ -41,18 +42,22 @@ export default function Portal() {
       const criteria =
         (event as CustomEvent<{ criteria: Record<string, unknown> }>).detail
           ?.criteria ?? {};
-      setQuery(typeof criteria.query === "string" ? criteria.query : "");
+      setQueryState(typeof criteria.query === "string" ? criteria.query : "");
       setState(typeof criteria.state === "string" ? criteria.state : "");
       setSource(
         criteria.source === "pncp" || criteria.source === "compras.gov.br"
           ? criteria.source
           : ""
       );
+      setPage(1);
     };
     window.addEventListener("orbeedital:restore-search", restore);
     return () =>
       window.removeEventListener("orbeedital:restore-search", restore);
   }, []);
+  const setQuery = (value: string) => { setQueryState(value); setPage(1); };
+  const setSearchState = (value: string) => { setState(value); setPage(1); };
+  const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
     retry: false,
@@ -63,8 +68,8 @@ export default function Portal() {
       states: state ? [state] : undefined,
       source: source || undefined,
       onlyOpen: true,
-      page: 1,
-      pageSize: 20,
+      page,
+      pageSize: 25,
     },
     {
       enabled:
@@ -216,10 +221,22 @@ export default function Portal() {
           color: "text-amber-700 bg-amber-50",
         },
         {
+          label: "Encerram hoje",
+          value: summary.data.closingToday,
+          icon: CalendarDays,
+          color: "text-rose-700 bg-rose-50",
+        },
+        {
           label: "Novas em 24 horas",
           value: summary.data.new24h,
           icon: Activity,
           color: "text-cyan-700 bg-cyan-50",
+        },
+        {
+          label: "Sem prazo informado",
+          value: summary.data.withoutDeadline,
+          icon: Activity,
+          color: "text-slate-700 bg-slate-100",
         },
       ]
     : [];
@@ -323,16 +340,17 @@ export default function Portal() {
                   query={query}
                   setQuery={setQuery}
                   state={state}
-                  setState={setState}
+                  setState={setSearchState}
                   source={source}
-                  setSource={setSource}
+                  setSource={setSearchSource}
                 />
                 <OpportunityList
                   items={(searchQuery.data?.items ?? []) as AnyOpportunity[]}
                   loading={searchQuery.isLoading}
                   error={searchQuery.error?.message}
                   empty="Nenhuma oportunidade encontrada com estes filtros."
-                  onRetry={() => searchQuery.refetch()}
+                onRetry={() => searchQuery.refetch()}
+                pagination={searchQuery.data ? { page: searchQuery.data.page, totalPages: searchQuery.data.totalPages, total: searchQuery.data.total, onPageChange: setPage } : undefined}
                 />
               </>
             </Route>

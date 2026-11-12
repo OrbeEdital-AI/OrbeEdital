@@ -71,3 +71,25 @@ Não há informação suficiente para estimar uma mensalidade fixa. O usuário e
 [3]: https://www.gov.br/compras/pt-br/cidadao/portal-de-dados-abertos "Portal oficial de Dados Abertos em Compras Públicas"
 [4]: https://supabase.com/docs/guides/database/connecting-to-postgres "Conectar ao PostgreSQL do Supabase"
 [5]: https://supabase.com/docs/guides/platform/ssl-enforcement "SSL e verificação de certificados no Supabase"
+
+# Addendum — auditoria dashboard e oportunidades
+
+Esta etapa é executada na branch `feat/dashboard-opportunities-improvements`, sem merge, sem push para `main` e sem publicação em produção. Preserva as decisões e evidências registradas acima.
+
+## Achados iniciais
+
+- `Portal.tsx` força `page: 1` e `pageSize: 20`; a resposta do backend não informa `totalPages`.
+- `searchOpportunities` já pagina no PostgreSQL, mas limita a 50, ordena apenas por prazo/publicação e não inclui `id` como desempate.
+- A busca atual cobre palavra-chave, estado e fonte na tela; o backend já suporta filtros adicionais que ainda não estão expostos.
+- A saudação está fixa em “Bom dia”.
+- O resumo possui quatro indicadores e usa datas do runtime, sem helper explícito de `America/Sao_Paulo`.
+- A apresentação de valores e fontes precisa ser revisada para distinguir ausência de valor e execução real de sincronização.
+
+## Critérios de implementação desta etapa
+
+- O tamanho público da página será exatamente 25; `totalPages` será derivado de `total` e `pageSize`.
+- A ordenação será determinística por prazo, publicação e `id`.
+- O cliente manterá os filtros na query tRPC e resetará a página quando filtros forem alterados.
+- Indicadores e datas serão derivados de dados persistidos, com timezone explícito e testes unitários para manhã/tarde/noite e limites de prazo.
+- Valores nulos/ausentes serão apresentados como “Valor não informado”, preservando zero real quando existir.
+- Status de fonte será derivado da última execução persistida, sem declarar agendamento como sucesso sem evidência.

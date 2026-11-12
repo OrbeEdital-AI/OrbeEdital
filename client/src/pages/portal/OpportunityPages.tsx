@@ -15,11 +15,15 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
-import { date, money, Loading, ErrorState, statusLabel } from "./common";
+import { brazilGreeting, date, money, Loading, ErrorState, statusLabel } from "./common";
 import type { AnyOpportunity } from "./common";
 export function Dashboard({
   summary,
@@ -36,6 +40,11 @@ export function Dashboard({
   recent: AnyOpportunity[];
   onRetry: () => void;
 }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   if (loading) return <Loading label="Carregando indicadores do PostgreSQL…" />;
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
   return (
@@ -43,7 +52,7 @@ export function Dashboard({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-[#102B4E]">
-            Bom dia. Vamos encontrar oportunidades?
+            {brazilGreeting(now)}. Vamos encontrar oportunidades?
           </h2>
           <p className="mt-1 text-sm text-slate-600">
             Indicadores calculados a partir dos registros atualmente coletados.
@@ -122,11 +131,14 @@ export function Dashboard({
                       ? `Última coleta: ${date(s.lastRunAt)}`
                       : "Ainda não sincronizada"}
                   </p>
+                  <p className="text-xs text-slate-500">
+                    {Number(s.importedCount ?? 0).toLocaleString("pt-BR")} importadas{s.errorCount ? ` · ${s.errorCount} erro(s)` : ""}
+                  </p>
                 </div>
                 <span
                   className={`rounded-full px-2 py-1 text-xs ${s.status === "active" ? "bg-emerald-50 text-emerald-800" : "bg-slate-200 text-slate-600"}`}
                 >
-                  {s.status === "active" ? "Ativa" : "Pendente"}
+                  {({ active: "Ativa", error: "Com erro", disabled: "Desativada", pending: "Pendente" } as Record<string, string>)[s.status] ?? "Pendente"}
                 </span>
               </div>
             ))}
@@ -289,6 +301,7 @@ export function OpportunityList({
   empty,
   onRetry,
   compact = false,
+  pagination,
 }: {
   items: AnyOpportunity[];
   loading: boolean;
@@ -296,6 +309,7 @@ export function OpportunityList({
   empty: string;
   onRetry?: () => void;
   compact?: boolean;
+  pagination?: { page: number; totalPages: number; total: number; onPageChange: (page: number) => void };
 }) {
   const utils = trpc.useUtils();
   const toggle = trpc.favorites.toggle.useMutation({
@@ -321,6 +335,7 @@ export function OpportunityList({
       </div>
     );
   return (
+    <>
     <div className={compact ? "divide-y" : "space-y-3"}>
       {items.map(item => (
         <article
@@ -386,6 +401,19 @@ export function OpportunityList({
         </article>
       ))}
     </div>
+    {pagination && pagination.totalPages > 1 && (
+      <nav aria-label="Paginação de oportunidades" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+        <span className="text-slate-600">Página {pagination.page} de {pagination.totalPages} · {pagination.total.toLocaleString("pt-BR")} resultados</span>
+        <div className="flex items-center gap-1">
+          <button aria-label="Primeira página" disabled={pagination.page === 1} onClick={() => pagination.onPageChange(1)} className="rounded-md border p-2 disabled:opacity-40"><ChevronsLeft size={16} /></button>
+          <button aria-label="Página anterior" disabled={pagination.page === 1} onClick={() => pagination.onPageChange(pagination.page - 1)} className="rounded-md border p-2 disabled:opacity-40"><ChevronLeft size={16} /></button>
+          <span className="px-2 font-semibold text-[#102B4E]">{pagination.page}</span>
+          <button aria-label="Próxima página" disabled={pagination.page === pagination.totalPages} onClick={() => pagination.onPageChange(pagination.page + 1)} className="rounded-md border p-2 disabled:opacity-40"><ChevronRight size={16} /></button>
+          <button aria-label="Última página" disabled={pagination.page === pagination.totalPages} onClick={() => pagination.onPageChange(pagination.totalPages)} className="rounded-md border p-2 disabled:opacity-40"><ChevronsRight size={16} /></button>
+        </div>
+      </nav>
+    )}
+    </>
   );
 }
 

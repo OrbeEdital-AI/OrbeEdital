@@ -9,20 +9,21 @@ export type AnyOpportunity = {
   modality: string | null;
   status: string;
   estimatedValue: string | null;
+  publicationDate?: Date | string | null;
   proposalDeadline: Date | string | null;
   sourceName?: string;
   sourceUrl: string | null;
   isFavorite?: boolean;
 };
-export const money = (value: string | number | null | undefined) =>
-  value == null
-    ? "Não informado"
-    : new Intl.NumberFormat("pt-BR", {
+export const money = (value: string | number | null | undefined) => {
+  if (value == null || value === "" || !Number.isFinite(Number(value))) return "Valor não informado";
+  return new Intl.NumberFormat("pt-BR", {
         style: "currency",
         currency: "BRL",
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(Number(value));
+};
 export const date = (value: Date | string | null | undefined) =>
   value
     ? new Intl.DateTimeFormat("pt-BR", {
@@ -30,6 +31,10 @@ export const date = (value: Date | string | null | undefined) =>
         timeZone: "America/Sao_Paulo",
       }).format(new Date(value))
     : "Não informado";
+export const brazilGreeting = (value = new Date()) => {
+  const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23" }).format(value));
+  return hour >= 5 && hour < 12 ? "Bom dia" : hour >= 12 && hour < 18 ? "Boa tarde" : "Boa noite";
+};
 export function NoPermission() {
   return (
     <div className="rounded-xl border border-rose-200 bg-white p-8 text-center">
