@@ -1,4 +1,4 @@
-import { handleTrpcRequest } from "../../server/vercel-app";
+import { handleTrpcRequest } from "../../server/vercel-app.ts";
 
 export default function handler(req: any, res: any): void {
   try {
