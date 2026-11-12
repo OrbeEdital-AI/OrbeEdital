@@ -1,7 +1,6 @@
 import express from "express";
 import { parse as parseCookieHeader } from "cookie";
 import * as cookieModule from "cookie";
-import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import {
   CSRF_COOKIE_NAME,
@@ -115,30 +114,8 @@ app.use("/api/trpc", (req: any, res: any, next: any) => {
 });
 app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 
-const trpcHandler = createHTTPHandler({
-  router: appRouter,
-  basePath: "/api/trpc/",
-  createContext: ({ req, res }) => createContext({ req: req as any, res: adaptVercelResponse(res as any) as any, info: {} as any }),
-});
-
 export default app;
 
 export function handleVercelRequest(req: VercelRequestLike, res: VercelResponseLike): void {
   app(adaptVercelRequest(req) as any, adaptVercelResponse(res) as any);
-}
-
-export function handleTrpcRequest(req: VercelRequestLike, res: VercelResponseLike): void {
-  const request = adaptVercelRequest(req);
-  const response = adaptVercelResponse(res);
-  if (request.method === "POST") {
-    const rawCookie = request.headers.cookie;
-    const cookies = parseCookieHeader(Array.isArray(rawCookie) ? rawCookie[0] ?? "" : rawCookie ?? "");
-    if (!constantTimeStringEqual(cookies[CSRF_COOKIE_NAME], request.get("x-csrf-token"))) {
-      response.statusCode = 403;
-      response.setHeader("Content-Type", "application/json; charset=utf-8");
-      response.end(JSON.stringify({ error: { message: "Validação de segurança expirada. Recarregue a página." } }));
-      return;
-    }
-  }
-  trpcHandler(request as any, response as any);
 }
