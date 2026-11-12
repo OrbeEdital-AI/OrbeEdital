@@ -53,7 +53,9 @@ app.post(
 app.get("/api/auth/csrf", (req: express.Request, res: express.Response) => {
   const token = newCsrfToken();
   const options = getSessionCookieOptions(req);
-  res.cookie(CSRF_COOKIE_NAME, token, {
+  (res as unknown as {
+    cookie(name: string, value: string, cookieOptions?: Record<string, unknown>): void;
+  }).cookie(CSRF_COOKIE_NAME, token, {
     ...options,
     httpOnly: false,
     maxAge: 60 * 60 * 1000,
@@ -75,9 +77,13 @@ app.use(
   "/api/trpc",
   (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.method !== "POST") return next();
-    const cookies = parseCookieHeader(req.headers.cookie ?? "");
+    const request = req as unknown as {
+      headers: { cookie?: string };
+      get(name: string): string | undefined;
+    };
+    const cookies = parseCookieHeader(request.headers.cookie ?? "");
     const csrfCookie = cookies[CSRF_COOKIE_NAME];
-    const csrfHeader = req.get("x-csrf-token");
+    const csrfHeader = request.get("x-csrf-token");
     if (!constantTimeStringEqual(csrfCookie, csrfHeader)) {
       res.status(403).json({
         error: {
