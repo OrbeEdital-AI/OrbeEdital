@@ -1,6 +1,5 @@
-import type { Request, Response } from "express";
-import app from "../../server/vercel-app";
+import { handleVercelRequest } from "../../server/vercel-app";
 
-export default function handler(req: Request, res: Response): void {
-  app(req, res);
+export default function handler(req: any, res: any): void {
+  handleVercelRequest(req, res);
 }
