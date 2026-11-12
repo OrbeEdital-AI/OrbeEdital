@@ -328,94 +328,90 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
 export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
   const query = trpc.admin.overview.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
-  if (query.isLoading)
-    return <Loading label="Carregando dados administrativos…" />;
-  if (query.error)
-    return (
-      <ErrorState
-        message={query.error.message}
-        onRetry={() => query.refetch()}
-      />
-    );
+  if (query.isLoading) return <Loading label="Carregando dados administrativos…" />;
+  if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
+
   const data = query.data!;
-  const enabledSources = data.sources.filter((source: any) => source.enabled).length;
-  const disabledSources = data.sources.filter((source: any) => !source.enabled).length;
+  const activeSources = data.sources.filter((source: any) => source.enabled);
+  const inactiveSources = data.sources.filter((source: any) => !source.enabled);
   const sourcesWithErrors = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0).length;
-  const activeSourceRows = data.sources.filter((source: any) => source.enabled);
-  const inactiveSourceRows = data.sources.filter((source: any) => !source.enabled);
-  const cards = [
-    ["Usuários cadastrados", data.users],
-    ["Oportunidades no catálogo", data.opportunities],
-    ["Fontes cadastradas", data.sourceCount],
-    ["Fontes ativas", enabledSources],
-    ["Fontes desativadas", disabledSources],
-    ["Fontes com histórico de erro", sourcesWithErrors],
-    ["Assinaturas ativas", data.activeSubscribers],
+  const metrics = [
+    { label: "Usuários cadastrados", value: data.users, hint: "Contas na plataforma" },
+    { label: "Oportunidades", value: data.opportunities, hint: "No catálogo" },
+    { label: "Fontes ativas", value: activeSources.length, hint: `${data.sourceCount} cadastradas`, tone: "emerald" },
+    { label: "Assinaturas ativas", value: data.activeSubscribers, hint: "Registros persistidos" },
   ] as const;
+
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-xl font-bold text-[#102B4E]">Operação OrbeEdital</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Indicadores calculados a partir dos dados efetivamente persistidos;
-          pagamentos e MRR dependem do gateway ainda não conectado.
-        </p>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        {cards.map(([label, value]) => (
-          <article className="rounded-xl border bg-white p-5" key={label}>
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className="mt-3 text-2xl font-bold text-[#102B4E]">
-              {Number(value).toLocaleString("pt-BR")}
-            </p>
-          </article>
-        ))}
-      </div>
-      <section className="rounded-xl border bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <section>
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-[#102B4E]">
-              Conectores configurados
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              As integrações de outros portais ainda não estão cadastradas.
-            </p>
+            <h2 className="text-lg font-bold text-[#102B4E]">Resumo da plataforma</h2>
+            <p className="mt-1 text-sm text-slate-500">Visão rápida dos principais números operacionais.</p>
           </div>
-          <Link
-            className="text-sm font-semibold text-cyan-800"
-            href="/app/admin/sources"
-          >
-            Gerenciar fontes →
-          </Link>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">Dados persistidos no OrbeEdital</span>
         </div>
-        <div className="mt-5 space-y-5">
-          {[
-            { title: "Ativas", rows: activeSourceRows, description: "Fontes habilitadas para sincronização.", tone: "text-emerald-800" },
-            { title: "Desativadas", rows: inactiveSourceRows, description: "Fontes pausadas e fora da rotina de sincronização.", tone: "text-slate-600" },
-          ].map(group => (
-            <div key={group.title}>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <div><h4 className={`text-sm font-bold ${group.tone}`}>{group.title}</h4><p className="text-xs text-slate-500">{group.description}</p></div>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{group.rows.length}</span>
-              </div>
-              <div className="divide-y rounded-xl border border-slate-200 bg-slate-50/70 px-4">
-                {group.rows.length ? group.rows.map((source: any) => (
-                  <div className="flex flex-wrap items-center justify-between gap-2 py-3" key={source.code}>
-                    <div>
-                      <p className="font-medium text-slate-800">{source.name}</p>
-                      <p className="text-xs text-slate-500">Última execução: {date(source.lastRunAt)} · Importados: {source.importedCount} · Erros: {source.errorCount}</p>
-                    </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${source.status === "error" ? "bg-rose-50 text-rose-800" : source.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>{source.status === "error" ? "Com falha" : source.enabled ? "Ativa" : "Desativada"}</span>
-                  </div>
-                )) : <p className="py-4 text-sm text-slate-500">Nenhuma fonte nesta categoria.</p>}
-              </div>
-            </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map(metric => (
+            <article key={metric.label} className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+              <p className="mt-2 text-2xl font-bold tracking-tight text-[#102B4E]">{Number(metric.value).toLocaleString("pt-BR")}</p>
+              <p className="mt-1 text-xs text-slate-400">{metric.hint}</p>
+            </article>
           ))}
         </div>
-        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          O status do agendamento não é verificado automaticamente pelo app;
-          confira o painel de tarefas antes de depender de atualização
-          recorrente.
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-[#102B4E]">Saúde das integrações</h3>
+            <p className="mt-1 text-sm text-slate-500">Fontes habilitadas e pausadas, sem misturar disponibilidade com estado de execução.</p>
+          </div>
+          <Link className="text-sm font-semibold text-cyan-800 hover:underline" href="/app/admin/sources">Gerenciar fontes →</Link>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500"/><h4 className="text-sm font-semibold text-emerald-900">Ativas</h4></div>
+              <span className="text-xl font-bold text-emerald-900">{activeSources.length}</span>
+            </div>
+            <p className="mt-1 text-xs text-emerald-800/80">Habilitadas para operação e sincronização.</p>
+            <div className="mt-3 space-y-2">
+              {activeSources.length ? activeSources.map((source: any) => (
+                <div key={source.code} className="flex items-center justify-between gap-2 rounded-md bg-white/80 px-3 py-2">
+                  <span className="text-sm font-medium text-slate-700">{source.name}</span>
+                  <span className={`text-xs font-semibold ${source.status === "error" ? "text-rose-700" : "text-emerald-700"}`}>{source.status === "error" ? "Com falha" : "Habilitada"}</span>
+                </div>
+              )) : <p className="rounded-md bg-white/80 px-3 py-3 text-sm text-slate-500">Nenhuma fonte ativa.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-slate-400"/><h4 className="text-sm font-semibold text-slate-800">Desativadas</h4></div>
+              <span className="text-xl font-bold text-slate-800">{inactiveSources.length}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Cadastradas, mas fora da rotina de sincronização.</p>
+            <div className="mt-3 space-y-2">
+              {inactiveSources.length ? inactiveSources.map((source: any) => (
+                <div key={source.code} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <span className="text-sm font-medium text-slate-700">{source.name}</span>
+                  <span className="text-xs font-medium text-slate-500">Pausada</span>
+                </div>
+              )) : <p className="rounded-md border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">Nenhuma fonte desativada.</p>}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <span>{data.sourceCount} fontes cadastradas</span>
+          <span className={sourcesWithErrors ? "font-semibold text-rose-700" : "text-emerald-700"}>{sourcesWithErrors} com histórico de erro</span>
+        </div>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+          O painel registra os callbacks recebidos pelo aplicativo, mas não consulta diretamente o estado interno do agendador. Pagamentos e MRR dependem da conexão de um gateway.
         </p>
       </section>
     </div>
