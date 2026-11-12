@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import Home from "@/pages/Home";
 import AuthRoute from "@/pages/AuthRoute";
 import Portal from "@/pages/Portal";
+import AdminConsole from "@/pages/AdminConsole";
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from "@/pages/EmailAuthPages";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -40,6 +41,7 @@ function Router() {
     <Route path="/verify-email" component={VerifyEmailPage}/>
     <Route path="/forgot-password" component={ForgotPasswordPage}/>
     <Route path="/reset-password" component={ResetPasswordPage}/>
+    <Route path="/admin" component={AdminConsole}/>
     <Route path="/app" component={Portal}/>
     <Route path="/app/*" component={Portal}/>
     <Route path="/terms"><LegalPage kind="terms"/></Route>
