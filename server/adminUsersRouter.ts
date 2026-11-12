@@ -1,8 +1,9 @@
-import { count, desc, ilike, or, sql } from "drizzle-orm";
+import { count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditLogs, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
 
 /**
  * Read-only customer directory for the global administrator.
