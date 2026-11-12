@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  BellRing,
   Bookmark,
   Check,
   ChevronRight,
@@ -93,7 +92,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
                 Começar agora <ArrowRight aria-hidden="true" size={18} className="transition group-hover:translate-x-1" />
               </button>
               <a className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-7 py-4 font-semibold text-white transition hover:border-white/40 hover:bg-white/10" href="#como-funciona">
-                Conhecer a plataforma <ChevronRight aria-hidden="true" size={17} />
+                Veja como encontrar editais <ChevronRight aria-hidden="true" size={17} />
               </a>
             </div>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-slate-400">
@@ -225,10 +224,13 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-5 py-8 sm:px-8 md:flex-row md:items-center md:justify-between">
           <BrandMark className="scale-90 origin-left" />
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-500">
-            <a href="/terms" className="transition hover:text-cyan-700">Termos de uso</a>
-            <a href="/privacy" className="transition hover:text-cyan-700">Privacidade</a>
+            <a href="/terms" className="transition hover:text-cyan-700">Termos e Condições de Uso</a>
+            <a href="/privacy" className="transition hover:text-cyan-700">Política de Privacidade</a>
           </div>
-          <p className="max-w-sm text-xs leading-5 text-slate-400 md:text-right">As informações e os prazos devem sempre ser confirmados no edital e na fonte oficial responsável.</p>
+          <div className="max-w-sm text-xs leading-5 text-slate-400 md:text-right">
+            <p>© {new Date().getFullYear()} OrbeEdital. Todos os direitos reservados.</p>
+            <p className="mt-1">O conteúdo da plataforma tem caráter informativo. A íntegra do edital, seus requisitos e prazos devem ser conferidos diretamente na fonte oficial responsável.</p>
+          </div>
         </div>
       </footer>
     </main>
