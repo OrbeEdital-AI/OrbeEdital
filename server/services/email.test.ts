@@ -20,11 +20,11 @@ const input = {
 };
 
 function configureSmtp() {
-  vi.stubEnv("LICITAHUB_EMAIL_PROVIDER", "smtp");
-  vi.stubEnv("LICITAHUB_SMTP_USER", "remetente@gmail.com");
-  vi.stubEnv("LICITAHUB_SMTP_APP_PASSWORD", "abcd efgh ijkl mnop");
-  vi.stubEnv("LICITAHUB_PUBLIC_BASE_URL", "https://orbeedital.example");
-  vi.stubEnv("LICITAHUB_EMAIL_FROM", "");
+  vi.stubEnv("ORBEEDITAL_EMAIL_PROVIDER", "smtp");
+  vi.stubEnv("ORBEEDITAL_SMTP_USER", "remetente@gmail.com");
+  vi.stubEnv("ORBEEDITAL_SMTP_APP_PASSWORD", "abcd efgh ijkl mnop");
+  vi.stubEnv("ORBEEDITAL_PUBLIC_BASE_URL", "https://orbeedital.example");
+  vi.stubEnv("ORBEEDITAL_EMAIL_FROM", "");
 }
 
 describe("transactional email delivery", () => {
@@ -93,9 +93,9 @@ describe("transactional email delivery", () => {
   });
 
   it("retains the future Resend transport without creating an SMTP connection", async () => {
-    vi.stubEnv("LICITAHUB_EMAIL_PROVIDER", "resend");
-    vi.stubEnv("LICITAHUB_RESEND_API_KEY", "test-resend-key-not-a-real-secret");
-    vi.stubEnv("LICITAHUB_EMAIL_FROM", "OrbeEdital <noreply@example.com>");
+    vi.stubEnv("ORBEEDITAL_EMAIL_PROVIDER", "resend");
+    vi.stubEnv("ORBEEDITAL_RESEND_API_KEY", "test-resend-key-not-a-real-secret");
+    vi.stubEnv("ORBEEDITAL_EMAIL_FROM", "OrbeEdital <noreply@example.com>");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -107,7 +107,7 @@ describe("transactional email delivery", () => {
   });
 
   it("requires a public HTTPS origin and fails closed without opening a transport", async () => {
-    vi.stubEnv("LICITAHUB_PUBLIC_BASE_URL", "http://localhost:3000");
+    vi.stubEnv("ORBEEDITAL_PUBLIC_BASE_URL", "http://localhost:3000");
 
     await expect(sendVerificationEmail(input)).rejects.toBeInstanceOf(EmailDeliveryError);
     expect(mailMocks.createTransport).not.toHaveBeenCalled();

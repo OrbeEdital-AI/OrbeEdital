@@ -12,8 +12,8 @@ import {
 } from "../drizzle/schema";
 import { getDb, hashSessionToken } from "./db";
 
-export const AUTH_COOKIE_NAME = "licitahub_session";
-export const CSRF_COOKIE_NAME = "licitahub_csrf";
+export const AUTH_COOKIE_NAME = "orbeedital_session";
+export const CSRF_COOKIE_NAME = "orbeedital_csrf";
 export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const SCRYPT_N = 32_768;
 const SCRYPT_R = 8;

@@ -20,7 +20,7 @@ export class EmailDeliveryError extends Error {
 }
 
 function selectedEmailProvider(): SelectedEmailProvider {
-  const configured = process.env.LICITAHUB_EMAIL_PROVIDER?.trim().toLowerCase() || "smtp";
+  const configured = process.env.ORBEEDITAL_EMAIL_PROVIDER?.trim().toLowerCase() || "smtp";
   if (configured === "smtp") return "gmail_smtp";
   if (configured === "resend") return "resend";
   throw new EmailDeliveryError("configuration_invalid");
@@ -35,7 +35,7 @@ export function getEmailProviderForAudit(): EmailProviderName {
 }
 
 function getPublicOrigin(): string {
-  const publicBaseUrl = process.env.LICITAHUB_PUBLIC_BASE_URL?.trim();
+  const publicBaseUrl = process.env.ORBEEDITAL_PUBLIC_BASE_URL?.trim();
   if (!publicBaseUrl) throw new EmailDeliveryError("configuration_missing");
 
   let origin: URL;
@@ -58,8 +58,8 @@ function getPublicOrigin(): string {
 }
 
 function getGmailSmtpConfiguration() {
-  const user = process.env.LICITAHUB_SMTP_USER?.trim();
-  const rawAppPassword = process.env.LICITAHUB_SMTP_APP_PASSWORD?.trim();
+  const user = process.env.ORBEEDITAL_SMTP_USER?.trim();
+  const rawAppPassword = process.env.ORBEEDITAL_SMTP_APP_PASSWORD?.trim();
   if (!user || !rawAppPassword) throw new EmailDeliveryError("configuration_missing");
 
   const appPassword = rawAppPassword.replace(/\s/g, "");
@@ -67,14 +67,14 @@ function getGmailSmtpConfiguration() {
     throw new EmailDeliveryError("configuration_invalid");
   }
 
-  const from = process.env.LICITAHUB_EMAIL_FROM?.trim() || `OrbeEdital <${user}>`;
+  const from = process.env.ORBEEDITAL_EMAIL_FROM?.trim() || `OrbeEdital <${user}>`;
   if (/[\r\n]/.test(from)) throw new EmailDeliveryError("configuration_invalid");
   return { user, appPassword, from };
 }
 
 function getResendConfiguration() {
-  const apiKey = process.env.LICITAHUB_RESEND_API_KEY?.trim();
-  const from = process.env.LICITAHUB_EMAIL_FROM?.trim();
+  const apiKey = process.env.ORBEEDITAL_RESEND_API_KEY?.trim();
+  const from = process.env.ORBEEDITAL_EMAIL_FROM?.trim();
   if (!apiKey || !from) throw new EmailDeliveryError("configuration_missing");
   if (/[\r\n]/.test(from)) throw new EmailDeliveryError("configuration_invalid");
   return { apiKey, from };

@@ -436,7 +436,7 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 var pool = null;
 var database = null;
-function normalizeSupabaseCa(raw = process.env.LICITAHUB_POSTGRES_CA_CERT ?? "") {
+function normalizeSupabaseCa(raw = process.env.ORBEEDITAL_POSTGRES_CA_URL ?? process.env.ORBEEDITAL_POSTGRES_CA_CERT ?? "") {
   const blocks = [...raw.matchAll(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g)];
   if (blocks.length === 0) throw new Error("PostgreSQL CA certificate is missing or malformed");
   const normalized = blocks.map((block) => {
@@ -463,11 +463,11 @@ ${base64}
 `;
 }
 function getConnectionString() {
-  const raw = process.env.LICITAHUB_POSTGRES_URL;
-  if (!raw) throw new Error("LICITAHUB_POSTGRES_URL is not configured");
+  const raw = process.env.ORBEEDITAL_POSTGRES_URL;
+  if (!raw) throw new Error("ORBEEDITAL_POSTGRES_URL is not configured");
   const url = new URL(raw);
   if (!["postgres:", "postgresql:"].includes(url.protocol)) {
-    throw new Error("LICITAHUB_POSTGRES_URL must be a PostgreSQL URI");
+    throw new Error("ORBEEDITAL_POSTGRES_URL must be a PostgreSQL URI");
   }
   for (const key of ["sslmode", "sslrootcert", "sslcert", "sslkey"]) url.searchParams.delete(key);
   return url.toString();
@@ -500,8 +500,8 @@ function hashSessionToken(token) {
 }
 
 // server/auth.ts
-var AUTH_COOKIE_NAME = "licitahub_session";
-var CSRF_COOKIE_NAME = "licitahub_csrf";
+var AUTH_COOKIE_NAME = "orbeedital_session";
+var CSRF_COOKIE_NAME = "orbeedital_csrf";
 var SESSION_TTL_MS = 1e3 * 60 * 60 * 24 * 14;
 var SCRYPT_N = 32768;
 var SCRYPT_R = 8;
@@ -575,8 +575,18 @@ async function createCompanyAccount(input) {
   });
 }
 async function findUserForLogin(email) {
-  const [user] = await getDb().select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
-  return user;
+  try {
+    const [user] = await getDb().select().from(users).where(eq(users.email, email.trim().toLowerCase())).limit(1);
+    return user;
+  } catch (error) {
+    const details = error;
+    console.error("[auth] PostgreSQL user lookup failed", {
+      code: typeof details.code === "string" ? details.code : "UNCLASSIFIED",
+      name: typeof details.name === "string" ? details.name : "Error",
+      message: typeof details.message === "string" ? details.message : "Unknown database error"
+    });
+    throw error;
+  }
 }
 async function touchLastSignedIn(userId) {
   await getDb().update(users).set({ lastSignedIn: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(users.id, userId));
@@ -667,7 +677,7 @@ var EmailDeliveryError = class extends Error {
   }
 };
 function selectedEmailProvider() {
-  const configured = process.env.LICITAHUB_EMAIL_PROVIDER?.trim().toLowerCase() || "smtp";
+  const configured = process.env.ORBEEDITAL_EMAIL_PROVIDER?.trim().toLowerCase() || "smtp";
   if (configured === "smtp") return "gmail_smtp";
   if (configured === "resend") return "resend";
   throw new EmailDeliveryError("configuration_invalid");
@@ -680,7 +690,7 @@ function getEmailProviderForAudit() {
   }
 }
 function getPublicOrigin() {
-  const publicBaseUrl = process.env.LICITAHUB_PUBLIC_BASE_URL?.trim();
+  const publicBaseUrl = process.env.ORBEEDITAL_PUBLIC_BASE_URL?.trim();
   if (!publicBaseUrl) throw new EmailDeliveryError("configuration_missing");
   let origin;
   try {
@@ -694,20 +704,20 @@ function getPublicOrigin() {
   return origin.origin;
 }
 function getGmailSmtpConfiguration() {
-  const user = process.env.LICITAHUB_SMTP_USER?.trim();
-  const rawAppPassword = process.env.LICITAHUB_SMTP_APP_PASSWORD?.trim();
+  const user = process.env.ORBEEDITAL_SMTP_USER?.trim();
+  const rawAppPassword = process.env.ORBEEDITAL_SMTP_APP_PASSWORD?.trim();
   if (!user || !rawAppPassword) throw new EmailDeliveryError("configuration_missing");
   const appPassword = rawAppPassword.replace(/\s/g, "");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user) || !/^[A-Za-z0-9]{16}$/.test(appPassword)) {
     throw new EmailDeliveryError("configuration_invalid");
   }
-  const from = process.env.LICITAHUB_EMAIL_FROM?.trim() || `OrbeEdital <${user}>`;
+  const from = process.env.ORBEEDITAL_EMAIL_FROM?.trim() || `OrbeEdital <${user}>`;
   if (/[\r\n]/.test(from)) throw new EmailDeliveryError("configuration_invalid");
   return { user, appPassword, from };
 }
 function getResendConfiguration() {
-  const apiKey = process.env.LICITAHUB_RESEND_API_KEY?.trim();
-  const from = process.env.LICITAHUB_EMAIL_FROM?.trim();
+  const apiKey = process.env.ORBEEDITAL_RESEND_API_KEY?.trim();
+  const from = process.env.ORBEEDITAL_EMAIL_FROM?.trim();
   if (!apiKey || !from) throw new EmailDeliveryError("configuration_missing");
   if (/[\r\n]/.test(from)) throw new EmailDeliveryError("configuration_invalid");
   return { apiKey, from };

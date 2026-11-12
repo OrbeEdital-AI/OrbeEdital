@@ -22,7 +22,7 @@ describe("transactional email audit", () => {
     vi.clearAllMocks();
     auditMocks.insert.mockReturnValue({ values: auditMocks.values });
     auditMocks.values.mockResolvedValue(undefined);
-    vi.stubEnv("LICITAHUB_EMAIL_PROVIDER", "smtp");
+    vi.stubEnv("ORBEEDITAL_EMAIL_PROVIDER", "smtp");
   });
 
   afterEach(() => {

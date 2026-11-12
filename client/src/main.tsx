@@ -10,7 +10,7 @@ const queryClient = new QueryClient();
 
 function readCsrfCookie(): string | undefined {
   if (typeof document === "undefined") return undefined;
-  const prefix = "licitahub_csrf=";
+  const prefix = "orbeedital_csrf=";
   const pair = document.cookie.split(";").map(part => part.trim()).find(part => part.startsWith(prefix));
   return pair?.slice(prefix.length);
 }

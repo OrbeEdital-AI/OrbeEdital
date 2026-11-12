@@ -43,7 +43,7 @@ describe("current platform integration", () => {
   });
 
   it("uses a distinct secure session cookie behind the HTTPS Preview proxy", () => {
-    expect(AUTH_COOKIE_NAME).toBe("licitahub_session");
+    expect(AUTH_COOKIE_NAME).toBe("orbeedital_session");
     expect(getSessionCookieOptions({ protocol: "http", headers: {} } as never)).toMatchObject({ secure: true, httpOnly: true, sameSite: "none" });
   });
 });

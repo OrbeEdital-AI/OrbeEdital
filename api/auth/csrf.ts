@@ -6,7 +6,7 @@ type CsrfResponse = {
   end(body?: string): void;
 };
 
-const CSRF_COOKIE_NAME = "licitahub_csrf";
+const CSRF_COOKIE_NAME = "orbeedital_csrf";
 
 export default function handler(_req: unknown, res: CsrfResponse): void {
   const token = randomBytes(32).toString("hex");

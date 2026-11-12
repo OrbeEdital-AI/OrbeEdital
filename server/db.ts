@@ -13,7 +13,7 @@ let database: Database | null = null;
  * Extract and re-encode the X.509 DER in memory so OpenSSL always receives a
  * canonical PEM. The certificate contents are never written to disk or logged.
  */
-export function normalizeSupabaseCa(raw = process.env.LICITAHUB_POSTGRES_CA_CERT ?? ""): string {
+export function normalizeSupabaseCa(raw = process.env.ORBEEDITAL_POSTGRES_CA_URL ?? process.env.ORBEEDITAL_POSTGRES_CA_CERT ?? ""): string {
   const blocks = [...raw.matchAll(/-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/g)];
   if (blocks.length === 0) throw new Error("PostgreSQL CA certificate is missing or malformed");
 
@@ -40,11 +40,11 @@ export function normalizeSupabaseCa(raw = process.env.LICITAHUB_POSTGRES_CA_CERT
 }
 
 function getConnectionString(): string {
-  const raw = process.env.LICITAHUB_POSTGRES_URL;
-  if (!raw) throw new Error("LICITAHUB_POSTGRES_URL is not configured");
+  const raw = process.env.ORBEEDITAL_POSTGRES_URL;
+  if (!raw) throw new Error("ORBEEDITAL_POSTGRES_URL is not configured");
   const url = new URL(raw);
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
-    throw new Error("LICITAHUB_POSTGRES_URL must be a PostgreSQL URI");
+    throw new Error("ORBEEDITAL_POSTGRES_URL must be a PostgreSQL URI");
   }
   // TLS is configured below with the project CA. Remove URI TLS parameters
   // which would override the explicit CA and hostname validation options in pg.
