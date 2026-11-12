@@ -90,7 +90,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <button className="group inline-flex items-center justify-center gap-3 rounded-full bg-gradient-to-r from-cyan-400 to-teal-300 px-7 py-4 font-bold text-[#08253d] shadow-xl shadow-cyan-950/30 transition hover:-translate-y-1 hover:shadow-cyan-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={onGetStarted} type="button">
-                Começar gratuitamente <ArrowRight aria-hidden="true" size={18} className="transition group-hover:translate-x-1" />
+                Começar agora <ArrowRight aria-hidden="true" size={18} className="transition group-hover:translate-x-1" />
               </button>
               <a className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/[0.06] px-7 py-4 font-semibold text-white transition hover:border-white/40 hover:bg-white/10" href="#como-funciona">
                 Conhecer a plataforma <ChevronRight aria-hidden="true" size={17} />
