@@ -13,15 +13,33 @@ import AdminAuditPage from "@/pages/AdminAuditPage";
 
 type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings";
 
-const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-  { id: "customers", label: "Clientes e usuários", icon: Users },
-  { id: "sources", label: "Fontes de dados", icon: Database },
-  { id: "finance", label: "Planos e financeiro", icon: Wallet },
-  { id: "permissions", label: "Acessos e permissões", icon: ShieldCheck },
-  { id: "audit", label: "Auditoria e segurança", icon: History },
-  { id: "settings", label: "Configurações gerais", icon: LockKeyhole },
+const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
+  { title: "Operação", items: [
+    { id: "overview", label: "Visão geral", icon: LayoutDashboard },
+    { id: "sources", label: "Fontes e sincronizações", icon: Database },
+  ]},
+  { title: "Pessoas e acesso", items: [
+    { id: "customers", label: "Clientes e usuários", icon: Users },
+    { id: "permissions", label: "Papéis e permissões", icon: ShieldCheck },
+  ]},
+  { title: "Governança", items: [
+    { id: "audit", label: "Auditoria e segurança", icon: History },
+  ]},
+  { title: "Gestão", items: [
+    { id: "finance", label: "Planos e financeiro", icon: Wallet },
+    { id: "settings", label: "Configurações gerais", icon: LockKeyhole },
+  ]},
 ];
+const nav = navGroups.flatMap(group => group.items);
+const sectionDescriptions: Record<Section, string> = {
+  overview: "Resumo operacional, indicadores e situação dos módulos da plataforma.",
+  customers: "Consulte contas, verificação de e-mail, papéis e sessões dos usuários.",
+  sources: "Acompanhe integrações ativas, fontes desativadas, agendamentos e execuções.",
+  finance: "Consulte os registros financeiros disponíveis e identifique integrações pendentes.",
+  permissions: "Entenda os papéis existentes e os limites de acesso aplicados no servidor.",
+  audit: "Rastreie operações administrativas registradas e seus responsáveis.",
+  settings: "Veja quais configurações já estão disponíveis e quais aguardam implementação.",
+};
 
 function date(value: string | Date | null | undefined) {
   if (!value) return "Nunca";
@@ -167,18 +185,26 @@ export default function AdminConsole() {
   const current = nav.find(item => item.id === section)!;
   const Icon = current.icon;
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-800 lg:flex">
-    <aside className="flex flex-col border-b border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:shrink-0 lg:border-b-0">
+    <aside className="flex flex-col border-b border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[286px] lg:shrink-0 lg:border-b-0">
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-5"><BrandMark/><span className="rounded-full bg-cyan-300/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span></div>
-      <div className="px-5 py-5"><p className="text-xs font-semibold uppercase tracking-widest text-cyan-200">Painel de controle</p><p className="mt-1 text-sm text-blue-100">Gestão central do OrbeEdital</p></div>
-      <nav aria-label="Administração" className="flex flex-wrap gap-1 px-3 pb-4 lg:flex-col">
-        {nav.map(item => { const ItemIcon = item.icon; return <button key={item.id} onClick={() => setSection(item.id)} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${section === item.id ? "bg-white text-[#102B4E]" : "text-blue-100 hover:bg-white/10"}`}><ItemIcon size={17}/>{item.label}</button>; })}
+      <div className="px-5 py-5"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-200">Central de gestão</p><p className="mt-1 text-sm text-blue-100">OrbeEdital · Administração</p></div>
+      <nav aria-label="Administração" className="flex flex-wrap gap-2 px-3 pb-4 lg:block lg:flex-1 lg:overflow-y-auto">
+        {navGroups.map(group => <div key={group.title} className="mb-5 min-w-[145px] flex-1 lg:min-w-0">
+          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[.18em] text-blue-300/80">{group.title}</p>
+          <div className="space-y-1">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => setSection(item.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition ${section === item.id ? "bg-white font-semibold text-[#102B4E] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}><ItemIcon size={17}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
+        </div>)}
       </nav>
-      <div className="mt-auto border-t border-white/10 p-4"><p className="truncate text-sm font-semibold">{me.name}</p><p className="truncate text-xs text-blue-200">{me.email}</p><button onClick={logout} className="mt-4 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-blue-100 hover:bg-white/10"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-2 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
+      <div className="border-t border-white/10 p-4"><div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-blue-300">Sessão administrativa</p><p className="mt-2 truncate text-sm font-semibold">{me.name}</p><p className="truncate text-xs text-blue-200">{me.email}</p><span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Superadmin verificado</span></div><button onClick={logout} className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-blue-100 hover:bg-white/10"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
     </aside>
     <main className="min-w-0 flex-1">
-      <header className="border-b border-slate-200 bg-white px-5 py-5 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-cyan-800">OrbeEdital / Administração geral</p><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-[#102B4E]">{current.label}</h1><p className="mt-1 text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}. Controle central da plataforma.</p></div><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada · Superadmin</span></div></header>
-      <div className="mx-auto max-w-[1500px] space-y-6 p-5 sm:p-8">
-        {section === "overview" && <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><div className="rounded-xl border bg-white p-5"><div className="flex items-center justify-between text-sm text-slate-500">Controle de usuários<Users size={18}/></div><p className="mt-3 text-lg font-bold text-[#102B4E]">Clientes e acessos</p><p className="mt-1 text-xs text-slate-500">Cadastro, verificação e papéis</p></div><div className="rounded-xl border bg-white p-5"><div className="flex items-center justify-between text-sm text-slate-500">Operação de dados<Database size={18}/></div><p className="mt-3 text-lg font-bold text-[#102B4E]">Fontes oficiais</p><p className="mt-1 text-xs text-slate-500">PNCP e Compras.gov.br</p></div><div className="rounded-xl border bg-white p-5"><div className="flex items-center justify-between text-sm text-slate-500">Planos e cobrança<CreditCard size={18}/></div><p className="mt-3 text-lg font-bold text-[#102B4E]">Financeiro</p><p className="mt-1 text-xs text-slate-500">Gateway ainda não conectado</p></div><div className="rounded-xl border bg-white p-5"><div className="flex items-center justify-between text-sm text-slate-500">Governança<LockKeyhole size={18}/></div><p className="mt-3 text-lg font-bold text-[#102B4E]">Acesso protegido</p><p className="mt-1 text-xs text-slate-500">Permissões no servidor</p></div></div><AdminOverview isAdmin={true}/></>}
+      <header className="sticky top-0 z-20 border-b border-slate-200/90 bg-white/95 px-5 py-5 backdrop-blur sm:px-8">
+        <div className="mx-auto max-w-[1540px]">
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-800">OrbeEdital <span className="mx-1 text-slate-300">/</span> Administração geral <span className="mx-1 text-slate-300">/</span> {current.label}</p><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada</span></div>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · Superadmin</span></div>
+        </div>
+      </header>
+      <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
+        {section === "overview" && <AdminOverview isAdmin={true}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
