@@ -61,6 +61,13 @@ function CustomerDirectory() {
     },
     onError: error => toast.error(error.message),
   });
+  const revokeSessions = trpc.adminUsers.revokeSessions.useMutation({
+    onSuccess: async result => {
+      toast.success(result.revokedCount + " sessão(ões) encerrada(s).");
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -80,7 +87,7 @@ function CustomerDirectory() {
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th></tr></thead>
                 <tbody>
                   {data?.items.map(user => <tr key={user.id} className="border-t">
                     <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td>
@@ -90,7 +97,7 @@ function CustomerDirectory() {
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td>
                   </tr>)}
-                  {!data?.items.length && <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
+                  {!data?.items.length && <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
               </table>
             </div>
