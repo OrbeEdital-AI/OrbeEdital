@@ -70,7 +70,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   <ExternalLink size={12} />
                 </a>
                 <p className="mt-2 text-xs text-slate-500">
-                  Última execução: {date(source.lastRunAt)} · Próxima estimada:{" "}
+                  Última sincronização: {date(source.lastRunAt)} · Próxima estimada:{" "}
                   {source.configuration?.scheduledTaskUid
                     ? date(source.nextRunAt)
                     : "não agendada"}{" "}
@@ -78,6 +78,11 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   {source.errorCount} · Duração média:{" "}
                   {source.averageDurationMs ?? "—"} ms
                 </p>
+                {(() => {
+                  const callback = query.data?.scheduleEvents.find(event => event.entityId === source.code);
+                  const status = callback?.action === "source.schedule.completed" ? "sincronização concluída" : callback ? "falha na sincronização" : "nenhum callback registrado pelo aplicativo";
+                  return <p className="mt-1 text-xs text-slate-600">Último callback externo confirmado: {callback ? date(callback.createdAt) + " · " + status : status}</p>;
+                })()}
               </div>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs">
                 {source.status}
@@ -301,12 +306,15 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
       />
     );
   const data = query.data!;
+  const enabledSources = data.sources.filter((source: any) => source.enabled).length;
+  const sourcesWithErrors = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0).length;
   const cards = [
     ["Usuários cadastrados", data.users],
     ["Oportunidades no catálogo", data.opportunities],
-    ["Fontes configuradas", data.sourceCount],
+    ["Fontes cadastradas", data.sourceCount],
+    ["Fontes habilitadas", enabledSources],
+    ["Fontes com histórico de erro", sourcesWithErrors],
     ["Assinaturas ativas", data.activeSubscribers],
-    ["Assinaturas canceladas", data.canceledSubscriptions],
   ] as const;
   return (
     <div className="space-y-5">
@@ -317,7 +325,7 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
           pagamentos e MRR dependem do gateway ainda não conectado.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {cards.map(([label, value]) => (
           <article className="rounded-xl border bg-white p-5" key={label}>
             <p className="text-xs text-slate-500">{label}</p>

@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft, CreditCard, Database, LayoutDashboard,
-  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole,
+  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import BrandMark from "@/components/BrandMark";
+import { toast } from "sonner";
 import { AdminOverview, FinancePage, SourcesPage } from "@/pages/portal/AdminPages";
+import AdminAuditPage from "@/pages/AdminAuditPage";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "settings";
+type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings";
 
 const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
@@ -17,6 +19,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "sources", label: "Fontes de dados", icon: Database },
   { id: "finance", label: "Planos e financeiro", icon: Wallet },
   { id: "permissions", label: "Acessos e permissões", icon: ShieldCheck },
+  { id: "audit", label: "Auditoria e segurança", icon: History },
   { id: "settings", label: "Configurações gerais", icon: LockKeyhole },
 ];
 
@@ -49,6 +52,22 @@ function CustomerDirectory() {
     { retry: false, placeholderData: previous => previous }
   );
   const data = query.data;
+  const utils = trpc.useUtils();
+  const updateRole = trpc.adminUsers.updateRole.useMutation({
+    onSuccess: async result => {
+      toast.success(result.updated ? "Perfil atualizado e registrado na auditoria." : "O usuário já possui esse perfil.");
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const revokeSessions = trpc.adminUsers.revokeSessions.useMutation({
+    onSuccess: async result => {
+      toast.success(result.revokedCount + " sessão(ões) encerrada(s).");
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -68,17 +87,17 @@ function CustomerDirectory() {
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th></tr></thead>
                 <tbody>
                   {data?.items.map(user => <tr key={user.id} className="border-t">
                     <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td>
                     <td className="px-4 py-3">{user.companyName ?? "Não vinculada"}</td>
-                    <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium">{user.role}</span></td>
+                    <td className="px-4 py-3"><div className="flex items-center gap-2"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium">{user.role}</span>{user.role !== "superadmin" && <select aria-label={`Alterar perfil de ${user.name}`} disabled={updateRole.isPending} value={user.role} onChange={event => { const role = event.target.value as "user" | "admin" | "source_operator" | "support" | "finance"; if (window.confirm(`Confirma alterar o perfil de ${user.name} para ${role}?`)) updateRole.mutate({ userId: user.id, role }); }} className="max-w-36 rounded-md border px-2 py-1 text-xs"><option value="user">Cliente</option><option value="admin">Administrador</option><option value="source_operator">Operador de fontes</option><option value="support">Suporte</option><option value="finance">Financeiro</option></select>}</div></td>
                     <td className="px-4 py-3">{user.emailVerifiedAt ? <span className="text-emerald-700">Verificado</span> : <span className="text-amber-700">Pendente</span>}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td>
+                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>}</td>
                   </tr>)}
-                  {!data?.items.length && <tr><td colSpan={6} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
+                  {!data?.items.length && <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -164,6 +183,7 @@ export default function AdminConsole() {
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
         {section === "permissions" && <PermissionsPage/>}
+        {section === "audit" && <AdminAuditPage/>}
         {section === "settings" && <SettingsPage/>}
       </div>
     </main>

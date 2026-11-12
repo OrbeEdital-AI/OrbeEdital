@@ -2,7 +2,7 @@ import { jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import { inArray } from "drizzle-orm";
 import type { Request } from "express";
-import { connectors } from "../../drizzle/schema";
+import { auditLogs, connectors } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { syncConnector } from "./ingestion";
 
@@ -97,23 +97,56 @@ export async function handleScheduledSync(req: Request) {
         : {};
     return source.enabled && configuration.scheduledTaskUid === taskUid;
   });
-  if (!matched) return { status: "no_source_registered_for_task" as const };
-  const result = matched.code === "pncp"
-    ? await syncConnector("pncp", { mode: "open", allPages: true, pageSize: 50 })
-    : await syncConnector("compras.gov.br", {
-        daysBack: 7,
-        modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
-        allPages: true,
-        pageSize: 500,
-      });
-  const coverage = matched.code === "pncp"
-    ? { scope: "open_proposals_all_modalities", allPages: true }
-    : {
-        scope: "supplemental_recent_publications",
-        windowDays: 7,
-        modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
-        allPages: true,
-        historicalCoverage: false,
-      };
-  return { status: "synchronized" as const, coverage, ...result };
+  if (!matched) {
+    await getDb().insert(auditLogs).values({
+      action: "source.schedule.unmatched",
+      entityType: "scheduled_task",
+      details: { callbackReceived: true, matched: false },
+    });
+    return { status: "no_source_registered_for_task" as const };
+  }
+  try {
+    const result = matched.code === "pncp"
+      ? await syncConnector("pncp", { mode: "open", allPages: true, pageSize: 50 })
+      : await syncConnector("compras.gov.br", {
+          daysBack: 7,
+          modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
+          allPages: true,
+          pageSize: 500,
+        });
+    await getDb().insert(auditLogs).values({
+      action: "source.schedule.completed",
+      entityType: "connector",
+      entityId: matched.code,
+      details: {
+        status: "synchronized",
+        runId: result.runId,
+        fetched: result.fetched,
+        inserted: result.inserted,
+        updated: result.updated,
+        durationMs: result.durationMs,
+      },
+    });
+    const coverage = matched.code === "pncp"
+      ? { scope: "open_proposals_all_modalities", allPages: true }
+      : {
+          scope: "supplemental_recent_publications",
+          windowDays: 7,
+          modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
+          allPages: true,
+          historicalCoverage: false,
+        };
+    return { status: "synchronized" as const, coverage, ...result };
+  } catch (error) {
+    await getDb().insert(auditLogs).values({
+      action: "source.schedule.failed",
+      entityType: "connector",
+      entityId: matched.code,
+      details: {
+        status: "failed",
+        message: error instanceof Error ? error.message.slice(0, 240) : "Unknown error",
+      },
+    }).catch(logError => console.error("[scheduled-audit] failed to persist callback error", logError instanceof Error ? logError.message : "unknown"));
+    throw error;
+  }
 }

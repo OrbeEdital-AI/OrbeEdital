@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
 import { count, desc, eq, inArray, sum } from "drizzle-orm";
 import { z } from "zod";
-import { connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
+import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
 import {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -241,31 +241,76 @@ export const appRouter = router({
       list: sourceOperatorProcedure.query(async () => {
         await ensureBuiltInConnectors();
         const db = getDb();
-        const [sources, runs] = await Promise.all([
+        const [sources, runs, scheduleEvents] = await Promise.all([
           db.select().from(connectors).orderBy(connectors.name),
           db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(50),
+          db.select({
+            action: auditLogs.action,
+            entityId: auditLogs.entityId,
+            details: auditLogs.details,
+            createdAt: auditLogs.createdAt,
+          }).from(auditLogs)
+            .where(inArray(auditLogs.action, ["source.schedule.completed", "source.schedule.failed"]))
+            .orderBy(desc(auditLogs.createdAt))
+            .limit(50),
         ]);
-        return { sources, runs };
+        return { sources, runs, scheduleEvents };
       }),
       run: sourceOperatorProcedure.input(z.object({
         sourceCode: z.enum(["pncp", "compras.gov.br"]),
         daysBack: z.number().int().min(1).max(30).default(7),
         modalityCodes: z.array(z.number().int().min(1).max(15)).min(1).max(3).default([6]),
         maxPages: z.number().int().min(1).max(3).default(1),
-      })).mutation(({ input }) => syncConnector(input.sourceCode, input)),
+      })).mutation(async ({ input, ctx }) => {
+        const startedAt = new Date();
+        try {
+          const result = await syncConnector(input.sourceCode, input);
+          await getDb().insert(auditLogs).values({
+            actorUserId: ctx.user.id,
+            action: "source.sync.completed",
+            entityType: "connector",
+            entityId: input.sourceCode,
+            details: {
+              daysBack: input.daysBack,
+              modalityCodes: input.modalityCodes,
+              maxPages: input.maxPages,
+              inserted: result.inserted,
+              updated: result.updated,
+              durationMs: Date.now() - startedAt.getTime(),
+            },
+          }).catch(error => console.error("[admin-audit] source sync log failed", error instanceof Error ? error.message : "unknown"));
+          return result;
+        } catch (error) {
+          await getDb().insert(auditLogs).values({
+            actorUserId: ctx.user.id,
+            action: "source.sync.failed",
+            entityType: "connector",
+            entityId: input.sourceCode,
+            details: { durationMs: Date.now() - startedAt.getTime(), message: error instanceof Error ? error.message.slice(0, 300) : "Unknown error" },
+          }).catch(logError => console.error("[admin-audit] source sync failure log failed", logError instanceof Error ? logError.message : "unknown"));
+          throw error;
+        }
+      }),
       configure: sourceOperatorProcedure.input(z.object({
         code: z.enum(["pncp", "compras.gov.br"]),
         enabled: z.boolean().optional(),
         frequencySeconds: z.number().int().min(300).max(86_400).optional(),
-      })).mutation(async ({ input }) => {
+      })).mutation(async ({ input, ctx }) => {
         await ensureBuiltInConnectors();
         const changes: { enabled?: boolean; frequencySeconds?: number; updatedAt: Date } = { updatedAt: new Date() };
         if (input.enabled !== undefined) changes.enabled = input.enabled;
         if (input.frequencySeconds !== undefined) changes.frequencySeconds = input.frequencySeconds;
         const [source] = await getDb().update(connectors).set(changes).where(eq(connectors.code, input.code)).returning();
+        await getDb().insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "source.configuration.updated",
+          entityType: "connector",
+          entityId: input.code,
+          details: { enabled: input.enabled, frequencySeconds: input.frequencySeconds },
+        }).catch(error => console.error("[admin-audit] source configuration log failed", error instanceof Error ? error.message : "unknown"));
         return source;
       }),
-      setScheduledTask: sourceOperatorProcedure.input(z.object({ code: z.enum(["pncp", "compras.gov.br"]), taskUid: z.string().trim().max(200) })).mutation(async ({ input }) => {
+      setScheduledTask: sourceOperatorProcedure.input(z.object({ code: z.enum(["pncp", "compras.gov.br"]), taskUid: z.string().trim().max(200) })).mutation(async ({ input, ctx }) => {
         await ensureBuiltInConnectors();
         const [current] = await getDb().select().from(connectors).where(eq(connectors.code, input.code)).limit(1);
         if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Fonte não cadastrada." });
@@ -274,6 +319,13 @@ export const appRouter = router({
         if (input.taskUid) nextConfiguration.scheduledTaskUid = input.taskUid;
         else delete nextConfiguration.scheduledTaskUid;
         const [updated] = await getDb().update(connectors).set({ configuration: nextConfiguration, updatedAt: new Date() }).where(eq(connectors.id, current.id)).returning();
+        await getDb().insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "source.schedule_binding.updated",
+          entityType: "connector",
+          entityId: input.code,
+          details: { scheduledTaskConfigured: Boolean(input.taskUid) },
+        }).catch(error => console.error("[admin-audit] schedule binding log failed", error instanceof Error ? error.message : "unknown"));
         return updated;
       }),
     }),
