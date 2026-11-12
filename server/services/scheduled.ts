@@ -149,14 +149,4 @@ export async function handleScheduledSync(req: Request) {
     }).catch(logError => console.error("[scheduled-audit] failed to persist callback error", logError instanceof Error ? logError.message : "unknown"));
     throw error;
   }
-  const coverage = matched.code === "pncp"
-    ? { scope: "open_proposals_all_modalities", allPages: true }
-    : {
-        scope: "supplemental_recent_publications",
-        windowDays: 7,
-        modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
-        allPages: true,
-        historicalCoverage: false,
-      };
-  return { status: "synchronized" as const, coverage, ...result };
 }
