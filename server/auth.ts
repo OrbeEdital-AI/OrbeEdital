@@ -169,7 +169,8 @@ export async function revokeSession(token: string | undefined): Promise<void> {
 }
 
 export function getSessionToken(req: Request): string | undefined {
-  const cookies = parseCookieHeader(req.headers.cookie ?? "");
+  const request = req as unknown as { headers: { cookie?: string } };
+  const cookies = parseCookieHeader(request.headers.cookie ?? "");
   return cookies[AUTH_COOKIE_NAME];
 }
 

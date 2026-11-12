@@ -91,9 +91,13 @@ const profileUpdateSchema = z.object({
 
 function setAuthCookies(req: Request, res: Response, token: string) {
   const base = getSessionCookieOptions(req);
-  res.cookie(AUTH_COOKIE_NAME, token, { ...base, maxAge: SESSION_TTL_MS });
-  const csrf = parseCookieHeader(req.headers.cookie ?? "")[CSRF_COOKIE_NAME];
-  if (csrf) res.cookie(CSRF_COOKIE_NAME, csrf, { ...base, httpOnly: false, maxAge: SESSION_TTL_MS });
+  const cookieResponse = res as unknown as {
+    cookie(name: string, value: string, options?: Record<string, unknown>): void;
+  };
+  cookieResponse.cookie(AUTH_COOKIE_NAME, token, { ...base, maxAge: SESSION_TTL_MS });
+  const request = req as unknown as { headers: { cookie?: string } };
+  const csrf = parseCookieHeader(request.headers.cookie ?? "")[CSRF_COOKIE_NAME];
+  if (csrf) cookieResponse.cookie(CSRF_COOKIE_NAME, csrf, { ...base, httpOnly: false, maxAge: SESSION_TTL_MS });
 }
 
 function translateAuthError(error: unknown): never {
@@ -165,7 +169,9 @@ export const appRouter = router({
     logout: publicProcedure.mutation(async ({ ctx }) => {
       await revokeSession(getSessionToken(ctx.req));
       const options = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(AUTH_COOKIE_NAME, { ...options, maxAge: 0 });
+      (ctx.res as unknown as {
+        clearCookie(name: string, options?: Record<string, unknown>): void;
+      }).clearCookie(AUTH_COOKIE_NAME, { ...options, maxAge: 0 });
       return { success: true } as const;
     }),
   }),

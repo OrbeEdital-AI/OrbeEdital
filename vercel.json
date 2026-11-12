@@ -1,5 +1,9 @@
 {
-  "buildCommand": "pnpm build",
-  "outputDirectory": "dist/public",
-  "framework": "vite"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

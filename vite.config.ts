@@ -149,9 +149,9 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-// Static development and static publishing use the same public-value whitelist
-// as Express. Runtime-only secrets never enter the browser bundle. Express keeps
-// serving this path dynamically when the application server is selected.
+// Runtime config is served dynamically by Express in development and by the
+// Vercel API function in production. Do not emit a static copy into dist/public,
+// because it would shadow the runtime endpoint and always contain empty values.
 function vitePluginPublicPlatformConfig(): Plugin {
   return {
     name: "manus-public-platform-config",
@@ -161,9 +161,6 @@ function vitePluginPublicPlatformConfig(): Plugin {
         res.setHeader("Cache-Control", "no-store");
         res.end(publicPlatformScript());
       });
-    },
-    generateBundle() {
-      this.emitFile({ type: "asset", fileName: "api/platform/config.js", source: publicPlatformScript() });
     },
   };
 }
