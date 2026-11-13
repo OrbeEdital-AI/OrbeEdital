@@ -47,111 +47,139 @@ export function Dashboard({
   }, []);
   if (loading) return <Loading label="Carregando indicadores do PostgreSQL…" />;
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
+  const sourceStatus = (status: string) => ({
+    active: "Conectada",
+    error: "Com atenção",
+    disabled: "Pausada",
+    pending: "Aguardando",
+  } as Record<string, string>)[status] ?? "Aguardando";
+
   return (
-    <>
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-[#102B4E]">
-            {brazilGreeting(now)}. Vamos encontrar oportunidades?
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Indicadores calculados a partir dos registros atualmente coletados.
-          </p>
-        </div>
-        <Link
-          className="inline-flex items-center gap-2 rounded-lg bg-[#087eaa] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#066b92]"
-          href="/app/opportunities"
-        >
-          <Search size={16} />
-          Buscar licitações
-        </Link>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(card => (
-          <article
-            key={card.label}
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-slate-500">{card.label}</p>
-              <span
-                className={`grid h-9 w-9 place-items-center rounded-lg ${card.color}`}
-              >
-                <card.icon size={18} />
-              </span>
-            </div>
-            <p className="mt-4 text-3xl font-bold text-[#102B4E]">
-              {card.value.toLocaleString("pt-BR")}
+    <div className="space-y-7">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#102B4E] via-[#123d65] to-[#087eaa] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-8">
+        <div className="pointer-events-none absolute -right-12 -top-20 h-64 w-64 rounded-full border-[32px] border-white/5" />
+        <div className="pointer-events-none absolute -bottom-28 right-24 h-64 w-64 rounded-full border-[28px] border-white/5" />
+        <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
+          <div className="max-w-2xl">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">Seu painel de oportunidades</p>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              {brazilGreeting(now)}! Vamos encontrar novos negócios?
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">
+              Acompanhe licitações, prazos e novas publicações em um só lugar.
+              Encontre oportunidades alinhadas ao perfil da sua empresa.
             </p>
-          </article>
-        ))}
-      </div>
-      <div className="grid gap-5 xl:grid-cols-[1.4fr_.8fr]">
-        <section className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex items-center justify-between border-b px-5 py-4">
-            <div>
-              <h3 className="font-semibold text-[#102B4E]">
-                Oportunidades recentes
-              </h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Publicações mais recentes nas fontes conectadas
-              </p>
-            </div>
-            <Link
-              className="text-sm font-semibold text-cyan-800 hover:underline"
-              href="/app/opportunities"
+          </div>
+          <Link
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#102B4E] shadow-sm transition hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#123d65]"
+            href="/app/opportunities"
+          >
+            <Search size={17} />
+            Explorar oportunidades
+          </Link>
+        </div>
+      </section>
+
+      <section aria-labelledby="overview-metrics">
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h3 id="overview-metrics" className="text-base font-bold text-[#102B4E]">Resumo do mercado</h3>
+            <p className="mt-1 text-xs text-slate-500">Indicadores dos registros disponíveis no OrbeEdital</p>
+          </div>
+          <span className="hidden text-xs text-slate-400 sm:inline">Atualizado conforme as coletas das fontes</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {cards.map((card, index) => (
+            <article
+              key={card.label}
+              className={`group rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${index === 0 ? "border-cyan-200 ring-1 ring-cyan-100" : "border-slate-200"}`}
             >
-              Ver todas
-            </Link>
-          </div>
-          <OpportunityList
-            items={recent}
-            loading={false}
-            empty="Ainda não há registros coletados."
-            compact
-          />
-        </section>
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center gap-2">
-            <Database className="text-cyan-700" size={18} />
-            <h3 className="font-semibold text-[#102B4E]">Fontes de dados</h3>
-          </div>
-          <div className="mt-4 space-y-3">
-            {(summary?.sources ?? []).map((s: any) => (
-              <div
-                key={s.code}
-                className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">
-                    {s.code === "pncp" ? "PNCP" : "Compras.gov.br"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {s.lastRunAt
-                      ? `Última coleta: ${date(s.lastRunAt)}`
-                      : "Ainda não sincronizada"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {Number(s.importedCount ?? 0).toLocaleString("pt-BR")} importadas{s.errorCount ? ` · ${s.errorCount} erro(s)` : ""}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs ${s.status === "active" ? "bg-emerald-50 text-emerald-800" : "bg-slate-200 text-slate-600"}`}
-                >
-                  {({ active: "Ativa", error: "Com erro", disabled: "Desativada", pending: "Pendente" } as Record<string, string>)[s.status] ?? "Pendente"}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-slate-600">{card.label}</p>
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${card.color}`}>
+                  <card.icon size={19} />
                 </span>
               </div>
-            ))}
+              <p className="mt-3 text-3xl font-bold tracking-tight text-[#102B4E]">
+                {card.value.toLocaleString("pt-BR")}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="sources-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-800">
+              <Database size={19} />
+            </span>
+            <div>
+              <h3 id="sources-heading" className="font-bold text-[#102B4E]">Bases de oportunidades</h3>
+              <p className="mt-0.5 text-xs text-slate-500">Veja de onde vêm os registros disponíveis</p>
+            </div>
           </div>
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-            O status do agendamento de produção não é confirmado nesta tela.
-            Fontes disponíveis podem ser sincronizadas manualmente por
-            operadores autorizados; confira uma execução agendada bem-sucedida
-            antes de depender de atualização recorrente.
-          </p>
-        </section>
-      </div>
-    </>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {(summary?.sources ?? []).length} fontes conectadas
+          </span>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {(summary?.sources ?? []).map((s: any) => (
+            <article key={s.code} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-[#102B4E]">
+                    {s.code === "pncp" ? "PNCP" : "Compras.gov.br"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {s.lastRunAt ? `Última coleta em ${date(s.lastRunAt)}` : "Nenhuma coleta registrada"}
+                  </p>
+                </div>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${s.status === "active" ? "bg-emerald-50 text-emerald-800" : s.status === "error" ? "bg-rose-50 text-rose-700" : "bg-slate-200 text-slate-600"}`}>
+                  {s.status === "error" ? <CircleAlert size={13} /> : <CheckCircle2 size={13} />}
+                  {sourceStatus(s.status)}
+                </span>
+              </div>
+              <div className="mt-4 flex items-end justify-between border-t border-slate-200 pt-3">
+                <div>
+                  <p className="text-2xl font-bold tabular-nums text-[#102B4E]">
+                    {Number(s.importedCount ?? 0).toLocaleString("pt-BR")}
+                  </p>
+                  <p className="text-xs text-slate-500">oportunidades importadas</p>
+                </div>
+                {Number(s.errorCount ?? 0) > 0 && (
+                  <p className="text-xs font-medium text-rose-700">{Number(s.errorCount).toLocaleString("pt-BR")} falhas registradas</p>
+                )}
+              </div>
+            </article>
+          ))}
+          {!(summary?.sources ?? []).length && (
+            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">As informações das fontes ainda não estão disponíveis.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div>
+            <h3 className="font-bold text-[#102B4E]">Oportunidades recentes</h3>
+            <p className="mt-1 text-xs text-slate-500">Publicações mais recentes nas bases consultadas</p>
+          </div>
+          <Link
+            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50"
+            href="/app/opportunities"
+          >
+            Ver todas <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+        <OpportunityList
+          items={recent}
+          loading={false}
+          empty="Ainda não há oportunidades coletadas. Volte em breve para conferir novas publicações."
+          compact
+        />
+      </section>
+    </div>
   );
 }
 
