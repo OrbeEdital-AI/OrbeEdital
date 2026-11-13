@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
 import { count, desc, eq, inArray, sum } from "drizzle-orm";
 import { z } from "zod";
-import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles } from "../drizzle/schema";
+import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites } from "../drizzle/schema";
 import {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -30,6 +30,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { createMercadoPagoCheckout } from "./services/mercadoPago";
+import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
   getDashboardSummary,
@@ -204,7 +205,16 @@ export const appRouter = router({
     summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user)),
   }),
   opportunities: router({
-    search: protectedProcedure.input(opportunitySearchSchema).query(({ input, ctx }) => searchOpportunities(input, ctx.user.id)),
+    search: protectedProcedure.input(opportunitySearchSchema).query(async ({ input, ctx }) => {
+      if (ctx.user.role === "user") {
+        try { await recordSearchUsage(ctx.user.id); }
+        catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível validar o limite do plano.";
+          throw new TRPCError({ code: message.includes("limite") ? "TOO_MANY_REQUESTS" : "FORBIDDEN", message });
+        }
+      }
+      return searchOpportunities(input, ctx.user.id);
+    }),
     detail: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input, ctx }) => {
       const result = await getOpportunityDetail(input.id, ctx.user.id);
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
@@ -216,6 +226,16 @@ export const appRouter = router({
     toggle: protectedProcedure.input(z.object({ opportunityId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
       const exists = await getDb().select({ id: opportunities.id }).from(opportunities).where(eq(opportunities.id, input.opportunityId)).limit(1);
       if (!exists.length) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
+      if (ctx.user.role === "user") {
+        const [alreadySaved] = await getDb().select({ id: favorites.id }).from(favorites)
+          .where(and(eq(favorites.userId, ctx.user.id), eq(favorites.opportunityId, input.opportunityId))).limit(1);
+        if (!alreadySaved) {
+          try { await ensureCanAddFavorite(ctx.user.id); }
+          catch (error) {
+            throw new TRPCError({ code: "FORBIDDEN", message: error instanceof Error ? error.message : "Limite de favoritos atingido." });
+          }
+        }
+      }
       return { favorited: await toggleFavorite(ctx.user.id, input.opportunityId) };
     }),
   }),
@@ -241,7 +261,13 @@ export const appRouter = router({
   }),
   savedSearches: router({
     list: protectedProcedure.query(({ ctx }) => listSavedSearches(ctx.user.id)),
-    create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100), criteria: z.record(z.string(), z.unknown()) })).mutation(({ input, ctx }) => saveSearch(ctx.user.id, input.name, input.criteria)),
+    create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100), criteria: z.record(z.string(), z.unknown()) })).mutation(async ({ input, ctx }) => {
+      if (ctx.user.role === "user") {
+        try { await ensureCanSaveSearch(ctx.user.id); }
+        catch (error) { throw new TRPCError({ code: "FORBIDDEN", message: error instanceof Error ? error.message : "Limite de pesquisas salvas atingido." }); }
+      }
+      return saveSearch(ctx.user.id, input.name, input.criteria);
+    }),
     delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => deleteSavedSearch(ctx.user.id, input.id)),
   }),
   adminUsers: adminUsersRouter,
