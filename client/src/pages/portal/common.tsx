@@ -12,6 +12,7 @@ export type AnyOpportunity = {
   publicationDate?: Date | string | null;
   proposalDeadline: Date | string | null;
   sourceName?: string;
+  lastSyncedAt?: Date | string | null;
   sourceUrl: string | null;
   isFavorite?: boolean;
 };
@@ -28,6 +29,14 @@ export const date = (value: Date | string | null | undefined) =>
   value
     ? new Intl.DateTimeFormat("pt-BR", {
         dateStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      }).format(new Date(value))
+    : "Não informado";
+export const dateTime = (value: Date | string | null | undefined) =>
+  value
+    ? new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeStyle: "short",
         timeZone: "America/Sao_Paulo",
       }).format(new Date(value))
     : "Não informado";
