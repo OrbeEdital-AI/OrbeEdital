@@ -198,7 +198,7 @@ export function SearchPanel({
   setState: (v: string) => void;
   source: "" | "pncp" | "compras.gov.br";
   setSource: (v: "" | "pncp" | "compras.gov.br") => void;
-  onSearch: () => void;
+  onSearch: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState(query);
   const [searchName, setSearchName] = useState("");
@@ -222,10 +222,14 @@ export function SearchPanel({
       </div>
       <form
         className="grid gap-3 md:grid-cols-[1fr_150px_190px_auto]"
-        onSubmit={e => {
+        onSubmit={async e => {
           e.preventDefault();
-          setQuery(draft);
-          onSearch();
+          try {
+            await onSearch();
+            setQuery(draft);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Não foi possível registrar a pesquisa.");
+          }
         }}
       >
         <label className="relative">
