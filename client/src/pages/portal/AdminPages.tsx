@@ -333,7 +333,7 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
   const data = query.data!;
   const activeSources = data.sources.filter((source: any) => source.enabled);
   const inactiveSources = data.sources.filter((source: any) => !source.enabled);
-  const failedSources = data.sources.filter((source: any) => source.status === "error" || Number(source.errorCount) > 0);
+  const failedSources = data.sources.filter((source: any) => source.status === "error");
   const metrics = [
     { label: "Usuários", value: data.users, detail: "contas cadastradas" },
     { label: "Oportunidades", value: data.opportunities, detail: "no catálogo" },
