@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -340,6 +341,18 @@ export const plans = pgTable(
     active: boolean("active").default(true).notNull(),
     ...timestamps,
   },
+);
+
+export const planUsage = pgTable(
+  "plan_usage",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    searchesCount: integer("searches_count").default(0).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [uniqueIndex("plan_usage_company_period_unique").on(table.companyId, table.periodStart)],
 );
 
 export const subscriptions = pgTable(
