@@ -23,7 +23,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
-import { brazilGreeting, date, money, Loading, ErrorState, statusLabel } from "./common";
+import { brazilGreeting, date, dateTime, money, Loading, ErrorState, statusLabel } from "./common";
 import type { AnyOpportunity } from "./common";
 export function Dashboard({
   summary,
@@ -55,7 +55,7 @@ export function Dashboard({
   } as Record<string, string>)[status] ?? "Aguardando";
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-7 rounded-2xl bg-gradient-to-br from-[#e8f2fa] via-[#edf5f8] to-[#dcecf1] p-3 sm:p-5">
       <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#102B4E] via-[#123d65] to-[#087eaa] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-8">
         <div className="pointer-events-none absolute -right-12 -top-20 h-64 w-64 rounded-full border-[32px] border-white/5" />
         <div className="pointer-events-none absolute -bottom-28 right-24 h-64 w-64 rounded-full border-[28px] border-white/5" />
@@ -92,7 +92,7 @@ export function Dashboard({
           {cards.map((card, index) => (
             <article
               key={card.label}
-              className={`group rounded-xl border bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${index === 0 ? "border-cyan-200 ring-1 ring-cyan-100" : "border-slate-200"}`}
+              className={`group rounded-xl border bg-gradient-to-br from-[#f7fbff] to-[#e7f1f7] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${index === 0 ? "border-cyan-300 ring-1 ring-cyan-200" : "border-[#cbdce8]"}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-slate-600">{card.label}</p>
@@ -108,7 +108,7 @@ export function Dashboard({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="sources-heading">
+      <section className="rounded-2xl border border-[#c5d9e7] bg-gradient-to-br from-[#e4f0f7] to-[#f2f7fa] p-5 shadow-sm sm:p-6" aria-labelledby="sources-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-800">
@@ -125,7 +125,7 @@ export function Dashboard({
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {(summary?.sources ?? []).map((s: any) => (
-            <article key={s.code} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <article key={s.code} className="rounded-xl border border-[#cbdce8] bg-[#f5f9fc] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold text-[#102B4E]">
@@ -159,7 +159,7 @@ export function Dashboard({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-[#c5d9e7] bg-[#eaf3f8] shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
           <div>
             <h3 className="font-bold text-[#102B4E]">Oportunidades recentes</h3>
@@ -403,6 +403,7 @@ export function OpportunityList({
                 </span>
                 <span>Valor: {money(item.estimatedValue)}</span>
                 <span>Prazo: {date(item.proposalDeadline)}</span>
+                <span className="inline-flex items-center gap-1 font-medium text-cyan-900"><RefreshCw size={12} /> Extraída em: {dateTime(item.lastSyncedAt)}</span>
               </div>
             </div>
             <button
@@ -517,6 +518,7 @@ export function OpportunityDetailPage() {
             ["Publicação", date(item.publicationDate)],
             ["Abertura", date(item.openingDate)],
             ["Prazo de propostas", date(item.proposalDeadline)],
+            ["Extraída em", dateTime(item.lastSyncedAt)],
           ].map(([label, value]) => (
             <div key={label}>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
