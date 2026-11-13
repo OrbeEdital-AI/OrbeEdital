@@ -29,7 +29,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
-import { createMercadoPagoCheckout } from "./services/mercadoPago";
+import { changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
@@ -246,6 +246,16 @@ export const appRouter = router({
       features: plans.features, limits: plans.limits,
     }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional"])))),
     usage: protectedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
+    changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
+      try {
+        return await changeMercadoPagoPlan(ctx.user.id, input.planId);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: error instanceof Error ? error.message : "Não foi possível alterar o plano.",
+        });
+      }
+    }),
     checkout: protectedProcedure.input(z.object({
       planId: z.string().uuid(),
       interval: z.enum(["monthly", "annual"]),
