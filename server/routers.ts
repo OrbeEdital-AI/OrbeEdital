@@ -1,7 +1,7 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { count, desc, eq, inArray, sum } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sum } from "drizzle-orm";
 import { z } from "zod";
 import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites } from "../drizzle/schema";
 import {
@@ -243,8 +243,9 @@ export const appRouter = router({
     plans: protectedProcedure.query(async () => getDb().select({
       id: plans.id, code: plans.code, name: plans.name, description: plans.description,
       monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents,
-      features: plans.features,
-    }).from(plans).where(eq(plans.active, true))),
+      features: plans.features, limits: plans.limits,
+    }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional"])))),
+    usage: protectedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
     checkout: protectedProcedure.input(z.object({
       planId: z.string().uuid(),
       interval: z.enum(["monthly", "annual"]),
