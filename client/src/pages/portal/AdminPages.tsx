@@ -182,6 +182,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               >
                 Salvar frequência
               </button>
+              <p className="basis-full text-xs leading-5 text-slate-500">Define o intervalo desejado entre as execuções automáticas da fonte. Ex.: 30 minutos = solicitar uma nova execução a cada meia hora. Isso salva a configuração no OrbeEdital; o agendador externo também precisa estar configurado para respeitar esse intervalo.</p>
             </div>
             <div className="mt-4 flex flex-wrap items-end gap-2 border-t pt-4">
               <label className="text-xs font-medium text-slate-600">
@@ -201,9 +202,10 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                   placeholder="Identificador retornado pelo agendador"
                 />
               </label>
+              <p className="basis-full text-xs leading-5 text-slate-500">Task UID é o código único que o serviço de agendamento fornece quando você cria a tarefa. Cole esse código aqui para associar os callbacks daquela tarefa a esta fonte. Este campo não cria a tarefa; apenas vincula uma tarefa já criada.</p>
               <button
                 className="rounded-lg border px-3 py-2 text-sm"
-                disabled={saveTask.isPending}
+                disabled={saveTask.isPending>
                 onClick={() =>
                   saveTask.mutate({
                     code: source.code as "pncp" | "compras.gov.br",
@@ -221,10 +223,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               </span>
             </div>
             {source.lastError && (
-              <p className="mt-3 flex items-center gap-2 text-xs text-rose-700">
-                <CircleAlert size={14} />
-                {source.lastError}
-              </p>
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4"><p className="flex items-center gap-2 text-sm font-semibold text-rose-800"><CircleAlert size={15}/> Último erro registrado</p><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-rose-900">{source.lastError}</p><p className="mt-2 text-xs text-rose-700">Consulte também as execuções recentes abaixo para comparar horário, status e quantidade de erros.</p></div>
             )}
           </article>
           </div>
@@ -325,7 +324,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
+export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; onOpenSources?: () => void }) {
   const query = trpc.admin.overview.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading) return <Loading label="Carregando dados administrativos…" />;
@@ -429,7 +428,7 @@ export function AdminOverview({ isAdmin }: { isAdmin: boolean }) {
               {failedSources.map((source: any) => (
                 <div key={source.code} className="flex items-start justify-between gap-3 py-3">
                   <div><p className="text-sm font-semibold text-slate-700">{source.name}</p><p className="mt-0.5 text-xs text-slate-500">Há falha ou erro registrado no histórico desta fonte.</p></div>
-                  <span className="shrink-0 text-xs font-semibold text-rose-700">Verificar</span>
+                  <button type="button" onClick={onOpenSources} className="shrink-0 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50">Verificar fonte</button>
                 </div>
               ))}
             </div>
