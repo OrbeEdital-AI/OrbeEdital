@@ -68,6 +68,7 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
           currency_id: "BRL",
         },
         back_url: `${SITE_URL}/app/billing?checkout=return`,
+        notification_url: `${SITE_URL}/api/webhooks/mercadopago`,
       }),
     });
     if (!created.id || !created.init_point) throw new Error("Mercado Pago não retornou o link de checkout.");
