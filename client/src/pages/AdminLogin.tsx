@@ -14,9 +14,12 @@ export default function AdminLogin() {
     await utils.auth.me.invalidate();
 
     if (result.user.role !== "superadmin" || !result.user.emailVerifiedAt) {
-      await logout.mutateAsync();
+      await logout.mutateAsync().catch(() => undefined);
       await utils.auth.me.setData(undefined, null);
-      throw new Error("Esta conta não possui permissão de Administrador Geral ou ainda não confirmou o e-mail.");
+      if (!result.user.emailVerifiedAt) {
+        throw new Error("E-mail e senha reconhecidos, mas o endereço ainda não foi confirmado. Confirme o e-mail da conta e tente novamente.");
+      }
+      throw new Error("E-mail e senha reconhecidos, mas esta conta não tem o perfil Administrador Geral. O acesso ao painel exige autorização superadmin; solicite a liberação ao responsável pela plataforma.");
     }
 
     navigate("/app/admin");
