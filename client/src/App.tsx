@@ -92,8 +92,14 @@ function Router() {
     <Route path="/app/admin/finance" component={Portal}/>
     <Route path="/app/admin/:section" component={AdminConsole}/>
     <Route path="/app/admin" component={AdminConsole}/>
-    <Route path="/app/*" component={Portal}/>
+    <Route path="/app/billing" component={Portal}/>
+    <Route path="/app/profile" component={Portal}/>
+    <Route path="/app/opportunities/:id" component={Portal}/>
+    <Route path="/app/opportunities" component={Portal}/>
+    <Route path="/app/favorites" component={Portal}/>
+    <Route path="/app/saved-searches" component={Portal}/>
     <Route path="/app" component={Portal}/>
+    <Route path="/app/*" component={Portal}/>
     <Route path="/terms"><LegalPage kind="terms"/></Route>
     <Route path="/privacy"><LegalPage kind="privacy"/></Route>
     <Route path="/admin" component={AdminAlias}/>
