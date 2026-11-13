@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import {
   Activity,
-  Bookmark,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -106,11 +105,6 @@ export default function Portal() {
       { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
       { label: "Favoritos", href: "/app/favorites", icon: Heart },
       { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
-      {
-        label: "Pesquisas salvas",
-        href: "/app/saved-searches",
-        icon: Bookmark,
-      },
       ...(canViewAdmin
         ? [{ label: "Administração", href: "/app/admin", icon: Shield }]
         : []),
@@ -375,6 +369,12 @@ export default function Portal() {
             <Route path="/app/profile">
               <ProfilePage />
             </Route>
+            <Route path="/app/opportunities/saved-searches">
+              <div className="space-y-4">
+                <Link href="/app/opportunities" className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-800 hover:underline">← Voltar para oportunidades</Link>
+                <SavedSearches />
+              </div>
+            </Route>
             <Route path="/app/opportunities/:id">
               <OpportunityDetailPage />
             </Route>
@@ -385,9 +385,6 @@ export default function Portal() {
                 error={favorites.error?.message}
                 empty="Você ainda não salvou oportunidades."
               />
-            </Route>
-            <Route path="/app/saved-searches">
-              <SavedSearches />
             </Route>
             <Route path="/app/opportunities">
               <>
