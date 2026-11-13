@@ -89,8 +89,8 @@ function Router() {
     <Route path="/reset-password" component={ResetPasswordPage}/>
     <Route path="/app/admin/login" component={AdminLogin}/>
     <Route path="/app/admin" component={AdminConsole}/>
-    <Route path="/app" component={Portal}/>
     <Route path="/app/*" component={Portal}/>
+    <Route path="/app" component={Portal}/>
     <Route path="/terms"><LegalPage kind="terms"/></Route>
     <Route path="/privacy"><LegalPage kind="privacy"/></Route>
     <Route path="/admin" component={AdminAlias}/>
