@@ -145,13 +145,13 @@ export async function handleMercadoPagoWebhook(req: any) {
       .where(eq(subscriptions.providerSubscriptionId, remoteSubscriptionId)).limit(1);
     if (!local) return;
     const amountCents = Math.round(Number(invoice.transaction_amount || 0) * 100);
-    const rawStatus = String(invoice.status || "pending");
-    const paymentStatus = rawStatus === "approved" ? "approved" : rawStatus;
+    const rawStatus = String(invoice.payment?.status || invoice.summarized || invoice.status || "pending");
+    const paymentStatus = rawStatus;
     await getDb().insert(payments).values({
       subscriptionId: local.id,
       companyId: local.companyId,
       provider: "mercadopago",
-      providerPaymentId: String(invoice.id),
+      providerPaymentId: String(invoice.payment?.id || invoice.id),
       amountCents,
       currency: String(invoice.currency_id || "BRL"),
       status: paymentStatus,
