@@ -59,6 +59,7 @@ export default function Portal() {
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
+  const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
     retry: false,
@@ -305,12 +306,49 @@ export default function Portal() {
             <h1 className="mt-1 text-xl font-bold text-[#102B4E]">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 sm:inline">
-              Plano e pagamentos: configuração pendente
+            <span className="hidden rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-900 sm:inline">
+              {planUsage.data?.plan ? `Plano: ${planUsage.data.plan.name}` : "Sem assinatura ativa"}
             </span>
           </div>
         </header>
         <div className="mx-auto max-w-7xl space-y-6 p-5 sm:p-8">
+          {path === "/app" && !planUsage.isLoading && (
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-800">Consumo da assinatura</p>
+                  <h2 className="mt-1 text-lg font-bold text-[#102B4E]">{planUsage.data?.plan ? planUsage.data.plan.name : "Escolha seu plano"}</h2>
+                </div>
+                <Link href="/app/billing" className="rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#173f60]">
+                  {planUsage.data?.plan ? "Ver assinatura" : "Conhecer planos"}
+                </Link>
+              </div>
+              {planUsage.data?.hasSubscription && planUsage.data.limits && planUsage.data.usage ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  {[
+                    { label: "Pesquisas neste mês", used: planUsage.data.usage.searchesThisMonth, limit: Number(planUsage.data.limits.maxSearchesPerMonth ?? 0) },
+                    { label: "Oportunidades favoritas", used: planUsage.data.usage.favorites, limit: Number(planUsage.data.limits.maxFavorites ?? 0) },
+                    { label: "Pesquisas salvas", used: planUsage.data.usage.savedSearches, limit: Number(planUsage.data.limits.maxSavedSearches ?? 0) },
+                  ].map(item => {
+                    const percent = item.limit > 0 ? Math.min(100, Math.round(item.used / item.limit * 100)) : 0;
+                    return (
+                      <div key={item.label} className="space-y-1.5">
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span className="font-medium text-slate-700">{item.label}</span>
+                          <span className="text-slate-500">{item.used.toLocaleString("pt-BR")} / {item.limit.toLocaleString("pt-BR")}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div className={`h-full rounded-full ${percent >= 80 ? "bg-amber-500" : "bg-cyan-700"}`} style={{ width: `${percent}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-600">Sua empresa ainda não possui uma assinatura ativa. Escolha o Essencial ou o Profissional para começar a pesquisar licitações.</p>
+              )}
+            </section>
+          )}
           <Switch>
             <Route path="/app/admin/sources">
               <SourcesPage isAdmin={canManageSources} />
