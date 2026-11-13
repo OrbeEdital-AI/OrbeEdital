@@ -10,12 +10,13 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="font-medium text-slate-700">{label}</span>
         <span className={nearLimit ? "font-semibold text-amber-700" : "text-slate-500"}>
-          {used.toLocaleString("pt-BR")} / {limit.toLocaleString("pt-BR")}
+          {used.toLocaleString("pt-BR")} / {limit.toLocaleString("pt-BR")} utilizados
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
         <div className={`h-full rounded-full ${nearLimit ? "bg-amber-500" : "bg-cyan-700"}`} style={{ width: `${percentage}%` }} />
       </div>
+      <p className="text-xs text-slate-500">Restam {Math.max(0, limit - used).toLocaleString("pt-BR")}</p>
     </div>
   );
 }
