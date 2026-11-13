@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { auditLogs, companyMembers, companies, payments, plans, subscriptions, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 
@@ -105,8 +105,13 @@ export async function changeMercadoPagoPlan(userId: string, planId: string) {
     )).orderBy(desc(subscriptions.createdAt)).limit(1);
   if (!current) throw new Error("Não encontramos uma assinatura ativa para alterar.");
   if (current.planId === targetPlan.id) throw new Error("Este já é o plano atual.");
+  if (!current.provider && !current.providerSubscriptionId) {
+    // Admin-assigned subscriptions have no recurring payment yet. Start checkout
+    // for the new plan and keep the current access until Mercado Pago confirms it.
+    return createMercadoPagoCheckout(userId, planId, "monthly");
+  }
   if (current.provider !== "mercadopago" || !current.providerSubscriptionId) {
-    throw new Error("Esta assinatura foi atribuída administrativamente e não possui cobrança recorrente vinculada ao Mercado Pago. Solicite a alteração ao suporte.");
+    throw new Error("Esta assinatura usa outro meio de cobrança. Entre em contato com o suporte para alterar o plano.");
   }
 
   await mpRequest<any>(`/preapproval/${encodeURIComponent(current.providerSubscriptionId)}`, {
@@ -195,6 +200,19 @@ export async function handleMercadoPagoWebhook(req: any) {
       currentPeriodStart: status === "active" ? (local.currentPeriodStart || new Date()) : local.currentPeriodStart,
       updatedAt: new Date(),
     }).where(eq(subscriptions.id, local.id));
+    if (status === "active") {
+      // Replace an older admin/manual or pending subscription only after the new
+      // Mercado Pago subscription is authorized, preserving access during checkout.
+      await getDb().update(subscriptions).set({
+        status: "cancelled",
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(subscriptions.companyId, local.companyId),
+        inArray(subscriptions.status, ["active", "trialing"]),
+        lt(subscriptions.createdAt, local.createdAt),
+      ));
+    }
     return;
   }
 
