@@ -29,6 +29,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
+import { createMercadoPagoCheckout } from "./services/mercadoPago";
 import {
   deleteSavedSearch,
   getDashboardSummary,
@@ -218,6 +219,26 @@ export const appRouter = router({
       return { favorited: await toggleFavorite(ctx.user.id, input.opportunityId) };
     }),
   }),
+  billing: router({
+    plans: protectedProcedure.query(async () => getDb().select({
+      id: plans.id, code: plans.code, name: plans.name, description: plans.description,
+      monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents,
+      features: plans.features,
+    }).from(plans).where(eq(plans.active, true))),
+    checkout: protectedProcedure.input(z.object({
+      planId: z.string().uuid(),
+      interval: z.enum(["monthly", "annual"]),
+    })).mutation(async ({ input, ctx }) => {
+      try {
+        return await createMercadoPagoCheckout(ctx.user.id, input.planId, input.interval);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: error instanceof Error ? error.message : "Não foi possível iniciar a assinatura.",
+        });
+      }
+    }),
+  }),
   savedSearches: router({
     list: protectedProcedure.query(({ ctx }) => listSavedSearches(ctx.user.id)),
     create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(100), criteria: z.record(z.string(), z.unknown()) })).mutation(({ input, ctx }) => saveSearch(ctx.user.id, input.name, input.criteria)),
@@ -343,8 +364,8 @@ export const appRouter = router({
       const mrrCents = Math.round(activePlans.reduce((total, row) => total + (row.billingInterval === "annual" ? row.annualPriceCents / 12 : row.monthlyPriceCents), 0));
       const byStatus = Object.fromEntries(paymentGroups.map(row => [row.status, Number(row.amountCents ?? 0)]));
       return {
-        configured: false,
-        note: "Gateway ainda não conectado; métricas abaixo refletem somente registros efetivamente persistidos.",
+        configured: Boolean(process.env.MERCADOPAGO_ACCESS_TOKEN && process.env.MERCADOPAGO_WEBHOOK_SECRET),
+        note: process.env.MERCADOPAGO_ACCESS_TOKEN && process.env.MERCADOPAGO_WEBHOOK_SECRET ? "Mercado Pago configurado. Os valores abaixo refletem os registros recebidos e confirmados pelo webhook." : "Credenciais do Mercado Pago incompletas; os valores refletem somente registros persistidos.",
         activeSubscriptions: activeSubscriptions[0]?.n ?? 0,
         canceledSubscriptions: canceledSubscriptions[0]?.n ?? 0,
         overdueSubscriptions: overdueSubscriptions[0]?.n ?? 0,
