@@ -23,7 +23,6 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 export function BillingPage() {
   const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
-  const utils = trpc.useUtils();
   const checkout = trpc.billing.checkout.useMutation({
     onSuccess: ({ checkoutUrl }) => { window.location.assign(checkoutUrl); },
     onError: error => toast.error(error.message),
@@ -92,11 +91,11 @@ export function BillingPage() {
               </ul>
               <button
                 type="button"
-                disabled={isCurrent || checkout.isPending}
+                disabled={Boolean(current) || checkout.isPending}
                 onClick={() => checkout.mutate({ planId: plan.id, interval: "monthly" })}
                 className="mt-6 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isCurrent ? "Plano atual" : checkout.isPending ? "Preparando checkout…" : current ? "Mudar para este plano" : "Assinar pelo Mercado Pago"}
+                {isCurrent ? "Plano atual" : current ? "Alteração de plano via suporte" : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
               </button>
             </article>
           );
