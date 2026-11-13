@@ -19,7 +19,11 @@ function requiredEnvironment(name: string): string {
 }
 
 async function resolveScheduledTask(req: Request): Promise<string> {
-  const request = req as unknown as { headers: { cookie?: string } };
+  const request = req as unknown as { headers: { cookie?: string; authorization?: string } };
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  if (cronSecret && request.headers.authorization === `Bearer ${cronSecret}`) {
+    return "vercel-cron:compras.gov.br";
+  }
   const token = parseCookieHeader(request.headers.cookie ?? "")[COOKIE_NAME];
   if (!token)
     throw new ScheduledAuthError("Scheduled task credential is missing.");
@@ -95,7 +99,9 @@ export async function handleScheduledSync(req: Request) {
       source.configuration && typeof source.configuration === "object"
         ? source.configuration
         : {};
-    return source.enabled && configuration.scheduledTaskUid === taskUid;
+    return source.enabled && (taskUid === "vercel-cron:compras.gov.br"
+      ? source.code === "compras.gov.br"
+      : configuration.scheduledTaskUid === taskUid);
   });
   if (!matched) {
     await getDb().insert(auditLogs).values({
