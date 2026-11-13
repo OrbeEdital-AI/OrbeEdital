@@ -242,11 +242,11 @@ export default function Portal() {
     : [];
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa] text-slate-800 md:flex">
-      <aside className="flex flex-col border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between px-5 py-5">
+    <div className="min-h-screen bg-[#e5edf4] text-slate-800 md:flex">
+      <aside className="flex flex-col border-b border-[#173b5b] bg-gradient-to-b from-[#102b4e] to-[#173f60] text-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
           <BrandMark />
-          <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-800">
+          <span className="rounded-full border border-cyan-300/30 bg-cyan-300/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-100">
             Portal
           </span>
         </div>
@@ -258,32 +258,32 @@ export default function Portal() {
             <Link
               key={href}
               href={href}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-[#eaf5fa] text-[#075e7f]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}
             >
               <Icon size={18} />
               {label}
             </Link>
           ))}
         </nav>
-        <div className="mt-auto border-t border-slate-100 p-3 sm:p-4">
+        <div className="mt-auto border-t border-white/15 p-3 sm:p-4">
           <Link
             href="/app/profile"
-            className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${path === "/app/profile" ? "bg-[#eaf5fa] text-[#075e7f]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+            className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${path === "/app/profile" ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}
           >
             <Building2 size={18} />
             Perfil da empresa
           </Link>
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#102B4E] font-semibold text-white">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan-500 font-semibold text-white">
               {me?.name?.slice(0, 1).toUpperCase() ?? "C"}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{me?.name}</p>
-              <p className="truncate text-xs text-slate-500">{me?.email}</p>
+              <p className="truncate text-xs text-blue-200">{me?.email}</p>
             </div>
           </div>
           <button
-            className="mt-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            className="mt-3 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-blue-100 hover:bg-white/10 hover:text-white"
             onClick={() => logout.mutate()}
             type="button"
           >
@@ -293,7 +293,7 @@ export default function Portal() {
         </div>
       </aside>
       <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[#c4d5e2] bg-[#d9e7f0]/95 px-5 py-4 shadow-sm backdrop-blur sm:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-800">
               OrbeEdital / Portal
