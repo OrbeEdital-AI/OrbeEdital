@@ -66,6 +66,8 @@ export default function Portal() {
     enabled: !!auth.user && emailVerified,
     retry: false,
   });
+  const recordSearch = trpc.opportunities.recordSearch.useMutation();
+  const handleExplicitSearch = async () => { await recordSearch.mutateAsync(); };
   const searchQuery = trpc.opportunities.search.useQuery(
     {
       query: query || undefined,
@@ -395,6 +397,7 @@ export default function Portal() {
                   setState={setSearchState}
                   source={source}
                   setSource={setSearchSource}
+                  onSearch={handleExplicitSearch}
                 />
                 <OpportunityList
                   items={(searchQuery.data?.items ?? []) as AnyOpportunity[]}
