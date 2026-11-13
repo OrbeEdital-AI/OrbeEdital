@@ -37,12 +37,12 @@ export default function AdminAuditPage() {
       <div className="overflow-hidden rounded-xl border bg-white">
         <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500">
           <span>{audit.data?.total ?? 0} eventos encontrados</span>
-          <button onClick={() => audit.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button>
+          <button onClick={() => audit.refetch()} disabled={audit.isFetching} className="inline-flex items-center gap-2 font-medium text-cyan-800 disabled:opacity-50"><RefreshCw className={audit.isFetching ? "animate-spin" : ""} size={14}/> Atualizar</button>
         </div>
         {audit.isLoading ? (
           <p className="p-10 text-center text-sm text-slate-500">Carregando registros de auditoria…</p>
         ) : audit.error ? (
-          <div className="p-8 text-center text-sm text-rose-700">{audit.error.message}</div>
+          <div className="p-8 text-center"><p className="text-sm font-semibold text-rose-800">Não foi possível carregar a trilha de auditoria.</p><p className="mt-2 break-words text-xs text-rose-700">{audit.error.message}</p><button onClick={() => audit.refetch()} className="mt-3 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-800">Tentar novamente</button></div>
         ) : audit.data?.items.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -56,7 +56,7 @@ export default function AdminAuditPage() {
                     <td className="px-4 py-3"><p className="font-medium text-slate-800">{item.actorName ?? "Sistema"}</p><p className="text-xs text-slate-500">{item.actorEmail ?? "Evento sem usuário associado"}</p></td>
                     <td className="px-4 py-3"><span className="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-900">{item.action}</span></td>
                     <td className="px-4 py-3">{item.entityType}{item.entityId ? <p className="max-w-[180px] truncate text-xs text-slate-500">{item.entityId}</p> : null}</td>
-                    <td className="max-w-[280px] px-4 py-3 text-xs text-slate-600"><pre className="whitespace-pre-wrap break-words font-sans">{JSON.stringify(item.details ?? {}, null, 2)}</pre></td>
+                    <td className="max-w-[320px] px-4 py-3 text-xs text-slate-600"><details className="group"><summary className="cursor-pointer select-none font-semibold text-cyan-800 hover:text-cyan-950">Ver detalhes do evento</summary><pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-slate-50 p-3 whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-slate-700">{JSON.stringify(item.details ?? {}, null, 2)}</pre></details></td>
                   </tr>
                 ))}
               </tbody>
