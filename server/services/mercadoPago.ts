@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { companyMembers, companies, payments, plans, subscriptions, users } from "../../drizzle/schema";
+import { auditLogs, companyMembers, companies, payments, plans, subscriptions, users } from "../../drizzle/schema";
 import { getDb } from "../db";
 
 const MP_API = "https://api.mercadopago.com";
@@ -82,6 +82,66 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
       .where(eq(subscriptions.id, localSubscription.id));
     throw error;
   }
+}
+
+
+export async function changeMercadoPagoPlan(userId: string, planId: string) {
+  const db = getDb();
+  const [membership] = await db.select({ companyId: companyMembers.companyId })
+    .from(companyMembers).where(eq(companyMembers.userId, userId)).limit(1);
+  if (!membership) throw new Error("Sua conta não possui uma empresa vinculada.");
+
+  const [targetPlan] = await db.select().from(plans)
+    .where(and(eq(plans.id, planId), eq(plans.active, true))).limit(1);
+  if (!targetPlan || !["essencial", "profissional"].includes(targetPlan.code)) {
+    throw new Error("Plano indisponível.");
+  }
+  if (targetPlan.monthlyPriceCents <= 0) throw new Error("O plano selecionado não possui preço mensal configurado.");
+
+  const [current] = await db.select().from(subscriptions)
+    .where(and(
+      eq(subscriptions.companyId, membership.companyId),
+      inArray(subscriptions.status, ["active", "trialing"]),
+    )).orderBy(desc(subscriptions.createdAt)).limit(1);
+  if (!current) throw new Error("Não encontramos uma assinatura ativa para alterar.");
+  if (current.planId === targetPlan.id) throw new Error("Este já é o plano atual.");
+  if (current.provider !== "mercadopago" || !current.providerSubscriptionId) {
+    throw new Error("Esta assinatura foi atribuída administrativamente e não possui cobrança recorrente vinculada ao Mercado Pago. Solicite a alteração ao suporte.");
+  }
+
+  await mpRequest<any>(`/preapproval/${encodeURIComponent(current.providerSubscriptionId)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      reason: `OrbeEdital - ${targetPlan.name}`,
+      auto_recurring: {
+        transaction_amount: targetPlan.monthlyPriceCents / 100,
+        currency_id: "BRL",
+      },
+    }),
+  });
+
+  await db.update(subscriptions).set({
+    planId: targetPlan.id,
+    billingInterval: "monthly",
+    updatedAt: new Date(),
+  }).where(eq(subscriptions.id, current.id));
+
+  await db.insert(auditLogs).values({
+    actorUserId: userId,
+    companyId: membership.companyId,
+    action: "subscription.plan.customer_changed",
+    entityType: "subscription",
+    entityId: current.id,
+    details: {
+      previousPlanId: current.planId,
+      newPlanId: targetPlan.id,
+      previousPlanCode: null,
+      newPlanCode: targetPlan.code,
+      provider: "mercadopago",
+    },
+  });
+
+  return { success: true, planName: targetPlan.name };
 }
 
 function validWebhookSignature(signature: string, requestId: string, dataId: string, secret: string) {
