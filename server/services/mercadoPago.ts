@@ -104,7 +104,7 @@ export async function handleMercadoPagoWebhook(req: any) {
   if (!secret) throw new Error("Webhook secret não configurado.");
   const signature = String(req.get("x-signature") || "");
   const requestId = String(req.get("x-request-id") || "");
-  const dataId = String(req.query?.["data.id"] || req.query?.data_id || "");
+  const dataId = String(req.query?.["data.id"] || req.query?.data?.id || req.query?.data_id || "");
   if (!signature || !requestId || !dataId || !validWebhookSignature(signature, requestId, dataId, secret)) {
     const error = new Error("Assinatura de webhook inválida.");
     (error as any).statusCode = 401;
