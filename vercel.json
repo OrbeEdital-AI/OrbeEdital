@@ -5,5 +5,11 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/scheduled/sync",
+      "schedule": "0 12 * * *"
+    }
   ]
 }
