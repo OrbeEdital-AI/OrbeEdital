@@ -1,9 +1,9 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { and, count, desc, eq, inArray, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lt, sum } from "drizzle-orm";
 import { z } from "zod";
-import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites } from "../drizzle/schema";
+import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites, notifications } from "../drizzle/schema";
 import {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -221,6 +221,76 @@ export const appRouter = router({
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
       return result;
     }),
+  }),
+  agenda: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const now = new Date();
+      const horizon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const db = getDb();
+      const rows = await db.select({
+        opportunity: opportunities,
+        sourceName: connectors.name,
+      }).from(favorites)
+        .innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
+        .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
+        .where(and(
+          eq(favorites.userId, ctx.user.id),
+          gte(opportunities.proposalDeadline, now),
+          lt(opportunities.proposalDeadline, horizon),
+        ))
+        .orderBy(opportunities.proposalDeadline);
+      const reminders = rows.filter(row => row.opportunity.proposalDeadline &&
+        row.opportunity.proposalDeadline.getTime() <= now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      for (const row of reminders) {
+        const existing = await db.select({ id: notifications.id }).from(notifications)
+          .where(and(
+            eq(notifications.userId, ctx.user.id),
+            eq(notifications.opportunityId, row.opportunity.id),
+            eq(notifications.type, "deadline_reminder"),
+          )).limit(1);
+        if (!existing.length) {
+          await db.insert(notifications).values({
+            userId: ctx.user.id,
+            opportunityId: row.opportunity.id,
+            type: "deadline_reminder",
+            title: "Prazo de licitação se aproximando",
+            message: `A oportunidade "${row.opportunity.title}" encerra o recebimento de propostas em breve.`,
+            href: `/app/opportunities/${row.opportunity.id}`,
+          });
+        }
+      }
+      return rows.map(row => ({
+        ...row.opportunity,
+        sourceName: row.sourceName,
+        href: `/app/opportunities/${row.opportunity.id}`,
+      }));
+    }),
+  }),
+  notifications: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const rows = await getDb().select().from(notifications)
+        .where(eq(notifications.userId, ctx.user.id))
+        .orderBy(desc(notifications.createdAt))
+        .limit(100);
+      return {
+        items: rows,
+        unread: rows.filter(item => !item.readAt).length,
+      };
+    }),
+    markRead: protectedProcedure.input(z.object({ id: z.string().uuid().optional(), all: z.boolean().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const db = getDb();
+        if (input.all) {
+          await db.update(notifications).set({ readAt: new Date() })
+            .where(and(eq(notifications.userId, ctx.user.id), isNotNull(notifications.id)));
+        } else if (input.id) {
+          await db.update(notifications).set({ readAt: new Date() })
+            .where(and(eq(notifications.userId, ctx.user.id), eq(notifications.id, input.id)));
+        } else {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma notificação ou solicite marcar todas como lidas." });
+        }
+        return { updated: true };
+      }),
   }),
   favorites: router({
     list: protectedProcedure.query(({ ctx }) => listFavorites(ctx.user.id)),
