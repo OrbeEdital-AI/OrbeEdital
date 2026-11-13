@@ -205,7 +205,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               <p className="basis-full text-xs leading-5 text-slate-500">Task UID é o código único que o serviço de agendamento fornece quando você cria a tarefa. Cole esse código aqui para associar os callbacks daquela tarefa a esta fonte. Este campo não cria a tarefa; apenas vincula uma tarefa já criada.</p>
               <button
                 className="rounded-lg border px-3 py-2 text-sm"
-                disabled={saveTask.isPending>
+                disabled={saveTask.isPending}
                 onClick={() =>
                   saveTask.mutate({
                     code: source.code as "pncp" | "compras.gov.br",
