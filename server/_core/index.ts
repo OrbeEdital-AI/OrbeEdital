@@ -90,7 +90,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
   app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
-  app.post("/api/scheduled/sync", async (req, res) => {
+  app.all("/api/scheduled/sync", async (req, res) => {
     try {
       const result = await handleScheduledSync(req);
       res.set("Cache-Control", "no-store").status(200).json(result);
