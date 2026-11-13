@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  ArrowLeft, Database, LayoutDashboard,
+  ArrowLeft, Database, LayoutDashboard, Pencil,
   LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -65,6 +65,9 @@ function AccessDenied() {
 function CustomerDirectory() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [editingUser, setEditingUser] = useState<{ id: string; name: string; phone: string | null } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const query = trpc.adminUsers.list.useQuery(
     { query: search.trim() || undefined, page, pageSize: 25 },
     { retry: false, placeholderData: previous => previous }
@@ -74,6 +77,15 @@ function CustomerDirectory() {
   const updateRole = trpc.adminUsers.updateRole.useMutation({
     onSuccess: async result => {
       toast.success(result.updated ? "Perfil atualizado e registrado na auditoria." : "O usuário já possui esse perfil.");
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateProfile = trpc.adminUsers.updateProfile.useMutation({
+    onSuccess: async result => {
+      toast.success(result.updated ? "Informações do usuário atualizadas." : "Nenhuma alteração necessária.");
+      setEditingUser(null);
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
@@ -105,17 +117,17 @@ function CustomerDirectory() {
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th><th className="px-4 py-3">Editar</th></tr></thead>
                 <tbody>
                   {data?.items.map(user => <tr key={user.id} className="border-t">
-                    <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td>
+                    <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p>{user.phone && <p className="text-xs text-slate-500">{user.phone}</p>}</td>
                     <td className="px-4 py-3">{user.companyName ?? "Não vinculada"}</td>
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium">{user.role}</span>{user.role !== "superadmin" && <select aria-label={`Alterar perfil de ${user.name}`} disabled={updateRole.isPending} value={user.role} onChange={event => { const role = event.target.value as "user" | "admin" | "source_operator" | "support" | "finance"; if (window.confirm(`Confirma alterar o perfil de ${user.name} para ${role}?`)) updateRole.mutate({ userId: user.id, role }); }} className="max-w-36 rounded-md border px-2 py-1 text-xs"><option value="user">Cliente</option><option value="admin">Administrador</option><option value="source_operator">Operador de fontes</option><option value="support">Suporte</option><option value="finance">Financeiro</option></select>}</div></td>
                     <td className="px-4 py-3">{user.emailVerifiedAt ? <span className="text-emerald-700">Verificado</span> : <span className="text-amber-700">Pendente</span>}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>}</td>
+                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button aria-label={`Editar informações de ${user.name}`} title="Editar perfil" onClick={() => { setEditingUser({ id: user.id, name: user.name, phone: user.phone ?? null }); setEditName(user.name); setEditPhone(user.phone ?? ""); }} className="inline-flex items-center gap-1.5 rounded-md border border-cyan-200 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"><Pencil size={13}/> Editar</button>}</td>
                   </tr>)}
-                  {!data?.items.length && <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
+                  {!data?.items.length && <tr><td colSpan={8} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -125,6 +137,17 @@ function CustomerDirectory() {
             </div>
           </>}
       </div>
+      {editingUser && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setEditingUser(null); }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="edit-user-title" className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4"><div><h3 id="edit-user-title" className="text-lg font-bold text-[#102B4E]">Editar informações do usuário</h3><p className="mt-1 text-sm text-slate-500">{editingUser.id}</p></div><button aria-label="Fechar edição" onClick={() => setEditingUser(null)} className="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">✕</button></div>
+          <div className="mt-5 space-y-4">
+            <label className="block text-sm font-medium text-slate-700">Nome completo<input autoFocus value={editName} onChange={event => setEditName(event.target.value)} maxLength={160} className="mt-1 w-full rounded-lg border px-3 py-2.5 outline-none focus:border-cyan-700" /></label>
+            <label className="block text-sm font-medium text-slate-700">Telefone<input value={editPhone} onChange={event => setEditPhone(event.target.value)} maxLength={40} placeholder="(DDD) 00000-0000" className="mt-1 w-full rounded-lg border px-3 py-2.5 outline-none focus:border-cyan-700" /></label>
+            <p className="text-xs leading-5 text-slate-500">O e-mail e o papel de acesso não são alterados nesta edição. A mudança fica registrada na auditoria administrativa.</p>
+          </div>
+          <div className="mt-6 flex justify-end gap-2"><button onClick={() => setEditingUser(null)} className="rounded-lg border px-4 py-2 text-sm font-medium">Cancelar</button><button disabled={updateProfile.isPending || !editName.trim()} onClick={() => updateProfile.mutate({ userId: editingUser.id, name: editName.trim(), phone: editPhone.trim() || null })} className="rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{updateProfile.isPending ? "Salvando…" : "Salvar alterações"}</button></div>
+        </section>
+      </div>}
     </section>
   );
 }
