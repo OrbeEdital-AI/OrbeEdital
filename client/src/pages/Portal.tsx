@@ -11,7 +11,9 @@ import {
   Heart,
   LayoutDashboard,
   LogOut,
+  Menu,
   Shield,
+  X,
   Wallet,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -31,6 +33,7 @@ import {
 export default function Portal() {
   const auth = useAuth();
   const [path, navigate] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [query, setQueryState] = useState("");
   const [state, setState] = useState("");
   const [source, setSource] = useState<"" | "pncp" | "compras.gov.br">("");
@@ -248,8 +251,13 @@ export default function Portal() {
 
   return (
     <div className="min-h-screen bg-[#e5edf4] text-slate-800 md:flex">
-      <aside className="flex flex-col border-b border-[#173b5b] bg-gradient-to-b from-[#102b4e] to-[#173f60] text-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r">
+      {mobileMenuOpen && <button aria-label="Fechar menu" className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] md:hidden" onClick={() => setMobileMenuOpen(false)} type="button" />}
+      <button aria-label="Abrir menu" className="fixed left-4 top-4 z-30 grid h-12 w-12 place-items-center rounded-full border border-white/15 bg-[#102b4e] text-white shadow-lg md:hidden" onClick={() => setMobileMenuOpen(true)} type="button">
+        <Menu size={21} />
+      </button>
+      <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#173b5b] bg-gradient-to-b from-[#102b4e] to-[#173f60] text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:border-r`}>
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
+          <button aria-label="Fechar menu" className="ml-auto rounded-lg p-2 text-blue-100 hover:bg-white/10 md:hidden" onClick={() => setMobileMenuOpen(false)} type="button"><X size={20} /></button>
           <BrandMark />
           <span className="rounded-full border border-cyan-300/30 bg-cyan-300/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-100">
             Portal
@@ -257,12 +265,13 @@ export default function Portal() {
         </div>
         <nav
           aria-label="Navegação do portal"
-          className="flex flex-col gap-1 px-3 pb-4 md:flex-1 md:overflow-y-auto md:space-y-1"
+          className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 md:space-y-1"
         >
           {sections.map(({ label, href, icon: Icon }) => (
             <Link
               key={href}
               href={href}
+              onClick={() => setMobileMenuOpen(false)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}
             >
               <Icon size={18} />
@@ -298,7 +307,7 @@ export default function Portal() {
         </div>
       </aside>
       <main className="min-w-0 flex-1">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[#c4d5e2] bg-[#d9e7f0]/95 px-5 py-4 shadow-sm backdrop-blur sm:px-8">
+        <header className="relative z-10 flex items-center justify-between border-b border-[#c4d5e2] bg-[#d9e7f0]/95 px-5 pb-4 pt-20 shadow-sm backdrop-blur sm:px-8 sm:pt-20 md:sticky md:top-0 md:py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-800">
               OrbeEdital / Portal
