@@ -1,7 +1,7 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { and, count, desc, eq, gte, inArray, isNotNull, lt, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lt, or, sum } from "drizzle-orm";
 import { z } from "zod";
 import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites, notifications } from "../drizzle/schema";
 import {
@@ -235,8 +235,11 @@ export const appRouter = router({
         .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
         .where(and(
           eq(favorites.userId, ctx.user.id),
-          gte(opportunities.proposalDeadline, now),
-          lt(opportunities.proposalDeadline, horizon),
+          or(
+            and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, horizon)),
+            and(gte(opportunities.openingDate, now), lt(opportunities.openingDate, horizon)),
+            and(gte(opportunities.sessionAt, now), lt(opportunities.sessionAt, horizon)),
+          ),
         ))
         .orderBy(opportunities.proposalDeadline);
       const reminders = rows.filter(row => row.opportunity.proposalDeadline &&
@@ -268,7 +271,23 @@ export const appRouter = router({
   }),
   notifications: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const rows = await getDb().select().from(notifications)
+      const db = getDb();
+      const now = new Date();
+      const soon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const due = await db.select({ id: opportunities.id, title: opportunities.title })
+        .from(favorites).innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
+        .where(and(eq(favorites.userId, ctx.user.id), gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, soon)));
+      for (const opportunity of due) {
+        const existing = await db.select({ id: notifications.id }).from(notifications)
+          .where(and(eq(notifications.userId, ctx.user.id), eq(notifications.opportunityId, opportunity.id), eq(notifications.type, "deadline_reminder"))).limit(1);
+        if (!existing.length) await db.insert(notifications).values({
+          userId: ctx.user.id, opportunityId: opportunity.id, type: "deadline_reminder",
+          title: "Prazo de licitação se aproximando",
+          message: `A oportunidade "${opportunity.title}" encerra o recebimento de propostas em breve.`,
+          href: `/app/opportunities/${opportunity.id}`,
+        });
+      }
+      const rows = await db.select().from(notifications)
         .where(eq(notifications.userId, ctx.user.id))
         .orderBy(desc(notifications.createdAt))
         .limit(100);
