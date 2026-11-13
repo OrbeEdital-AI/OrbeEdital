@@ -5,6 +5,7 @@ import {
   ArrowDownToLine,
   Building2,
   CalendarDays,
+  Clock,
   CheckCircle2,
   CircleAlert,
   Database,
@@ -23,7 +24,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
-import { brazilGreeting, date, money, Loading, ErrorState, statusLabel } from "./common";
+import { brazilGreeting, date, dateTime, money, Loading, ErrorState, statusLabel } from "./common";
 import type { AnyOpportunity } from "./common";
 export function Dashboard({
   summary,
@@ -375,6 +376,7 @@ export function OpportunityList({
                 </span>
                 <span>Valor: {money(item.estimatedValue)}</span>
                 <span>Prazo: {date(item.proposalDeadline)}</span>
+                <span className="inline-flex items-center gap-1"><Clock size={13} /> Extraída em: {dateTime(item.lastSyncedAt)}</span>
               </div>
             </div>
             <button
@@ -489,6 +491,7 @@ export function OpportunityDetailPage() {
             ["Publicação", date(item.publicationDate)],
             ["Abertura", date(item.openingDate)],
             ["Prazo de propostas", date(item.proposalDeadline)],
+            ["Última extração", dateTime(item.lastSyncedAt)],
           ].map(([label, value]) => (
             <div key={label}>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
