@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft, Database, LayoutDashboard,
-  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History,
+  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
@@ -197,8 +197,17 @@ function SettingsPage() {
 
 export default function AdminConsole() {
   const auth = useAuth();
-  const [, navigate] = useLocation();
-  const [section, setSection] = useState<Section>("overview");
+  const [path, navigate] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const sectionFromPath = (value: string): Section => {
+    const candidate = value.split("/").filter(Boolean).at(-1) as Section | undefined;
+    return candidate && nav.some(item => item.id === candidate) ? candidate : "overview";
+  };
+  const section = sectionFromPath(path);
+  const selectSection = (next: Section) => {
+    navigate(next === "overview" ? "/app/admin" : `/app/admin/${next}`);
+    setMobileMenuOpen(false);
+  };
   const me = auth.user as (typeof auth.user & { role?: string; name?: string; email?: string }) | null;
   const allowed = me?.role === "superadmin";
 
@@ -217,26 +226,26 @@ export default function AdminConsole() {
   const current = nav.find(item => item.id === section)!;
   const Icon = current.icon;
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-800 lg:flex">
-    <aside className="flex flex-col border-b border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-b-0">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-3"><div className="flex min-w-0 items-center gap-2"><BrandMark showWordmark={false} className="shrink-0"/><span className="whitespace-nowrap text-[13px] font-extrabold tracking-[.12em] text-white">ORBE<span className="text-cyan-300">EDITAL</span></span></div><span className="rounded-full bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span></div>
+    <aside className="relative flex flex-col border-b border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-b-0">
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-3"><div className="flex min-w-0 items-center gap-2"><BrandMark showWordmark={false} className="shrink-0"/><span className="whitespace-nowrap text-[13px] font-extrabold tracking-[.12em] text-white">ORBE<span className="text-cyan-300">EDITAL</span></span></div><div className="flex items-center gap-2"><span className="rounded-full bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span><button type="button" aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"} aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(value => !value)} className="grid h-9 w-9 place-items-center rounded-lg text-white hover:bg-white/10 lg:hidden">{mobileMenuOpen ? <X size={19}/> : <Menu size={19}/>}</button></div></div>
       <div className="px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-200">Administração</p></div>
-      <nav aria-label="Administração" className="flex flex-wrap gap-1.5 px-2 pb-3 lg:block lg:flex-1 lg:overflow-y-auto">
-        {navGroups.map(group => <div key={group.title} className="mb-2 min-w-[145px] flex-1 lg:min-w-0">
+      <nav aria-label="Administração" className={`${mobileMenuOpen ? "flex" : "hidden"} flex-col gap-1 px-2 pb-3 lg:flex lg:flex-1 lg:overflow-y-auto`}>
+        {navGroups.map(group => <div key={group.title} className="mb-2 min-w-0 lg:min-w-0">
           <p className="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-[.14em] text-blue-300/70">{group.title}</p>
-          <div className="space-y-px">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => setSection(item.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium transition ${section === item.id ? "bg-white font-semibold text-[#102B4E] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}><ItemIcon size={15}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
+          <div className="space-y-px">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium transition ${section === item.id ? "bg-white font-semibold text-[#102B4E] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}><ItemIcon size={15}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
         </div>)}
       </nav>
       <div className="border-t border-white/10 p-2.5"><div className="rounded-md bg-white/5 p-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-blue-300">Sessão administrativa</p><p className="mt-1.5 truncate text-xs font-semibold">{me.name}</p><p className="truncate text-[11px] text-blue-200">{me.email}</p><span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Superadmin verificado</span></div><button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-blue-100 hover:bg-white/10"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
     </aside>
     <main className="min-w-0 flex-1">
-      <header className="sticky top-0 z-20 border-b border-slate-200/90 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
+      <header className="relative z-10 border-b border-slate-200/90 bg-white/95 px-4 py-4 sm:px-7 lg:sticky lg:top-0">
         <div className="mx-auto max-w-[1540px]">
           <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-800">OrbeEdital <span className="mx-1 text-slate-300">/</span> Administração geral <span className="mx-1 text-slate-300">/</span> {current.label}</p><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada</span></div>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · Superadmin</span></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
-        {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => setSection("sources")}/>}
+        {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => selectSection("sources")}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
