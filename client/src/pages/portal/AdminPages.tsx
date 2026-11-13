@@ -286,9 +286,8 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   ] as const;
   return (
     <>
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <strong>Gateway não conectado.</strong> {d.note} Estes valores não
-        representam cobranças processadas por Mercado Pago ou Asaas.
+      <div className={`rounded-xl border p-4 text-sm ${d.configured ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+        <strong>{d.configured ? "Mercado Pago configurado." : "Gateway não conectado."}</strong> {d.note}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map(([label, value]) => (
