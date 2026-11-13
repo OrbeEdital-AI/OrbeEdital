@@ -186,7 +186,7 @@ export default function AdminConsole() {
   const Icon = current.icon;
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-800 lg:flex">
     <aside className="flex flex-col border-b border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-b-0">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-3"><BrandMark/><span className="rounded-full bg-cyan-300/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span></div>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-3"><div className="flex min-w-0 items-center gap-2"><BrandMark showWordmark={false} className="shrink-0"/><span className="whitespace-nowrap text-[13px] font-extrabold tracking-[.12em] text-white">ORBE<span className="text-cyan-300">EDITAL</span></span></div><span className="rounded-full bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span></div>
       <div className="px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-200">Administração</p></div>
       <nav aria-label="Administração" className="flex flex-wrap gap-1.5 px-2 pb-3 lg:block lg:flex-1 lg:overflow-y-auto">
         {navGroups.map(group => <div key={group.title} className="mb-2 min-w-[145px] flex-1 lg:min-w-0">
@@ -204,7 +204,7 @@ export default function AdminConsole() {
         </div>
       </header>
       <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
-        {section === "overview" && <AdminOverview isAdmin={true}/>}
+        {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => setSection("sources")}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}

@@ -32,7 +32,7 @@ export const adminUsersRouter = router({
           emailVerifiedAt: users.emailVerifiedAt,
           createdAt: users.createdAt,
           lastSignedIn: users.lastSignedIn,
-          companyName: sql<string | null>`(select c.legal_name from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = ${users.id} order by cm.created_at asc limit 1)`,
+          companyName: sql<string | null>`(select c.legal_name from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
         })
           .from(users)
           .where(where)
