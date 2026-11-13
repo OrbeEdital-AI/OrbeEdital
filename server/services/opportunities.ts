@@ -124,7 +124,7 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
     .from(opportunities)
     .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .where(where)
-    .orderBy(asc(opportunities.proposalDeadline), desc(opportunities.publicationDate), asc(opportunities.id))
+    .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate), asc(opportunities.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize);
   const ids = rows.map(row => row.opportunity.id);
@@ -162,7 +162,7 @@ export async function listFavorites(userId: string) {
     .innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
     .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .where(eq(favorites.userId, userId))
-    .orderBy(desc(favorites.createdAt));
+    .orderBy(desc(opportunities.lastSyncedAt), desc(favorites.createdAt));
   return rows.map(row => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, isFavorite: true };
   });
@@ -244,7 +244,7 @@ export async function getDashboardSummary(user: SafeUser) {
   const historicalByConnector = new Map(historicalErrors.map(row => [row.connector_id, row]));
   const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name })
     .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
-    .orderBy(desc(opportunities.publicationDate)).limit(6);
+    .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate)).limit(6);
   const recent = recentRows.map(row => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName };
   });
