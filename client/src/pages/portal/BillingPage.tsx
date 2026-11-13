@@ -26,8 +26,12 @@ export function BillingPage() {
   const usage = trpc.billing.usage.useQuery();
   const utils = trpc.useUtils();
   const changePlan = trpc.billing.changePlan.useMutation({
-    onSuccess: async ({ planName }) => {
-      toast.success(`Plano alterado para ${planName} com sucesso.`);
+    onSuccess: async result => {
+      if ("checkoutUrl" in result) {
+        window.location.assign(result.checkoutUrl);
+        return;
+      }
+      toast.success(`Plano alterado para ${result.planName} com sucesso.`);
       await Promise.all([utils.billing.usage.invalidate(), utils.billing.plans.invalidate()]);
     },
     onError: error => toast.error(error.message),
@@ -100,14 +104,13 @@ export function BillingPage() {
               </ul>
               <button
                 type="button"
-                disabled={checkout.isPending || changePlan.isPending || (Boolean(current) && (isCurrent || !current?.canChangePlan))}
+                disabled={checkout.isPending || changePlan.isPending || (Boolean(current) && isCurrent)}
                 onClick={() => {
                   if (current) {
-                    if (!current.canChangePlan) {
-                      toast.error("Para alterar esta assinatura, entre em contato com o suporte.");
-                      return;
-                    }
-                    if (window.confirm(`Confirma a alteração para o plano ${plan.name} por ${money(plan.monthlyPriceCents / 100)}/mês? A nova cobrança recorrente será atualizada no Mercado Pago.`)) {
+                    const billingNotice = current.canChangePlan
+                      ? "A cobrança recorrente atual será atualizada no Mercado Pago."
+                      : "Você será direcionado ao Mercado Pago para cadastrar a cobrança recorrente. Seu plano atual continuará ativo até a confirmação do pagamento.";
+                    if (window.confirm(`Confirma a alteração para o plano ${plan.name} por ${money(plan.monthlyPriceCents / 100)}/mês? ${billingNotice}`)) {
                       changePlan.mutate({ planId: plan.id });
                     }
                     return;
@@ -116,7 +119,7 @@ export function BillingPage() {
                 }}
                 className="mt-6 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isCurrent ? "Plano atual" : current ? (current.canChangePlan ? (changePlan.isPending ? "Alterando plano…" : "Alterar para este plano") : "Alteração via suporte") : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
+                {isCurrent ? "Plano atual" : current ? (changePlan.isPending ? "Processando alteração…" : current.canChangePlan ? "Alterar para este plano" : "Alterar e configurar pagamento") : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
               </button>
             </article>
           );
