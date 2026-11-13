@@ -87,7 +87,7 @@ app.use((_req: any, res: any, next: any) => { res.set("Referrer-Policy", "no-ref
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.get("/api/health", (_req: any, res: any) => res.json({ status: "ok" }));
-app.post("/api/scheduled/sync", async (req: any, res: any) => {
+app.all("/api/scheduled/sync", async (req: any, res: any) => {
   try {
     const result = await handleScheduledSync(req);
     res.set("Cache-Control", "no-store").status(200).json(result);
