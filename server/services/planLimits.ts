@@ -41,6 +41,8 @@ async function getActivePlan(companyId: string) {
     features: plans.features,
     currentPeriodEnd: subscriptions.currentPeriodEnd,
     status: subscriptions.status,
+    provider: subscriptions.provider,
+    providerSubscriptionId: subscriptions.providerSubscriptionId,
   }).from(subscriptions)
     .innerJoin(plans, eq(subscriptions.planId, plans.id))
     .where(and(eq(subscriptions.companyId, companyId), inArray(subscriptions.status, ["active", "trialing"]), eq(plans.active, true)))
@@ -86,6 +88,7 @@ export async function getPlanUsageSummary(userId: string) {
       monthlyPriceCents: plan.monthlyPriceCents,
       currentPeriodEnd: plan.currentPeriodEnd,
       status: plan.status,
+      canChangePlan: plan.provider === "mercadopago" && Boolean(plan.providerSubscriptionId),
     } : null,
     limits: plan?.limits ?? null,
     usage: {
