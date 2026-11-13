@@ -197,6 +197,8 @@ export default function Portal() {
       ? "Planos e assinatura"
       : path === "/app/profile"
       ? "Perfil da empresa"
+      : path === "/app/opportunities/saved-searches"
+        ? "Pesquisas salvas"
       : path.includes("sources")
         ? "Fontes de dados"
         : path.includes("finance")
