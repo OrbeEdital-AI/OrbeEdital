@@ -23,7 +23,8 @@ export function AgendaPage() {
   const agenda = trpc.agenda.list.useQuery();
   const items = agenda.data ?? [];
   const grouped = items.reduce<Record<string, typeof items>>((acc, item) => {
-    const key = item.proposalDeadline ? new Date(item.proposalDeadline).toISOString().slice(0, 10) : "sem-data";
+    const dates = [item.proposalDeadline, item.openingDate, item.sessionAt].filter(Boolean).map(value => new Date(value!).getTime()).filter(value => value >= Date.now()).sort((a, b) => a - b);
+    const key = dates.length ? new Date(dates[0]).toISOString().slice(0, 10) : "sem-data";
     (acc[key] ??= []).push(item);
     return acc;
   }, {});
@@ -60,9 +61,13 @@ export function AgendaPage() {
                 <div className="divide-y divide-slate-100">
                   {dayItems.map(item => (
                     <article key={item.id} className="p-4 sm:p-5">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">Prazo de propostas</span><span>{item.agencyName ?? "Órgão não informado"}</span></div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-800">Oportunidade acompanhada</span><span>{item.agencyName ?? "Órgão não informado"}</span></div>
                       <Link href={`/app/opportunities/${item.id}`} className="mt-2 block font-semibold leading-6 text-[#102B4E] hover:text-cyan-800">{item.title}</Link>
-                      <p className="mt-2 flex items-center gap-2 text-sm text-slate-600"><Clock3 size={15} />{formatDate(item.proposalDeadline)}</p>
+                      <div className="mt-2 space-y-1 text-sm text-slate-600">
+                        {item.proposalDeadline && <p className="flex items-center gap-2"><Clock3 size={14} /><strong className="font-medium">Prazo de propostas:</strong> {formatDate(item.proposalDeadline)}</p>}
+                        {item.openingDate && <p className="flex items-center gap-2"><CalendarDays size={14} /><strong className="font-medium">Abertura:</strong> {formatDate(item.openingDate)}</p>}
+                        {item.sessionAt && <p className="flex items-center gap-2"><CalendarClock size={14} /><strong className="font-medium">Sessão pública:</strong> {formatDate(item.sessionAt)}</p>}
+                      </div>
                       <p className="mt-1 text-xs text-slate-500">{[item.municipality, item.state].filter(Boolean).join(" / ") || "Local não informado"} · {item.sourceName}</p>
                     </article>
                   ))}
