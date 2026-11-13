@@ -340,6 +340,7 @@ export default function Portal() {
                         <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                           <div className={`h-full rounded-full ${percent >= 80 ? "bg-amber-500" : "bg-cyan-700"}`} style={{ width: `${percent}%` }} />
                         </div>
+                        <p className="text-xs text-slate-500">Restam {Math.max(0, item.limit - item.used).toLocaleString("pt-BR")}</p>
                       </div>
                     );
                   })}
