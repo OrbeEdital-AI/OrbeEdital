@@ -75,7 +75,7 @@ export default function Portal() {
     },
     {
       enabled:
-        !!auth.user && emailVerified && (path === "/app/opportunities" || path === "/app"),
+        !!auth.user && emailVerified && path === "/app/opportunities",
     }
   );
   const favorites = trpc.favorites.list.useQuery(undefined, {
