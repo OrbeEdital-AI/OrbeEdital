@@ -28,6 +28,7 @@ export const adminUsersRouter = router({
           id: users.id,
           name: users.name,
           email: users.email,
+          phone: users.phone,
           role: users.role,
           emailVerifiedAt: users.emailVerifiedAt,
           createdAt: users.createdAt,
@@ -49,6 +50,47 @@ export const adminUsersRouter = router({
         pageSize: input.pageSize,
         pageCount: Math.ceil((totalRows[0]?.total ?? 0) / input.pageSize),
       };
+    }),
+
+  updateProfile: superadminProcedure
+    .input(z.object({
+      userId: z.string().uuid(),
+      name: z.string().trim().min(1).max(160),
+      phone: z.string().trim().max(40).nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const [target] = await tx.select({
+          id: users.id, name: users.name, phone: users.phone,
+          email: users.email, role: users.role,
+        }).from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+        if (target.role === "superadmin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "A edição de superadministradores exige procedimento de segurança separado." });
+        }
+        const phone = input.phone?.trim() || null;
+        if (target.name === input.name && target.phone === phone) return { updated: false };
+        await tx.update(users).set({
+          name: input.name,
+          phone,
+          updatedAt: new Date(),
+        }).where(eq(users.id, input.userId));
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "user.profile.updated",
+          entityType: "user",
+          entityId: input.userId,
+          details: {
+            targetEmail: target.email,
+            changes: {
+              name: { from: target.name, to: input.name },
+              phone: { from: target.phone, to: phone },
+            },
+          },
+        });
+        return { updated: true };
+      });
     }),
 
   updateRole: superadminProcedure
