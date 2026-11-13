@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import {
   Activity,
+  Bell,
   Building2,
   CalendarDays,
+  CalendarRange,
   CheckCircle2,
   Database,
   FileSearch,
@@ -22,6 +24,7 @@ import type { AnyOpportunity } from "./portal/common";
 import { AdminOverview, FinancePage, SourcesPage } from "./portal/AdminPages";
 import { ProfilePage, SavedSearches } from "./portal/AccountPages";
 import { BillingPage } from "./portal/BillingPage";
+import { AgendaPage, NotificationsPage } from "./portal/AgendaNotifications";
 import {
   Dashboard,
   OpportunityDetailPage,
@@ -62,6 +65,7 @@ export default function Portal() {
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
   const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified });
+  const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: 60000 });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
     retry: false,
@@ -105,6 +109,8 @@ export default function Portal() {
     () => [
       { label: "Visão geral", href: "/app", icon: LayoutDashboard },
       { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
+      { label: "Agenda de licitações", href: "/app/agenda", icon: CalendarRange },
+      { label: "Notificações", href: "/app/notifications", icon: Bell },
       { label: "Favoritos", href: "/app/favorites", icon: Heart },
       { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
       ...(canViewAdmin
@@ -313,6 +319,7 @@ export default function Portal() {
             <h1 className="mt-1 text-xl font-bold text-[#102B4E]">{title}</h1>
           </div>
           <div className="flex items-center gap-3">
+            {path !== "/app/notifications" && <Link href="/app/notifications" aria-label="Abrir notificações" className="relative rounded-full border border-slate-300 bg-white p-2 text-[#102B4E] hover:bg-slate-50"><Bell size={18} />{(notificationSummary.data?.unread ?? 0) > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">{notificationSummary.data?.unread}</span>}</Link>}
             <span className="hidden rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-900 sm:inline">
               {planUsage.data?.plan ? `Plano: ${planUsage.data.plan.name}` : "Sem assinatura ativa"}
             </span>
@@ -369,6 +376,12 @@ export default function Portal() {
             </Route>
             <Route path="/app/admin">
               <AdminOverview isAdmin={canViewAdmin} />
+            </Route>
+            <Route path="/app/agenda">
+              <AgendaPage />
+            </Route>
+            <Route path="/app/notifications">
+              <NotificationsPage />
             </Route>
             <Route path="/app/profile">
               <ProfilePage />
