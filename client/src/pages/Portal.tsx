@@ -351,6 +351,9 @@ export default function Portal() {
             </section>
           )}
           <Switch>
+            <Route path="/app/billing">
+              <BillingPage />
+            </Route>
             <Route path="/app/admin/sources">
               <SourcesPage isAdmin={canManageSources} />
             </Route>
