@@ -211,7 +211,7 @@ export function SearchPanel({
   });
   useEffect(() => setDraft(query), [query]);
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-[#bfd2e0] bg-gradient-to-br from-[#eaf2f8] to-[#dce9f2] p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <SlidersHorizontal className="text-cyan-800" size={18} />
         <h2 className="font-semibold text-[#102B4E]">
@@ -371,7 +371,7 @@ export function OpportunityList({
           className={
             compact
               ? "px-5 py-4"
-              : "rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+              : "rounded-xl border border-[#bfd2e0] bg-gradient-to-br from-[#f0f6fa] to-[#e1edf4] p-5 shadow-sm"
           }
         >
           <div className="flex items-start justify-between gap-3">
