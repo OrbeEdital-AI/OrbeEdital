@@ -15,6 +15,7 @@ import {
   handleScheduledSync,
   ScheduledAuthError,
 } from "./services/scheduled";
+import { handleMercadoPagoWebhook } from "./services/mercadoPago";
 
 const serializeCookie = (cookieModule as any).serialize as (name: string, value: string, options?: unknown) => string;
 
@@ -87,6 +88,16 @@ app.use((_req: any, res: any, next: any) => { res.set("Referrer-Policy", "no-ref
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.get("/api/health", (_req: any, res: any) => res.json({ status: "ok" }));
+app.post("/api/webhooks/mercadopago", async (req: any, res: any) => {
+  try {
+    await handleMercadoPagoWebhook(req);
+    res.status(200).json({ received: true });
+  } catch (error) {
+    const status = Number((error as any)?.statusCode) === 401 ? 401 : 500;
+    if (status === 500) console.error("[mercadopago] webhook processing failed");
+    res.status(status).json({ error: status === 401 ? "Invalid signature" : "Webhook processing failed" });
+  }
+});
 app.all("/api/scheduled/sync", async (req: any, res: any) => {
   try {
     const result = await handleScheduledSync(req);
