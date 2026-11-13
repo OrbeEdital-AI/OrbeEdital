@@ -190,6 +190,7 @@ export function SearchPanel({
   setState,
   source,
   setSource,
+  onSearch,
 }: {
   query: string;
   setQuery: (v: string) => void;
@@ -197,6 +198,7 @@ export function SearchPanel({
   setState: (v: string) => void;
   source: "" | "pncp" | "compras.gov.br";
   setSource: (v: "" | "pncp" | "compras.gov.br") => void;
+  onSearch: () => void;
 }) {
   const [draft, setDraft] = useState(query);
   const [searchName, setSearchName] = useState("");
@@ -223,6 +225,7 @@ export function SearchPanel({
         onSubmit={e => {
           e.preventDefault();
           setQuery(draft);
+          onSearch();
         }}
       >
         <label className="relative">
@@ -313,6 +316,7 @@ export function SearchPanel({
         >
           {save.isPending ? "Salvando…" : "Salvar pesquisa"}
         </button>
+        <Link href="/app/opportunities/saved-searches" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-[#102B4E] hover:bg-white">Pesquisas salvas</Link>
         <p className="text-xs text-slate-500">
           Os resultados refletem apenas a janela sincronizada; confirme os
           detalhes no edital oficial.
