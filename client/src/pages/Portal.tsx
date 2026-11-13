@@ -20,6 +20,7 @@ import BrandMark from "@/components/BrandMark";
 import type { AnyOpportunity } from "./portal/common";
 import { AdminOverview, FinancePage, SourcesPage } from "./portal/AdminPages";
 import { ProfilePage, SavedSearches } from "./portal/AccountPages";
+import { BillingPage } from "./portal/BillingPage";
 import {
   Dashboard,
   OpportunityDetailPage,
@@ -100,6 +101,7 @@ export default function Portal() {
       { label: "Visão geral", href: "/app", icon: LayoutDashboard },
       { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
       { label: "Favoritos", href: "/app/favorites", icon: Heart },
+      { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
       {
         label: "Pesquisas salvas",
         href: "/app/saved-searches",
@@ -191,7 +193,9 @@ export default function Portal() {
 
   const title =
     sections.find(item => item.href === path)?.label ??
-    (path === "/app/profile"
+    (path === "/app/billing"
+      ? "Planos e assinatura"
+      : path === "/app/profile"
       ? "Perfil da empresa"
       : path.includes("sources")
         ? "Fontes de dados"
