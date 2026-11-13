@@ -24,6 +24,14 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 export function BillingPage() {
   const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
+  const utils = trpc.useUtils();
+  const changePlan = trpc.billing.changePlan.useMutation({
+    onSuccess: async ({ planName }) => {
+      toast.success(`Plano alterado para ${planName} com sucesso.`);
+      await Promise.all([utils.billing.usage.invalidate(), utils.billing.plans.invalidate()]);
+    },
+    onError: error => toast.error(error.message),
+  });
   const checkout = trpc.billing.checkout.useMutation({
     onSuccess: ({ checkoutUrl }) => { window.location.assign(checkoutUrl); },
     onError: error => toast.error(error.message),
@@ -92,11 +100,23 @@ export function BillingPage() {
               </ul>
               <button
                 type="button"
-                disabled={Boolean(current) || checkout.isPending}
-                onClick={() => checkout.mutate({ planId: plan.id, interval: "monthly" })}
+                disabled={checkout.isPending || changePlan.isPending || (Boolean(current) && (isCurrent || !current?.canChangePlan))}
+                onClick={() => {
+                  if (current) {
+                    if (!current.canChangePlan) {
+                      toast.error("Para alterar esta assinatura, entre em contato com o suporte.");
+                      return;
+                    }
+                    if (window.confirm(`Confirma a alteração para o plano ${plan.name} por ${money(plan.monthlyPriceCents / 100)}/mês? A nova cobrança recorrente será atualizada no Mercado Pago.`)) {
+                      changePlan.mutate({ planId: plan.id });
+                    }
+                    return;
+                  }
+                  checkout.mutate({ planId: plan.id, interval: "monthly" });
+                }}
                 className="mt-6 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isCurrent ? "Plano atual" : current ? "Alteração de plano via suporte" : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
+                {isCurrent ? "Plano atual" : current ? (current.canChangePlan ? (changePlan.isPending ? "Alterando plano…" : "Alterar para este plano") : "Alteração via suporte") : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
               </button>
             </article>
           );
