@@ -205,7 +205,8 @@ export const appRouter = router({
     summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user)),
   }),
   opportunities: router({
-    search: protectedProcedure.input(opportunitySearchSchema).query(async ({ input, ctx }) => {
+    search: protectedProcedure.input(opportunitySearchSchema).query(({ input, ctx }) => searchOpportunities(input, ctx.user.id)),
+    recordSearch: protectedProcedure.mutation(async ({ ctx }) => {
       if (ctx.user.role === "user") {
         try { await recordSearchUsage(ctx.user.id); }
         catch (error) {
@@ -213,7 +214,7 @@ export const appRouter = router({
           throw new TRPCError({ code: message.includes("limite") ? "TOO_MANY_REQUESTS" : "FORBIDDEN", message });
         }
       }
-      return searchOpportunities(input, ctx.user.id);
+      return { recorded: true };
     }),
     detail: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input, ctx }) => {
       const result = await getOpportunityDetail(input.id, ctx.user.id);
