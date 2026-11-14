@@ -29,6 +29,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
+import { analyzeOpportunityEdital } from "./services/editalAnalysis";
 import { changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
