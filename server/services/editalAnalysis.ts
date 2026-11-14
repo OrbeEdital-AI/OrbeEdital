@@ -29,10 +29,10 @@ async function discoverPncpDocuments(opportunityId: string) {
     .from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
   if (!row) return [];
   const keyParts = row.sourceKey.split("/");
-  const cnpj = (keyParts[0] || row.agencyCnpj || "").replace(/\\D/g, "");
+  const cnpj = (keyParts[0] || row.agencyCnpj || "").replace(/\D/g, "");
   const year = keyParts[1] || String(row.year ?? "");
-  const sequential = keyParts[2] || (row.procurementNumber ?? "").replace(/\\D/g, "");
-  if (cnpj.length !== 14 || !/^\\d{4}$/.test(year) || !/^\\d+$/.test(sequential)) return [];
+  const sequential = keyParts[2] || (row.procurementNumber ?? "").replace(/\D/g, "");
+  if (cnpj.length !== 14 || !/^\d{4}$/.test(year) || !/^\d+$/.test(sequential)) return [];
   const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + year + "/" + sequential + "/arquivos";
   try {
     const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
@@ -61,8 +61,10 @@ function getOfficialPdf(opportunity: NonNullable<Awaited<ReturnType<typeof getOp
       const parsed = new URL(rawUrl);
       const host = parsed.hostname.toLowerCase();
       const officialHost = host === "gov.br" || host.endsWith(".gov.br");
+      const documentType = String(record.tipoDocumentoNome ?? record.titulo ?? record.name ?? record.title ?? "").toLowerCase();
       const isPdf = /\.pdf$/i.test(parsed.pathname) ||
-        String(record.mimeType ?? record.contentType ?? "").toLowerCase().includes("pdf");
+        String(record.mimeType ?? record.contentType ?? "").toLowerCase().includes("pdf") ||
+        /edital|termo de referência|projeto básico|aviso de contratação/.test(documentType);
       if (parsed.protocol === "https:" && officialHost && isPdf) {
         return { url: parsed.toString(), name: String(record.name ?? record.title ?? "Edital oficial") };
       }
