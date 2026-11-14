@@ -49,7 +49,7 @@ export function BillingPage() {
   });
   const pixStatus = trpc.billing.pixStatus.useQuery(
     { paymentId: pix?.paymentId ?? "" },
-    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false },
+    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false, refetchInterval: 5000 },
   );
 
   if (plans.isLoading || usage.isLoading) return <Loading label="Carregando planos e consumo…" />;
