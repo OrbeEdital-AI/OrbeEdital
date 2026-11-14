@@ -64,7 +64,7 @@ export default function Portal() {
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
-  const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified });
+  const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
   const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: 60000 });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
@@ -192,6 +192,29 @@ export default function Portal() {
           </button>
           {verificationFeedback && <p aria-live="polite" className="mt-4 text-sm text-slate-700">{verificationFeedback}</p>}
           <button className="mt-5 text-sm font-semibold text-slate-600 underline" onClick={() => logout.mutate()} type="button">Sair</button>
+        </section>
+      </main>
+    );
+  }
+
+  const privilegedUser = ["superadmin", "admin", "source_operator", "support", "finance"].includes(me?.role ?? "");
+  if (emailVerified && !privilegedUser && planUsage.isLoading) {
+    return <div className="grid min-h-screen place-items-center text-slate-500">Verificando sua assinatura…</div>;
+  }
+  if (emailVerified && !privilegedUser && !planUsage.data?.hasSubscription) {
+    const returnedFromCheckout = new URLSearchParams(window.location.search).get("checkout") === "return";
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
+        <section className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <Wallet className="mx-auto h-11 w-11 text-cyan-700" />
+          <h1 className="mt-5 text-2xl font-bold text-[#102B4E]">{returnedFromCheckout ? "Estamos confirmando seu pagamento" : "Ative sua assinatura para acessar o portal"}</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">{returnedFromCheckout ? "O Mercado Pago retornou ao OrbeEdital. A liberação acontece automaticamente assim que recebermos a confirmação do pagamento. Esta página verifica o status periodicamente." : "Sua conta foi criada, mas o portal ainda está bloqueado porque não encontramos uma assinatura ativa. Escolha um plano e conclua o pagamento para liberar o acesso."}</p>
+          {returnedFromCheckout && <p className="mt-4 text-xs text-slate-500">Não é necessário realizar outro pagamento enquanto a confirmação estiver sendo processada.</p>}
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button onClick={() => planUsage.refetch()} className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700">Verificar pagamento</button>
+            <button onClick={() => navigate("/plans?resume=essencial")} className="rounded-lg bg-[#0c3153] px-5 py-3 text-sm font-semibold text-white">Ver planos</button>
+          </div>
+          <button onClick={() => logout.mutate()} className="mt-5 text-sm text-slate-500 underline">Sair da conta</button>
         </section>
       </main>
     );
