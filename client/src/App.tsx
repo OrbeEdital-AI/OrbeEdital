@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import Home from "@/pages/Home";
+import PricingPage from "@/pages/PricingPage";
 import AuthRoute from "@/pages/AuthRoute";
 import Portal from "@/pages/Portal";
 import AdminConsole from "@/pages/AdminConsole";
@@ -82,6 +83,7 @@ function AdminAlias() {
 function Router() {
   return <Switch>
     <Route path="/" component={Home}/>
+    <Route path="/plans" component={PricingPage}/>
     <Route path="/login"><AuthRoute initialMode="login"/></Route>
     <Route path="/register"><AuthRoute initialMode="register"/></Route>
     <Route path="/verify-email" component={VerifyEmailPage}/>
