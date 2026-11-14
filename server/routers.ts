@@ -326,7 +326,9 @@ export const appRouter = router({
         await cancelMercadoPagoSubscription(latest.id);
         return "teste-gratis";
       }
-      return latest?.code ?? null;
+      // Cancelled subscriptions must not override the last plan the user actually attempted.
+      const resumableAttempt = attempts.find(item => item.status !== "cancelled");
+      return resumableAttempt?.code ?? null;
     }),
     changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
       try {
