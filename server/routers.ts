@@ -305,6 +305,17 @@ export const appRouter = router({
       features: plans.features, limits: plans.limits,
     }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional", "teste-gratis"])))),
     usage: authenticatedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
+    resumePlan: authenticatedProcedure.query(async ({ ctx }) => {
+      const db = getDb();
+      const [membership] = await db.select({ companyId: companyMembers.companyId })
+        .from(companyMembers).where(eq(companyMembers.userId, ctx.user.id)).limit(1);
+      if (!membership) return null;
+      const [latest] = await db.select({ code: plans.code })
+        .from(subscriptions).innerJoin(plans, eq(subscriptions.planId, plans.id))
+        .where(eq(subscriptions.companyId, membership.companyId))
+        .orderBy(desc(subscriptions.createdAt)).limit(1);
+      return latest?.code ?? null;
+    }),
     changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
       try {
         return await changeMercadoPagoPlan(ctx.user.id, input.planId);
