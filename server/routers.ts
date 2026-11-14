@@ -222,6 +222,9 @@ export const appRouter = router({
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
       return result;
     }),
+    analyzeEdital: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(({ input, ctx }) => analyzeOpportunityEdital(input.id, ctx.user.id)),
   }),
   agenda: router({
     list: protectedProcedure.query(async ({ ctx }) => {
