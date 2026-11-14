@@ -65,6 +65,7 @@ export default function Portal() {
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
   const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
+  const resumePlan = trpc.billing.resumePlan.useQuery(undefined, { enabled: !!auth.user && emailVerified });
   const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: 60000 });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
     enabled: !!auth.user && emailVerified,
@@ -212,7 +213,7 @@ export default function Portal() {
           {returnedFromCheckout && <p className="mt-4 text-xs text-slate-500">Não é necessário realizar outro pagamento enquanto a confirmação estiver sendo processada.</p>}
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <button onClick={() => planUsage.refetch()} className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700">Verificar pagamento</button>
-            <button onClick={() => navigate("/plans?resume=essencial")} className="rounded-lg bg-[#0c3153] px-5 py-3 text-sm font-semibold text-white">Ver planos</button>
+            <button disabled={resumePlan.isLoading} onClick={() => navigate(resumePlan.data ? `/plans?resume=${encodeURIComponent(resumePlan.data)}` : "/plans")} className="rounded-lg bg-[#0c3153] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">Ver planos</button>
           </div>
           <button onClick={() => logout.mutate()} className="mt-5 text-sm text-slate-500 underline">Sair da conta</button>
         </section>
