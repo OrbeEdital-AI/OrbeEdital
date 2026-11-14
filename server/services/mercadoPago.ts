@@ -134,6 +134,26 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
 }
 
 
+export async function cancelMercadoPagoSubscription(subscriptionId: string) {
+  const db = getDb();
+  const [subscription] = await db.select().from(subscriptions)
+    .where(eq(subscriptions.id, subscriptionId)).limit(1);
+  if (!subscription || subscription.provider !== "mercadopago" || !subscription.providerSubscriptionId) {
+    throw new Error("Assinatura pendente não encontrada no Mercado Pago.");
+  }
+  if (subscription.status === "cancelled") return;
+  await mpRequest<any>(`/preapproval/${encodeURIComponent(subscription.providerSubscriptionId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ status: "cancelled" }),
+  });
+  await db.update(subscriptions).set({
+    status: "cancelled",
+    cancelledAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(subscriptions.id, subscription.id));
+}
+
+
 export async function changeMercadoPagoPlan(userId: string, planId: string) {
   const db = getDb();
   const [membership] = await db.select({ companyId: companyMembers.companyId })
