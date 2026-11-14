@@ -44,7 +44,7 @@ async function discoverPncpDocuments(opportunityId: string) {
   ).trim();
   // PNCP control number format: CNPJ-1-000050/2027. The last number is the
   // PNCP sequence, not necessarily the public notice/procurement number (e.g. 55/2027).
-  const controlMatch = controlNumber.match(/^([A-Za-z0-9]{14})-\\d+-(\\d{1,})\\/(\\d{4})$/);
+  const controlMatch = controlNumber.match(/^([A-Za-z0-9]{14})-\d+-(\d{1,})\/(\d{4})$/);
   const cnpj = String(
     controlMatch?.[1] || row.agencyCnpj || raw.orgaoEntidadeCnpj || organization.cnpj ||
     (sourceParts[0]?.replace(/[^A-Za-z0-9]/g, "").length === 14 ? sourceParts[0] : "")
@@ -58,7 +58,7 @@ async function discoverPncpDocuments(opportunityId: string) {
     (sourceParts.length >= 3 ? sourceParts[2] : "")
   ).replace(/\\D/g, "").replace(/^0+(?=\\d)/, "");
 
-  if (!/^[A-Z0-9]{14}$/.test(cnpj) || !/^\\d{4}$/.test(year) || !/^\\d+$/.test(sequential)) {
+  if (!/^[A-Z0-9]{14}$/.test(cnpj) || !/^\d{4}$/.test(year) || !/^\d+$/.test(sequential)) {
     console.warn("[edital-analysis] PNCP lookup skipped: missing or invalid procurement identifiers", {
       hasCnpj: Boolean(cnpj), year, hasSequential: Boolean(sequential), hasControlNumber: Boolean(controlNumber),
     });
