@@ -334,7 +334,7 @@ export async function cancelMercadoPagoSubscription(subscriptionId: string) {
 }
 
 
-export async function changeMercadoPagoPlan(userId: string, planId: string) {
+export async function changeMercadoPagoPlan(userId: string, planId: string, method: "card" | "pix" = "card", payerDocument?: string) {
   const db = getDb();
   const [membership] = await db.select({ companyId: companyMembers.companyId })
     .from(companyMembers).where(eq(companyMembers.userId, userId)).limit(1);
@@ -354,15 +354,12 @@ export async function changeMercadoPagoPlan(userId: string, planId: string) {
     )).orderBy(desc(subscriptions.createdAt)).limit(1);
   if (!current) throw new Error("Não encontramos uma assinatura ativa para alterar.");
   if (current.planId === targetPlan.id) throw new Error("Este já é o plano atual.");
-  if (!current.provider && !current.providerSubscriptionId) {
+  if (method === "pix") return createMercadoPagoPix(userId, planId, "monthly", payerDocument);
+  if (!current.providerSubscriptionId || current.provider !== "mercadopago") {
     // Admin-assigned subscriptions have no recurring payment yet. Start checkout
     // for the new plan and keep the current access until Mercado Pago confirms it.
     return createMercadoPagoCheckout(userId, planId, "monthly");
   }
-  if (current.provider !== "mercadopago" || !current.providerSubscriptionId) {
-    throw new Error("Esta assinatura usa outro meio de cobrança. Entre em contato com o suporte para alterar o plano.");
-  }
-
   await mpRequest<any>(`/preapproval/${encodeURIComponent(current.providerSubscriptionId)}`, {
     method: "PUT",
     body: JSON.stringify({
@@ -396,6 +393,51 @@ export async function changeMercadoPagoPlan(userId: string, planId: string) {
   });
 
   return { success: true, planName: targetPlan.name };
+}
+
+
+export async function refundMercadoPagoPayment(paymentId: string, actorUserId: string) {
+  const db = getDb();
+  const [payment] = await db.select().from(payments).where(and(
+    eq(payments.provider, "mercadopago"),
+    eq(payments.providerPaymentId, paymentId),
+  )).limit(1);
+  if (!payment) throw new Error("Pagamento não encontrado.");
+  if (payment.status === "refunded" || payment.status === "charged_back") {
+    throw new Error("Este pagamento já consta como estornado ou contestado.");
+  }
+  if (payment.status !== "approved") throw new Error("Somente pagamentos aprovados podem ser estornados.");
+  const [subscription] = payment.subscriptionId
+    ? await db.select().from(subscriptions).where(eq(subscriptions.id, payment.subscriptionId)).limit(1)
+    : [];
+  // Stop future recurring charges before issuing the refund.
+  if (subscription?.provider === "mercadopago" && subscription.providerSubscriptionId && subscription.status !== "cancelled") {
+    await cancelMercadoPagoSubscription(subscription.id);
+  }
+  const refund = await mpRequest<any>(`/v1/payments/${encodeURIComponent(paymentId)}/refunds`, {
+    method: "POST",
+    headers: { "X-Idempotency-Key": randomUUID() },
+    body: JSON.stringify({ amount: payment.amountCents / 100 }),
+  });
+  const refundStatus = String(refund.status || "");
+  if (!["approved", "processed"].includes(refundStatus)) {
+    throw new Error("O Mercado Pago recebeu a solicitação, mas ainda não confirmou o estorno. Consulte o pagamento antes de tentar novamente.");
+  }
+  let raw: Record<string, unknown> = {};
+  try { raw = JSON.parse(payment.rawStatus || "{}"); } catch { /* preserve metadata */ }
+  raw = { ...raw, refundId: String(refund.id || ""), refundedAt: new Date().toISOString(), refundStatus };
+  await db.update(payments).set({ status: "refunded", rawStatus: JSON.stringify(raw), updatedAt: new Date() })
+    .where(eq(payments.id, payment.id));
+  if (subscription && subscription.status !== "cancelled") {
+    await db.update(subscriptions).set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
+      .where(eq(subscriptions.id, subscription.id));
+  }
+  await db.insert(auditLogs).values({
+    actorUserId, companyId: payment.companyId, action: "payment.refunded",
+    entityType: "payment", entityId: payment.id,
+    details: { providerPaymentId: paymentId, amountCents: payment.amountCents, subscriptionId: payment.subscriptionId },
+  });
+  return { refunded: true, amountCents: payment.amountCents };
 }
 
 function validWebhookSignature(signature: string, requestId: string, dataId: string, secret: string) {
