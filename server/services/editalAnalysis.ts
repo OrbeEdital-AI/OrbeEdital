@@ -315,12 +315,17 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
     if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
     // Do not let a legacy openingDate value (often the proposal-receipt start) be reported as a conflict with the public session.
-    analysis.attentionPoints = analysis.attentionPoints.filter(point =>
-      !/(metadados indicam abertura|openingDate dos metadados|diverg[eê]ncia de data de abertura\\/proposta)/i.test(point)
-    );
-    analysis.missingInformation = analysis.missingInformation.filter(point =>
-      !/(openingDate dos metadados|data constante no edital.*03\\/12\\/2026)/i.test(point)
-    );
+    analysis.attentionPoints = analysis.attentionPoints.filter(point => {
+      const normalized = point.toLocaleLowerCase("pt-BR");
+      return !normalized.includes("metadados indicam abertura")
+        && !normalized.includes("openingdate dos metadados")
+        && !normalized.includes("divergência de data de abertura/proposta");
+    });
+    analysis.missingInformation = analysis.missingInformation.filter(point => {
+      const normalized = point.toLocaleLowerCase("pt-BR");
+      return !normalized.includes("openingdate dos metadados")
+        && !normalized.includes("divergência detectada entre a openingdate");
+    });
     if (pncpDates?.proposalReceiptStartsAt && pncpDates?.proposalReceiptEndsAt) {
       analysis.missingInformation = analysis.missingInformation.filter(point =>
         !/diverg[eê]ncia.*(proposta|abertura)/i.test(point)
