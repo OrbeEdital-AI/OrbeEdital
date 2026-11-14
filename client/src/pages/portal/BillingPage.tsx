@@ -26,6 +26,7 @@ export function BillingPage() {
   const [pix, setPix] = useState<null | { paymentId: string; pixQrCode: string; pixQrCodeBase64: string; pixTicketUrl: string | null; expiresAt: string; amountCents: number; planName: string }>(null);
   const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
+  const profile = trpc.account.profile.useQuery();
   const utils = trpc.useUtils();
   const changePlan = trpc.billing.changePlan.useMutation({
     onSuccess: async result => {
@@ -44,14 +45,7 @@ export function BillingPage() {
   });
   const pixCheckout = trpc.billing.pixCheckout.useMutation({
     onSuccess: result => { setPix(result); toast.success("Pix gerado. Conclua o pagamento para liberar o acesso."); },
-    onError: (error, variables) => {
-      if (error.message.includes("Informe um CPF ou CNPJ")) {
-        const document = window.prompt("Informe o CPF ou CNPJ do pagador:");
-        if (document?.trim()) pixCheckout.mutate({ ...variables, document: document.trim() });
-        return;
-      }
-      toast.error(error.message);
-    },
+    onError: error => toast.error(error.message),
   });
   const pixStatus = trpc.billing.pixStatus.useQuery(
     { paymentId: pix?.paymentId ?? "" },
@@ -163,9 +157,11 @@ export function BillingPage() {
               </button>
               <button
                 type="button"
-                disabled={pixCheckout.isPending}
+                disabled={pixCheckout.isPending || profile.isLoading}
                 onClick={() => {
-                  pixCheckout.mutate({ planId: plan.id, interval: "monthly" });
+                  const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
+                  if (!profile.data?.cnpj && document === null) return;
+                  pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document?.trim() || undefined });
                 }}
                 className="mt-2 w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
               >
