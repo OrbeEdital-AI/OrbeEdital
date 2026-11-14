@@ -200,19 +200,7 @@ export async function handleMercadoPagoWebhook(req: any) {
       currentPeriodStart: local.currentPeriodStart,
       updatedAt: new Date(),
     }).where(eq(subscriptions.id, local.id));
-    if (false) {
-      // Replace an older admin/manual or pending subscription only after the new
-      // Mercado Pago subscription is authorized, preserving access during checkout.
-      await getDb().update(subscriptions).set({
-        status: "cancelled",
-        cancelledAt: new Date(),
-        updatedAt: new Date(),
-      }).where(and(
-        eq(subscriptions.companyId, local.companyId),
-        inArray(subscriptions.status, ["active", "trialing"]),
-        lt(subscriptions.createdAt, local.createdAt),
-      ));
-    }
+
     return;
   }
 
@@ -241,8 +229,17 @@ export async function handleMercadoPagoWebhook(req: any) {
       set: { amountCents, status: paymentStatus, paidAt: paymentStatus === "approved" ? new Date(invoice.date_created || Date.now()) : null, rawStatus, updatedAt: new Date() },
     });
     if (paymentStatus === "approved") {
-      await getDb().update(subscriptions).set({ status: "active", updatedAt: new Date() })
+      await getDb().update(subscriptions).set({ status: "active", currentPeriodStart: local.currentPeriodStart || new Date(), updatedAt: new Date() })
         .where(eq(subscriptions.id, local.id));
+      await getDb().update(subscriptions).set({
+        status: "cancelled",
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(subscriptions.companyId, local.companyId),
+        inArray(subscriptions.status, ["active", "trialing"]),
+        lt(subscriptions.createdAt, local.createdAt),
+      ));
     }
   }
 }
