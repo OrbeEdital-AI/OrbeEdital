@@ -44,7 +44,36 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
     .where(and(eq(plans.id, planId), eq(plans.active, true))).limit(1);
   if (!plan) throw new Error("Plano indisponível.");
   const amountCents = interval === "annual" ? plan.annualPriceCents : plan.monthlyPriceCents;
-  if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error("Este plano ainda não possui preço configurado para cobrança.");
+  if (!Number.isInteger(amountCents) || amountCents < 0) throw new Error("Preço do plano inválido.");
+
+  if (amountCents === 0) {
+    if (plan.code !== "teste-gratis") throw new Error("Este plano gratuito não está disponível para ativação automática.");
+    const [existing] = await db.select({ id: subscriptions.id }).from(subscriptions)
+      .where(and(
+        eq(subscriptions.companyId, membership.company.id),
+        inArray(subscriptions.status, ["active", "trialing"]),
+      )).orderBy(desc(subscriptions.createdAt)).limit(1);
+    if (existing) throw new Error("Sua empresa já possui uma assinatura ativa. Cancele ou altere o plano atual antes de ativar o plano de teste.");
+
+    const [freeSubscription] = await db.insert(subscriptions).values({
+      companyId: membership.company.id,
+      planId: plan.id,
+      status: "active",
+      billingInterval: "monthly",
+      provider: "orbeedital",
+      currentPeriodStart: new Date(),
+    }).returning({ id: subscriptions.id });
+
+    await db.insert(auditLogs).values({
+      actorUserId: userId,
+      companyId: membership.company.id,
+      action: "subscription.free_test.activated",
+      entityType: "subscription",
+      entityId: freeSubscription.id,
+      details: { planCode: plan.code, amountCents: 0 },
+    });
+    return { checkoutUrl: `${SITE_URL}/app?plan=teste-gratis-ativado` };
+  }
 
   const [localSubscription] = await db.insert(subscriptions).values({
     companyId: membership.company.id,
