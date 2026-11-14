@@ -30,7 +30,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
-import { changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
+import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
@@ -310,10 +310,22 @@ export const appRouter = router({
       const [membership] = await db.select({ companyId: companyMembers.companyId })
         .from(companyMembers).where(eq(companyMembers.userId, ctx.user.id)).limit(1);
       if (!membership) return null;
-      const [latest] = await db.select({ code: plans.code })
-        .from(subscriptions).innerJoin(plans, eq(subscriptions.planId, plans.id))
+      const attempts = await db.select({
+        id: subscriptions.id,
+        code: plans.code,
+        status: subscriptions.status,
+        provider: subscriptions.provider,
+        providerSubscriptionId: subscriptions.providerSubscriptionId,
+      }).from(subscriptions).innerJoin(plans, eq(subscriptions.planId, plans.id))
         .where(eq(subscriptions.companyId, membership.companyId))
-        .orderBy(desc(subscriptions.createdAt)).limit(1);
+        .orderBy(desc(subscriptions.createdAt)).limit(10);
+      const latest = attempts[0];
+      const priorTestAttempt = attempts.find(item => item.code === "teste-gratis" && item.status === "failed");
+      if (latest?.code === "essencial" && latest.status === "pending" &&
+          latest.provider === "mercadopago" && latest.providerSubscriptionId && priorTestAttempt) {
+        await cancelMercadoPagoSubscription(latest.id);
+        return "teste-gratis";
+      }
       return latest?.code ?? null;
     }),
     changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
