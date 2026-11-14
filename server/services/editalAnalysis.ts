@@ -191,10 +191,13 @@ function parseAnalysis(content: unknown): AnalysisResult {
   const nullable = (key: string) => typeof value[key] === "string" && (value[key] as string).trim() ? (value[key] as string).trim() : null;
   return {
     executiveSummary: nullable("executiveSummary") ?? [
-      nullable("object") ? `Objeto identificado: ${nullable("object")}.` : "",
+      nullable("object") ? `Objeto: ${nullable("object")}.` : "",
       nullable("modality") ? `Modalidade: ${nullable("modality")}.` : "",
+      nullable("judgmentCriterion") ? `Critério de julgamento: ${nullable("judgmentCriterion")}.` : "",
       nullable("estimatedValue") ? `Valor estimado: ${nullable("estimatedValue")}.` : "",
-      "Resumo executivo não retornado pela IA; confira os campos e as evidências abaixo.",
+      nullable("proposalStartAt") ? `Recebimento de propostas a partir de ${nullable("proposalStartAt")}.` : "",
+      nullable("proposalDeadline") ? `Prazo final para propostas: ${nullable("proposalDeadline")}.` : "",
+      nullable("sessionAt") ? `Sessão pública: ${nullable("sessionAt")}.` : "",
     ].filter(Boolean).join(" "),
     object: nullable("object"),
     modality: nullable("modality"),
