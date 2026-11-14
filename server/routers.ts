@@ -522,13 +522,12 @@ export const appRouter = router({
           billingInterval: subscriptions.billingInterval, contractedAt: subscriptions.createdAt,
           periodStart: subscriptions.currentPeriodStart, renewalAt: subscriptions.currentPeriodEnd,
           planName: plans.name, companyName: companies.legalName, companyId: payments.companyId,
-          customerName: users.name, customerEmail: users.email,
+          customerName: sql<string | null>`(select u.name from company_members cm inner join users u on u.id = cm.user_id where cm.company_id = payments.company_id order by cm.created_at asc limit 1)`,
+          customerEmail: sql<string | null>`(select u.email from company_members cm inner join users u on u.id = cm.user_id where cm.company_id = payments.company_id order by cm.created_at asc limit 1)`,
         }).from(payments)
           .leftJoin(subscriptions, eq(payments.subscriptionId, subscriptions.id))
           .leftJoin(plans, eq(subscriptions.planId, plans.id))
           .innerJoin(companies, eq(payments.companyId, companies.id))
-          .leftJoin(companyMembers, eq(companyMembers.companyId, companies.id))
-          .leftJoin(users, eq(companyMembers.userId, users.id))
           .orderBy(desc(payments.createdAt)).limit(100),
       ]);
       const mrrCents = Math.round(activePlans.reduce((total, row) => total + (row.billingInterval === "annual" ? row.annualPriceCents / 12 : row.monthlyPriceCents), 0));
@@ -542,6 +541,7 @@ export const appRouter = router({
         mrrCents,
         arrCents: mrrCents * 12,
         paymentsByStatus: byStatus,
+        payments: paymentGroupsWithDetails,
         approvedRevenueCents: byStatus.approved ?? 0,
       };
     }),
