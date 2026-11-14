@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { auditLogs, companyMembers, companies, payments, plans, subscriptions, users } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -134,7 +134,111 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
 }
 
 
-export async function cancelMercadoPagoSubscription(subscriptionId: string) {
+
+function validCpfCnpj(value: string) {
+  const digits = value.replace(/\\D/g, "");
+  if (digits.length === 11) {
+    if (/^(\\d)\\1+$/.test(digits)) return false;
+    const calc = (base: string, factor: number) => {
+      let total = 0;
+      for (const digit of base) total += Number(digit) * factor--;
+      const rest = (total * 10) % 11;
+      return rest === 10 ? 0 : rest;
+    };
+    return calc(digits.slice(0, 9), 10) === Number(digits[9]) &&
+      calc(digits.slice(0, 10), 11) === Number(digits[10]);
+  }
+  if (digits.length === 14) {
+    if (/^(\\d)\\1+$/.test(digits)) return false;
+    const digit = (base: string, weights: number[]) => {
+      const total = base.split("").reduce((sum, n, i) => sum + Number(n) * weights[i], 0);
+      const rest = total % 11;
+      return rest < 2 ? 0 : 11 - rest;
+    };
+    const first = digit(digits.slice(0, 12), [5,4,3,2,9,8,7,6,5,4,3,2]);
+    const second = digit(digits.slice(0, 12) + first, [6,5,4,3,2,9,8,7,6,5,4,3,2]);
+    return first === Number(digits[12]) && second === Number(digits[13]);
+  }
+  return false;
+}
+
+export async function createMercadoPagoPix(userId: string, planId: string, interval: "monthly" | "annual", payerDocument?: string) {
+  const db = getDb();
+  const [membership] = await db.select({ company: companies, email: users.email })
+    .from(companyMembers).innerJoin(companies, eq(companyMembers.companyId, companies.id))
+    .innerJoin(users, eq(companyMembers.userId, users.id))
+    .where(eq(companyMembers.userId, userId)).limit(1);
+  if (!membership) throw new Error("Sua conta não possui uma empresa vinculada.");
+  const [plan] = await db.select().from(plans)
+    .where(and(eq(plans.id, planId), eq(plans.active, true))).limit(1);
+  if (!plan) throw new Error("Plano indisponível.");
+  const amountCents = interval === "annual" ? plan.annualPriceCents : plan.monthlyPriceCents;
+  if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error("Este plano não possui cobrança Pix disponível.");
+  const companyCnpj = String(membership.company.cnpj || "").replace(/\\D/g, "");
+  const document = companyCnpj || String(payerDocument || "").replace(/\\D/g, "");
+  if (!validCpfCnpj(document)) throw new Error(companyCnpj ? "O CNPJ cadastrado da empresa é inválido. Atualize o cadastro antes de pagar." : "Informe um CPF ou CNPJ válido para gerar o Pix.");
+  const documentType = document.length === 14 ? "CNPJ" : "CPF";
+
+  const [localSubscription] = await db.insert(subscriptions).values({
+    companyId: membership.company.id, planId: plan.id, status: "pending",
+    billingInterval: interval, provider: "mercadopago",
+  }).returning({ id: subscriptions.id });
+
+  try {
+    const expiration = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const created = await mpRequest<any>("/v1/payments", {
+      method: "POST",
+      headers: { "X-Idempotency-Key": randomUUID() },
+      body: JSON.stringify({
+        transaction_amount: amountCents / 100,
+        description: `OrbeEdital - ${plan.name} (${interval === "annual" ? "anual" : "mensal"})`,
+        payment_method_id: "pix",
+        external_reference: localSubscription.id,
+        notification_url: `${SITE_URL}/api/webhooks/mercadopago`,
+        date_of_expiration: expiration.toISOString(),
+        payer: { email: membership.email, identification: { type: documentType, number: document } },
+      }),
+    });
+    const transaction = created.point_of_interaction?.transaction_data;
+    if (!created.id || !transaction?.qr_code || !transaction?.qr_code_base64) {
+      throw new Error("O Mercado Pago não retornou os dados do QR Code Pix.");
+    }
+    const pixData = {
+      pixQrCode: String(transaction.qr_code),
+      pixQrCodeBase64: String(transaction.qr_code_base64),
+      pixTicketUrl: transaction.ticket_url ? String(transaction.ticket_url) : null,
+      expiresAt: created.date_of_expiration || expiration.toISOString(),
+    };
+    await db.insert(payments).values({
+      subscriptionId: localSubscription.id, companyId: membership.company.id,
+      provider: "mercadopago", providerPaymentId: String(created.id),
+      amountCents, currency: "BRL", status: String(created.status || "pending"),
+      rawStatus: JSON.stringify(pixData),
+    });
+    return { paymentId: String(created.id), ...pixData, amountCents, planName: plan.name };
+  } catch (error) {
+    await db.update(subscriptions).set({ status: "failed", updatedAt: new Date() })
+      .where(eq(subscriptions.id, localSubscription.id));
+    throw error;
+  }
+}
+
+export async function getMercadoPagoPixStatus(userId: string, paymentId: string) {
+  const db = getDb();
+  const [membership] = await db.select({ companyId: companyMembers.companyId }).from(companyMembers)
+    .where(eq(companyMembers.userId, userId)).limit(1);
+  if (!membership) throw new Error("Empresa não encontrada.");
+  const [payment] = await db.select().from(payments).where(and(
+    eq(payments.companyId, membership.companyId),
+    eq(payments.provider, "mercadopago"),
+    eq(payments.providerPaymentId, paymentId),
+  )).limit(1);
+  if (!payment) throw new Error("Cobrança Pix não encontrada.");
+  let pix: Record<string, unknown> = {};
+  try { pix = JSON.parse(payment.rawStatus || "{}"); } catch { /* older payment record */ }
+  return { status: payment.status, paidAt: payment.paidAt, ...pix };
+}
+\nexport async function cancelMercadoPagoSubscription(subscriptionId: string) {
   const db = getDb();
   const [subscription] = await db.select().from(subscriptions)
     .where(eq(subscriptions.id, subscriptionId)).limit(1);
@@ -256,6 +360,53 @@ export async function handleMercadoPagoWebhook(req: any) {
   }
 
   const type = String(req.body?.type || req.query?.type || "");
+
+  if (type === "payment") {
+    const remote = await mpRequest<any>(`/v1/payments/${encodeURIComponent(dataId)}`);
+    if (String(remote.payment_method_id || "") !== "pix") return;
+    const localId = String(remote.external_reference || "");
+    if (!localId) return;
+    const [local] = await getDb().select().from(subscriptions)
+      .where(eq(subscriptions.id, localId)).limit(1);
+    if (!local || local.provider !== "mercadopago") return;
+    const [localPayment] = await getDb().select().from(payments).where(and(
+      eq(payments.provider, "mercadopago"),
+      eq(payments.providerPaymentId, String(remote.id)),
+      eq(payments.subscriptionId, local.id),
+      eq(payments.companyId, local.companyId),
+    )).limit(1);
+    if (!localPayment) return;
+    const amountCents = Math.round(Number(remote.transaction_amount || 0) * 100);
+    if (amountCents !== localPayment.amountCents || String(remote.currency_id || "BRL") !== "BRL") return;
+    const paymentStatus = String(remote.status || "pending");
+    let pixData: Record<string, unknown> = {};
+    try { pixData = JSON.parse(localPayment.rawStatus || "{}"); } catch { /* ignore */ }
+    await getDb().update(payments).set({
+      status: paymentStatus,
+      paidAt: paymentStatus === "approved" ? new Date(remote.date_approved || Date.now()) : null,
+      rawStatus: JSON.stringify(pixData),
+      updatedAt: new Date(),
+    }).where(eq(payments.id, localPayment.id));
+    if (paymentStatus === "approved" && local.status !== "cancelled" && local.status !== "failed") {
+      const now = new Date();
+      const periodEnd = new Date(now);
+      if (local.billingInterval === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      else periodEnd.setMonth(periodEnd.getMonth() + 1);
+      await getDb().update(subscriptions).set({
+        status: "active", currentPeriodStart: now, currentPeriodEnd: periodEnd,
+        gracePeriodEndsAt: null, updatedAt: now,
+      }).where(eq(subscriptions.id, local.id));
+      await getDb().update(subscriptions).set({
+        status: "cancelled", cancelledAt: now, updatedAt: now,
+      }).where(and(
+        eq(subscriptions.companyId, local.companyId),
+        inArray(subscriptions.status, ["active", "trialing"]),
+        lt(subscriptions.createdAt, local.createdAt),
+      ));
+    }
+    return;
+  }
+
   if (type === "subscription_preapproval") {
     const remote = await mpRequest<any>(`/preapproval/${encodeURIComponent(dataId)}`);
     const localId = String(remote.external_reference || "");
