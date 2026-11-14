@@ -614,7 +614,8 @@ export function OpportunityDetailPage() {
                 ["Modalidade", editalAnalysis.data.analysis.modality],
                 ["Valor estimado", editalAnalysis.data.analysis.estimatedValue],
                 ["Critério de julgamento", editalAnalysis.data.analysis.judgmentCriterion],
-                ["Início do recebimento de propostas", editalAnalysis.data.analysis.proposalStartAt],\n                ["Fim do recebimento de propostas", editalAnalysis.data.analysis.proposalDeadline],
+                ["Início do recebimento de propostas", editalAnalysis.data.analysis.proposalStartAt],
+                ["Fim do recebimento de propostas", editalAnalysis.data.analysis.proposalDeadline],
                 ["Abertura", editalAnalysis.data.analysis.openingDate],
                 ["Sessão pública", editalAnalysis.data.analysis.sessionAt],
               ].map(([label, value]) => (
