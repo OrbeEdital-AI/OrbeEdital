@@ -21,6 +21,9 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       const result = await login.mutateAsync({ email: data.email, password: data.password });
       verificationRequired = result.emailVerificationRequired;
     } else {
+      const catalog = plans.data ?? (await plans.refetch()).data;
+      const selectedPlan = catalog?.find(plan => plan.code === selectedPlanCode);
+      if (!selectedPlan) throw new Error("O plano escolhido não está disponível. Volte à página de planos e selecione novamente.");
       const result = await register.mutateAsync({
         name: data.name,
         email: data.email,
@@ -34,9 +37,6 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       });
       verificationRequired = result.emailVerificationRequired;
       deliveryNotice = result.verificationEmailSent ? "sent" : "unavailable";
-      const catalog = plans.data ?? (await plans.refetch()).data;
-      const selectedPlan = catalog?.find(plan => plan.code === selectedPlanCode);
-      if (!selectedPlan) throw new Error("O plano escolhido não está disponível. Volte à página de planos e selecione novamente.");
       const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
       await utils.auth.me.invalidate();
       window.location.assign(payment.checkoutUrl);
@@ -49,7 +49,7 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
   return (
     <AuthPage
       initialMode={mode}
-      onModeChange={setMode}
+      onModeChange={nextMode => { if (nextMode === "register" && !selectedPlanCode) navigate("/plans"); else setMode(nextMode); }}
       onBack={() => navigate("/")}
       onForgotPassword={() => navigate("/forgot-password")}
       onSubmit={submit}
