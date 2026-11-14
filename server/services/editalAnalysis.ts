@@ -10,7 +10,8 @@ type AnalysisResult = {
   object: string | null;
   modality: string | null;
   estimatedValue: string | null;
-  proposalStartAt: string | null;\n  proposalDeadline: string | null;
+  proposalStartAt: string | null;
+  proposalDeadline: string | null;
   openingDate: string | null;
   sessionAt: string | null;
   judgmentCriterion: string | null;
@@ -35,9 +36,9 @@ function formatPncpBrazilDate(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const raw = value.trim();
   // PNCP date-time fields are local procurement times when no offset is supplied.
-  const local = /^(\\d{4})-(\\d{2})-(\\d{2})[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?$/.exec(raw);
+  const local = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(raw);
   if (local) return `${local[3]}/${local[2]}/${local[1]} às ${local[4]}:${local[5]} (horário de Brasília)`;
-  const dateOnly = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(raw);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
   if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
   const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
@@ -198,7 +199,8 @@ function parseAnalysis(content: unknown): AnalysisResult {
     object: nullable("object"),
     modality: nullable("modality"),
     estimatedValue: nullable("estimatedValue"),
-    proposalStartAt: nullable("proposalStartAt"),\n    proposalDeadline: nullable("proposalDeadline"),
+    proposalStartAt: nullable("proposalStartAt"),
+    proposalDeadline: nullable("proposalDeadline"),
     openingDate: nullable("openingDate"),
     sessionAt: nullable("sessionAt"),
     judgmentCriterion: nullable("judgmentCriterion"),
@@ -223,6 +225,9 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     ? await discoverPncpDocuments(opportunityId)
     : [];
   const pdf = getOfficialPdf(opportunity, discoveredDocuments);
+  const pncpDates = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode)
+    ? await getPncpDateMetadata(opportunityId)
+    : null;
   const metadata = {
     title: opportunity.title,
     description: opportunity.description,
@@ -231,8 +236,9 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     modality: opportunity.modality,
     processNumber: opportunity.processNumber,
     estimatedValue: opportunity.estimatedValue,
-    proposalDeadline: opportunity.proposalDeadline,
-    openingDate: opportunity.openingDate,
+    pncpOfficialDates: pncpDates,
+    // openingDate is intentionally omitted: legacy imports may map proposal start into this field.
+    proposalDeadline: pncpDates?.proposalReceiptEndsAt ?? opportunity.proposalDeadline,
     sessionAt: opportunity.sessionAt,
     judgmentCriterion: opportunity.judgmentCriterion,
     disputeMode: opportunity.disputeMode,
@@ -306,6 +312,20 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       ?.map(part => part.text || "")
       .join("") || "";
     const analysis = parseAnalysis(answer);
+    if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
+    if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
+    // Do not let a legacy openingDate value (often the proposal-receipt start) be reported as a conflict with the public session.
+    analysis.attentionPoints = analysis.attentionPoints.filter(point =>
+      !/(metadados indicam abertura|openingDate dos metadados|diverg[eê]ncia de data de abertura\\/proposta)/i.test(point)
+    );
+    analysis.missingInformation = analysis.missingInformation.filter(point =>
+      !/(openingDate dos metadados|data constante no edital.*03\\/12\\/2026)/i.test(point)
+    );
+    if (pncpDates?.proposalReceiptStartsAt && pncpDates?.proposalReceiptEndsAt) {
+      analysis.missingInformation = analysis.missingInformation.filter(point =>
+        !/diverg[eê]ncia.*(proposta|abertura)/i.test(point)
+      );
+    }
     if (pdf) {
       analysis.documentAnalyzed = true;
       analysis.documentName = analysis.documentName ?? pdf.name;
