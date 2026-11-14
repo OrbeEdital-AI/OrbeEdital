@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import AuthPage, { type AuthFormData, type AuthMode } from "@/components/AuthPage";
 import { trpc } from "@/lib/trpc";
@@ -7,6 +7,10 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const [mode, setMode] = useState(initialMode);
+  const selectedPlanCode = new URLSearchParams(window.location.search).get("plan");
+  const plans = trpc.billing.plans.useQuery();
+  const checkout = trpc.billing.checkout.useMutation();
+  useEffect(() => { if (initialMode === "register" && !selectedPlanCode) navigate("/plans"); }, [initialMode, selectedPlanCode, navigate]);
   const login = trpc.auth.login.useMutation();
   const register = trpc.auth.register.useMutation();
 
