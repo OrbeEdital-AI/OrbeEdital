@@ -88,6 +88,14 @@ function CustomerDirectory() {
     },
     onError: error => toast.error(error.message),
   });
+  const deleteAccount = trpc.adminUsers.deleteAccount.useMutation({
+    onSuccess: async result => {
+      toast.success(`Conta de ${result.email} excluída.`);
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const revokeSessions = trpc.adminUsers.revokeSessions.useMutation({
     onSuccess: async result => {
       toast.success(result.revokedCount + " sessão(ões) encerrada(s).");
@@ -114,7 +122,7 @@ function CustomerDirectory() {
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">Plano do cliente</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">Plano do cliente</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th><th className="px-4 py-3">Ações</th></tr></thead>
                 <tbody>
                   {data?.items.map(user => <tr key={user.id} className="border-t">
                     <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td>
@@ -146,8 +154,19 @@ function CustomerDirectory() {
                     <td className="px-4 py-3">{user.emailVerifiedAt ? <span className="text-emerald-700">Verificado</span> : <span className="text-amber-700">Pendente</span>}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>}</td>
+                    <td className="px-4 py-3">{user.role === "user" && <button disabled={deleteAccount.isPending} onClick={() => {
+                      const typedEmail = window.prompt(`EXCLUSÃO PERMANENTE\n\nEsta ação excluirá a conta de ${user.name} (${user.email}). Se a empresa não tiver outros usuários, os dados vinculados à empresa também serão removidos.\n\nPara confirmar, digite exatamente o e-mail do cliente:`);
+                      if (typedEmail === null) return;
+                      if (typedEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+                        toast.error("O e-mail digitado não corresponde ao cliente.");
+                        return;
+                      }
+                      if (window.confirm(`Confirma a exclusão permanente da conta ${user.email}? Esta ação não pode ser desfeita.`)) {
+                        deleteAccount.mutate({ userId: user.id, confirmationEmail: typedEmail.trim() });
+                      }
+                    }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40">Excluir conta</button>}</td>
                   </tr>)}
-                  {!data?.items.length && <tr><td colSpan={8} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
+                  {!data?.items.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
               </table>
             </div>
