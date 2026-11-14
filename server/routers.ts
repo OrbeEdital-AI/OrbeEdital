@@ -27,7 +27,7 @@ import { getDb } from "./db";
 import { adminUsersRouter } from "./adminUsersRouter";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
+import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
 import { changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
@@ -299,12 +299,12 @@ export const appRouter = router({
     }),
   }),
   billing: router({
-    plans: protectedProcedure.query(async () => getDb().select({
+    plans: publicProcedure.query(async () => getDb().select({
       id: plans.id, code: plans.code, name: plans.name, description: plans.description,
       monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents,
       features: plans.features, limits: plans.limits,
     }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional"])))),
-    usage: protectedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
+    usage: authenticatedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
     changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
       try {
         return await changeMercadoPagoPlan(ctx.user.id, input.planId);
@@ -315,7 +315,7 @@ export const appRouter = router({
         });
       }
     }),
-    checkout: protectedProcedure.input(z.object({
+    checkout: authenticatedProcedure.input(z.object({
       planId: z.string().uuid(),
       interval: z.enum(["monthly", "annual"]),
     })).mutation(async ({ input, ctx }) => {
