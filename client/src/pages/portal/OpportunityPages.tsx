@@ -471,9 +471,7 @@ export function OpportunityDetailPage() {
     },
     onError: error => toast.error(error.message),
   });
-  const editalAnalysis = trpc.opportunities.analyzeEdital.useMutation({
-    onError: error => toast.error(error.message),
-  });
+  const editalAnalysis = trpc.opportunities.analyzeEdital.useMutation();
   if (query.isLoading)
     return <Loading label="Carregando dados da oportunidade…" />;
   if (query.error?.data?.code === "NOT_FOUND") return <NotFound />;
@@ -596,13 +594,6 @@ export function OpportunityDetailPage() {
             {editalAnalysis.isPending ? "Analisando documento…" : editalAnalysis.data ? "Analisar novamente" : "Analisar edital com IA"}
           </button>
         </div>
-        {!item.noticeUrl && !(Array.isArray(item.documents) && item.documents.length > 0) && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            {["pncp", "compras.gov.br"].includes(item.sourceCode)
-              ? "O link do edital não está salvo no cadastro. O OrbeEdital tentará localizar os anexos pela identificação da contratação na API oficial do PNCP, inclusive quando a oportunidade vier do Compras.gov.br. Se não houver PDF público ou identificadores suficientes, a análise ficará limitada aos metadados."
-              : "Esta fonte ainda não possui integração de documentos nesta etapa. A IA analisará somente os metadados disponíveis, sem afirmar que leu o edital."}
-          </p>
-        )}
         {editalAnalysis.data && (
           <div className="mt-5 space-y-4 border-t border-cyan-100 pt-4">
             <div className="flex flex-wrap items-center gap-2">
