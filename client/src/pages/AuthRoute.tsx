@@ -43,7 +43,7 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
         window.location.assign(payment.checkoutUrl);
       } catch {
         await utils.auth.me.invalidate();
-        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}`);
+        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}&checkoutError=1`);
       }
       return;
     }
