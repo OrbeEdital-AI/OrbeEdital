@@ -46,8 +46,8 @@ async function getActivePlan(companyId: string) {
     providerSubscriptionId: subscriptions.providerSubscriptionId,
   }).from(subscriptions)
     .innerJoin(plans, eq(subscriptions.planId, plans.id))
-    .innerJoin(payments, eq(payments.subscriptionId, subscriptions.id))
-    .where(and(eq(subscriptions.companyId, companyId), eq(subscriptions.status, "active"), eq(payments.status, "approved"), eq(plans.active, true)))
+    .leftJoin(payments, eq(payments.subscriptionId, subscriptions.id))
+    .where(and(eq(subscriptions.companyId, companyId), eq(subscriptions.status, "active"), eq(plans.active, true), or(eq(payments.status, "approved"), and(eq(plans.monthlyPriceCents, 0), eq(subscriptions.provider, "orbeedital")))))
     .orderBy(desc(subscriptions.createdAt)).limit(1);
   return row ?? null;
 }
