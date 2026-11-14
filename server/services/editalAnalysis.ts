@@ -27,39 +27,73 @@ type AnalysisResult = {
 async function discoverPncpDocuments(opportunityId: string) {
   const [row] = await getDb().select({
     sourceKey: opportunities.sourceKey,
+    controlNumber: opportunities.controlNumber,
     agencyCnpj: opportunities.agencyCnpj,
     year: opportunities.year,
     procurementNumber: opportunities.procurementNumber,
     rawData: opportunities.rawData,
   }).from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
   if (!row) return [];
-  const keyParts = row.sourceKey.split("/");
+
   const rawData = row.rawData && typeof row.rawData === "object" ? row.rawData as Record<string, unknown> : {};
   const raw = rawData.raw && typeof rawData.raw === "object" ? rawData.raw as Record<string, unknown> : rawData;
   const organization = raw.orgaoEntidade && typeof raw.orgaoEntidade === "object" ? raw.orgaoEntidade as Record<string, unknown> : {};
+  const sourceParts = row.sourceKey.split("/");
+  const controlNumber = String(
+    row.controlNumber || raw.numeroControlePNCP || raw.numeroControlePncp || raw.codigoControlePNCP || ""
+  ).trim();
+  // PNCP control number format: CNPJ-1-000050/2027. The last number is the
+  // PNCP sequence, not necessarily the public notice/procurement number (e.g. 55/2027).
+  const controlMatch = controlNumber.match(/^([A-Za-z0-9]{14})-\\d+-(\\d{1,})\\/(\\d{4})$/);
   const cnpj = String(
-    (keyParts[0]?.replace(/\D/g, "").length === 14 ? keyParts[0] : "") ||
-    row.agencyCnpj || raw.orgaoEntidadeCnpj || organization.cnpj || ""
-  ).replace(/\D/g, "");
+    controlMatch?.[1] || row.agencyCnpj || raw.orgaoEntidadeCnpj || organization.cnpj ||
+    (sourceParts[0]?.replace(/[^A-Za-z0-9]/g, "").length === 14 ? sourceParts[0] : "")
+  ).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const year = String(
-    (keyParts.length >= 3 ? keyParts[1] : "") ||
-    raw.anoCompraPncp || raw.anoCompra || row.year || ""
+    controlMatch?.[3] || raw.anoCompraPncp || raw.anoCompra || row.year ||
+    (sourceParts.length >= 3 ? sourceParts[1] : "")
   );
   const sequential = String(
-    (keyParts.length >= 3 ? keyParts[2] : "") ||
-    raw.sequencialCompraPncp || raw.sequencialCompra || ""
-  ).replace(/\D/g, "");
-  if (cnpj.length !== 14 || !/^\d{4}$/.test(year) || !/^\d+$/.test(sequential)) return [];
-  const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + year + "/" + sequential + "/arquivos";
-  try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
-    if (!response.ok) return [];
-    const payload = await response.json() as { documentos?: unknown };
-    return Array.isArray(payload.documentos) ? payload.documentos.filter(item => item && typeof item === "object") as Record<string, unknown>[] : [];
-  } catch (error) {
-    console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
+    controlMatch?.[2] || raw.sequencialCompraPncp || raw.sequencialCompra ||
+    (sourceParts.length >= 3 ? sourceParts[2] : "")
+  ).replace(/\\D/g, "").replace(/^0+(?=\\d)/, "");
+
+  if (!/^[A-Z0-9]{14}$/.test(cnpj) || !/^\\d{4}$/.test(year) || !/^\\d+$/.test(sequential)) {
+    console.warn("[edital-analysis] PNCP lookup skipped: missing or invalid procurement identifiers", {
+      hasCnpj: Boolean(cnpj), year, hasSequential: Boolean(sequential), hasControlNumber: Boolean(controlNumber),
+    });
     return [];
   }
+
+  // The public attachment service is hosted under /api/pncp. Keep the
+  // consultation path as a compatibility fallback for PNCP deployments.
+  const path = "/v1/orgaos/" + encodeURIComponent(cnpj) + "/compras/" + year + "/" + sequential + "/arquivos";
+  const endpoints = [
+    "https://pncp.gov.br/api/pncp" + path,
+    "https://pncp.gov.br/api/consulta" + path,
+  ];
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!response.ok) {
+        console.warn("[edital-analysis] PNCP attachment endpoint returned HTTP", response.status);
+        continue;
+      }
+      const payload = await response.json() as { documentos?: unknown } | unknown[];
+      const documents = Array.isArray(payload)
+        ? payload
+        : payload && typeof payload === "object" && Array.isArray((payload as { documentos?: unknown }).documentos)
+          ? (payload as { documentos: unknown[] }).documentos
+          : [];
+      return documents.filter(item => item && typeof item === "object") as Record<string, unknown>[];
+    } catch (error) {
+      console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
+    }
+  }
+  return [];
 }
 
 function getOfficialPdf(opportunity: NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>, discovered: Record<string, unknown>[] = []) {
