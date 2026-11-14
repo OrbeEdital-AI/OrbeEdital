@@ -235,9 +235,74 @@ export async function getMercadoPagoPixStatus(userId: string, paymentId: string)
     eq(payments.providerPaymentId, paymentId),
   )).limit(1);
   if (!payment) throw new Error("Cobrança Pix não encontrada.");
+
+  // Always reconcile with Mercado Pago instead of trusting a possibly missed webhook.
+  const remote = await mpRequest<any>(`/v1/payments/${encodeURIComponent(paymentId)}`);
+  if (
+    String(remote.id) !== paymentId ||
+    String(remote.payment_method_id || "") !== "pix" ||
+    String(remote.external_reference || "") !== String(payment.subscriptionId || "") ||
+    Math.round(Number(remote.transaction_amount || 0) * 100) !== payment.amountCents ||
+    String(remote.currency_id || "BRL") !== "BRL"
+  ) {
+    throw new Error("Os dados da cobrança não correspondem ao pagamento Pix registrado.");
+  }
+
+  const paymentStatus = String(remote.status || payment.status || "pending");
+  const paidAt = paymentStatus === "approved" ? new Date(remote.date_approved || Date.now()) : null;
+  await db.update(payments).set({ status: paymentStatus, paidAt, updatedAt: new Date() })
+    .where(eq(payments.id, payment.id));
+
+  if (paymentStatus === "approved" && payment.subscriptionId) {
+    const [local] = await db.select().from(subscriptions)
+      .where(eq(subscriptions.id, payment.subscriptionId)).limit(1);
+    if (local && local.status !== "cancelled" && local.status !== "failed") {
+      const now = new Date();
+      if (local.status !== "active") {
+        const previousActives = await db.select({
+          id: subscriptions.id,
+          currentPeriodEnd: subscriptions.currentPeriodEnd,
+          provider: subscriptions.provider,
+          providerSubscriptionId: subscriptions.providerSubscriptionId,
+        }).from(subscriptions).where(and(
+          eq(subscriptions.companyId, local.companyId),
+          inArray(subscriptions.status, ["active", "trialing"]),
+          lt(subscriptions.createdAt, local.createdAt),
+        )).orderBy(desc(subscriptions.createdAt));
+        const futurePeriodEnds = previousActives
+          .map(item => item.currentPeriodEnd)
+          .filter((end): end is Date => Boolean(end && end > now))
+          .sort((a, b) => b.getTime() - a.getTime());
+        const periodStart = futurePeriodEnds[0] ?? now;
+        const periodEnd = new Date(periodStart);
+        if (local.billingInterval === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+        else periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+        await db.update(subscriptions).set({
+          status: "active", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd,
+          gracePeriodEndsAt: null, updatedAt: now,
+        }).where(eq(subscriptions.id, local.id));
+
+        for (const previous of previousActives) {
+          if (previous.provider === "mercadopago" && previous.providerSubscriptionId) {
+            try { await cancelMercadoPagoSubscription(previous.id); }
+            catch (error) { console.error("[Mercado Pago Pix] Falha ao cancelar cobrança recorrente anterior:", error); }
+          }
+        }
+        await db.update(subscriptions).set({
+          status: "cancelled", cancelledAt: now, updatedAt: now,
+        }).where(and(
+          eq(subscriptions.companyId, local.companyId),
+          inArray(subscriptions.status, ["active", "trialing"]),
+          lt(subscriptions.createdAt, local.createdAt),
+        ));
+      }
+    }
+  }
+
   let pix: Record<string, unknown> = {};
   try { pix = JSON.parse(payment.rawStatus || "{}"); } catch { /* older payment record */ }
-  return { status: payment.status, paidAt: payment.paidAt, ...pix };
+  return { status: paymentStatus, paidAt, ...pix };
 }
 
 export async function cancelMercadoPagoSubscription(subscriptionId: string) {
