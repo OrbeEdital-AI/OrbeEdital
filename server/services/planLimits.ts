@@ -3,6 +3,7 @@ import {
   companyMembers,
   favorites,
   planUsage,
+  payments,
   plans,
   savedSearches,
   subscriptions,
@@ -45,7 +46,8 @@ async function getActivePlan(companyId: string) {
     providerSubscriptionId: subscriptions.providerSubscriptionId,
   }).from(subscriptions)
     .innerJoin(plans, eq(subscriptions.planId, plans.id))
-    .where(and(eq(subscriptions.companyId, companyId), inArray(subscriptions.status, ["active", "trialing"]), eq(plans.active, true)))
+    .innerJoin(payments, eq(payments.subscriptionId, subscriptions.id))
+    .where(and(eq(subscriptions.companyId, companyId), eq(subscriptions.status, "active"), eq(payments.status, "approved"), eq(plans.active, true)))
     .orderBy(desc(subscriptions.createdAt)).limit(1);
   return row ?? null;
 }
