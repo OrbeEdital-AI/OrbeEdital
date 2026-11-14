@@ -598,8 +598,8 @@ export function OpportunityDetailPage() {
         </div>
         {!item.noticeUrl && !(Array.isArray(item.documents) && item.documents.length > 0) && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            {item.sourceCode === "pncp"
-              ? "O link do edital não está salvo no cadastro. O OrbeEdital tentará localizar os anexos diretamente na API oficial do PNCP; se não houver PDF público, a análise ficará limitada aos metadados."
+            {["pncp", "compras.gov.br"].includes(item.sourceCode)
+              ? "O link do edital não está salvo no cadastro. O OrbeEdital tentará localizar os anexos pela identificação da contratação na API oficial do PNCP, inclusive quando a oportunidade vier do Compras.gov.br. Se não houver PDF público ou identificadores suficientes, a análise ficará limitada aos metadados."
               : "Esta fonte ainda não possui integração de documentos nesta etapa. A IA analisará somente os metadados disponíveis, sem afirmar que leu o edital."}
           </p>
         )}
