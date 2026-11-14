@@ -4,6 +4,7 @@ import { auditLogs, authSessions, users, companies, companyMembers, subscription
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
+import { cancelMercadoPagoSubscription } from "./services/mercadoPago";
 
 /**
  * Read-only customer directory for the global administrator.
@@ -155,6 +156,84 @@ export const adminUsersRouter = router({
         });
         return { updated: true, role: input.role };
       });
+    }),
+
+
+  deleteAccount: superadminProcedure
+    .input(z.object({ userId: z.string().uuid(), confirmationEmail: z.string().trim().email().max(320) }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      const [target] = await db.select({ id: users.id, role: users.role, email: users.email, name: users.name })
+        .from(users).where(eq(users.id, input.userId)).limit(1);
+      if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+      if (target.role !== "user") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "A exclusão pelo painel está disponível somente para contas de clientes." });
+      }
+      if (target.email.toLowerCase() !== input.confirmationEmail.toLowerCase()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O e-mail de confirmação não corresponde à conta selecionada." });
+      }
+
+      const [membership] = await db.select({ companyId: companyMembers.companyId })
+        .from(companyMembers).where(eq(companyMembers.userId, target.id))
+        .orderBy(companyMembers.createdAt).limit(1);
+      const companyId = membership?.companyId ?? null;
+
+      if (companyId) {
+        const companySubscriptions = await db.select({
+          id: subscriptions.id,
+          provider: subscriptions.provider,
+          providerSubscriptionId: subscriptions.providerSubscriptionId,
+          status: subscriptions.status,
+        }).from(subscriptions).where(eq(subscriptions.companyId, companyId));
+
+        // Cancel provider-side subscriptions before removing local records.
+        for (const subscription of companySubscriptions) {
+          if (subscription.provider === "mercadopago" && subscription.providerSubscriptionId && subscription.status !== "cancelled") {
+            await cancelMercadoPagoSubscription(subscription.id).catch(error => {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Não foi possível cancelar a assinatura vinculada ao Mercado Pago. A conta foi mantida. Regularize a assinatura no provedor e tente novamente.",
+                cause: error,
+              });
+            });
+          }
+        }
+      }
+
+      await db.transaction(async tx => {
+        const [lockedTarget] = await tx.select({ id: users.id, role: users.role, email: users.email })
+          .from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!lockedTarget || lockedTarget.role !== "user" || lockedTarget.email.toLowerCase() !== input.confirmationEmail.toLowerCase()) {
+          throw new TRPCError({ code: "CONFLICT", message: "A conta mudou durante a operação. Atualize a lista e tente novamente." });
+        }
+
+        let removedCompany = false;
+        if (companyId) {
+          const members = await tx.select({ userId: companyMembers.userId }).from(companyMembers)
+            .where(eq(companyMembers.companyId, companyId));
+          if (members.every(member => member.userId === target.id)) {
+            await tx.delete(companies).where(eq(companies.id, companyId));
+            removedCompany = true;
+          }
+        }
+
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          companyId,
+          action: "user.account.deleted",
+          entityType: "user",
+          entityId: target.id,
+          details: {
+            targetEmail: target.email,
+            targetName: target.name,
+            companyRemoved: removedCompany,
+            deletedAt: new Date().toISOString(),
+          },
+        });
+        await tx.delete(users).where(eq(users.id, target.id));
+      });
+
+      return { deleted: true, email: target.email };
     }),
 
   revokeSessions: superadminProcedure
