@@ -270,6 +270,14 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
 }
 
 export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
+  const utils = trpc.useUtils();
+  const refund = trpc.admin.refundPayment.useMutation({
+    onSuccess: async result => {
+      toast.success(`Estorno solicitado e confirmado: ${money(result.amountCents / 100)}. A assinatura foi cancelada.`);
+      await utils.admin.finance.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const query = trpc.admin.finance.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading)
@@ -297,6 +305,41 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
           </article>
         ))}
       </div>
+      <section className="rounded-xl border bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Contratações e pagamentos</h2>
+            <p className="mt-1 text-xs text-slate-500">Últimos 100 registros. Datas e status conforme dados persistidos no OrbeEdital.</p>
+          </div>
+          <button type="button" onClick={() => query.refetch()} className="rounded-lg border px-3 py-2 text-xs font-semibold">Atualizar</button>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[1050px] text-left text-xs">
+            <thead className="border-b text-slate-500">
+              <tr><th className="p-2">Cliente / empresa</th><th className="p-2">Plano</th><th className="p-2">Valor</th><th className="p-2">Status</th><th className="p-2">Pagamento</th><th className="p-2">Contratação</th><th className="p-2">Renovação</th><th className="p-2">Ação</th></tr>
+            </thead>
+            <tbody>
+              {(d.payments ?? []).map((payment: any) => {
+                const status = payment.status === "approved" ? "Pago" : payment.status === "pending" ? "Aguardando pagamento" : payment.status === "refunded" ? "Estornado" : payment.status === "cancelled" ? "Cancelado" : payment.status;
+                let meta: any = {};
+                try { meta = JSON.parse(payment.rawStatus || "{}"); } catch { /* optional metadata */ }
+                const canRefund = payment.status === "approved" && Boolean(payment.providerPaymentId);
+                return <tr key={payment.id} className="border-b align-top">
+                  <td className="p-2"><div className="font-semibold text-slate-800">{payment.customerName || "Cliente"}</div><div className="text-slate-500">{payment.customerEmail || "—"}</div><div className="text-slate-500">{payment.companyName}</div></td>
+                  <td className="p-2">{payment.planName || "—"}<div className="text-slate-500">{payment.billingInterval === "annual" ? "Anual" : "Mensal"}</div></td>
+                  <td className="p-2 font-semibold">{money(payment.amountCents / 100)}</td>
+                  <td className="p-2">{status}</td>
+                  <td className="p-2">{payment.paidAt ? date(payment.paidAt) : "—"}<div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
+                  <td className="p-2">{date(payment.contractedAt || payment.createdAt)}</td>
+                  <td className="p-2">{payment.renewalAt ? date(payment.renewalAt) : payment.status === "pending" ? "Após confirmação" : "—"}</td>
+                  <td className="p-2">{canRefund ? <button type="button" disabled={refund.isPending} onClick={() => { if (window.confirm(`Confirma o estorno de ${money(payment.amountCents / 100)}? A assinatura vinculada também será cancelada e não haverá novas renovações.`)) refund.mutate({ paymentId: payment.providerPaymentId }); }} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+          {!d.payments?.length && <p className="py-6 text-center text-sm text-slate-500">Nenhuma contratação ou pagamento registrado.</p>}
+        </div>
+      </section>
       <section className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Pagamentos por status persistido</h2>
         <div className="mt-3 flex flex-wrap gap-3">
