@@ -303,7 +303,7 @@ export const appRouter = router({
       id: plans.id, code: plans.code, name: plans.name, description: plans.description,
       monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents,
       features: plans.features, limits: plans.limits,
-    }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional"])))),
+    }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional", "teste-gratis"])))),
     usage: authenticatedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
     changePlan: protectedProcedure.input(z.object({ planId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
       try {
