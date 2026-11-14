@@ -5,6 +5,7 @@ import type { Request } from "express";
 import { auditLogs, connectors } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { syncConnector } from "./ingestion";
+import { dispatchDeadlineNotifications } from "./deadlineNotifications";
 
 const COOKIE_NAME = "app_session_id";
 const CONNECTORS = ["pncp", "compras.gov.br"] as const;
@@ -120,6 +121,14 @@ export async function handleScheduledSync(req: Request) {
           allPages: true,
           pageSize: 500,
         });
+    const notificationSummary = await dispatchDeadlineNotifications().catch(async error => {
+      await getDb().insert(auditLogs).values({
+        action: "notification.schedule.failed",
+        entityType: "notification_job",
+        details: { message: error instanceof Error ? error.message.slice(0, 240) : "Unknown error" },
+      }).catch(() => undefined);
+      return { scannedEvents: 0, createdReminders: 0, createdSummaries: 0, failed: true };
+    });
     await getDb().insert(auditLogs).values({
       action: "source.schedule.completed",
       entityType: "connector",
@@ -131,6 +140,7 @@ export async function handleScheduledSync(req: Request) {
         inserted: result.inserted,
         updated: result.updated,
         durationMs: result.durationMs,
+        notifications: notificationSummary,
       },
     });
     const coverage = matched.code === "pncp"
