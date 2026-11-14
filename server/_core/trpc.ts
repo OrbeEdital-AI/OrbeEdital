@@ -2,7 +2,7 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from "@shared/const";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { companyMembers, payments, plans, subscriptions } from "../../drizzle/schema";
 import { getDb } from "../db";
 
@@ -29,8 +29,8 @@ const requireActiveSubscription = t.middleware(async ({ ctx, next }) => {
     .from(companyMembers).where(eq(companyMembers.userId, ctx.user.id)).limit(1);
   const [active] = membership ? await getDb().select({ id: subscriptions.id }).from(subscriptions)
     .innerJoin(plans, eq(subscriptions.planId, plans.id))
-    .innerJoin(payments, eq(payments.subscriptionId, subscriptions.id))
-    .where(and(eq(subscriptions.companyId, membership.companyId), eq(subscriptions.status, "active"), eq(payments.status, "approved"), eq(plans.active, true)))
+    .leftJoin(payments, eq(payments.subscriptionId, subscriptions.id))
+    .where(and(eq(subscriptions.companyId, membership.companyId), eq(subscriptions.status, "active"), eq(plans.active, true), or(eq(payments.status, "approved"), and(eq(plans.monthlyPriceCents, 0), eq(subscriptions.provider, "orbeedital")))))
     .orderBy(desc(subscriptions.createdAt)).limit(1) : [];
   if (!active) throw new TRPCError({ code: "FORBIDDEN", message: "Sua assinatura ainda não está ativa. Conclua o pagamento do plano para acessar o portal." });
   return next({ ctx: { ...ctx, user: ctx.user } });
