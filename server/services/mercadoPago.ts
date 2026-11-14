@@ -390,11 +390,19 @@ export async function handleMercadoPagoWebhook(req: any) {
     }).where(eq(payments.id, localPayment.id));
     if (paymentStatus === "approved" && local.status !== "cancelled" && local.status !== "failed") {
       const now = new Date();
-      const periodEnd = new Date(now);
+      const [previousActive] = await getDb().select({ currentPeriodEnd: subscriptions.currentPeriodEnd })
+        .from(subscriptions).where(and(
+          eq(subscriptions.companyId, local.companyId),
+          inArray(subscriptions.status, ["active", "trialing"]),
+          lt(subscriptions.createdAt, local.createdAt),
+        )).orderBy(desc(subscriptions.createdAt)).limit(1);
+      const periodStart = previousActive?.currentPeriodEnd && previousActive.currentPeriodEnd > now
+        ? previousActive.currentPeriodEnd : now;
+      const periodEnd = new Date(periodStart);
       if (local.billingInterval === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
       else periodEnd.setMonth(periodEnd.getMonth() + 1);
       await getDb().update(subscriptions).set({
-        status: "active", currentPeriodStart: now, currentPeriodEnd: periodEnd,
+        status: "active", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd,
         gracePeriodEndsAt: null, updatedAt: now,
       }).where(eq(subscriptions.id, local.id));
       await getDb().update(subscriptions).set({
