@@ -37,9 +37,14 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       });
       verificationRequired = result.emailVerificationRequired;
       deliveryNotice = result.verificationEmailSent ? "sent" : "unavailable";
-      const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
-      await utils.auth.me.invalidate();
-      window.location.assign(payment.checkoutUrl);
+      try {
+        const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
+        await utils.auth.me.invalidate();
+        window.location.assign(payment.checkoutUrl);
+      } catch {
+        await utils.auth.me.invalidate();
+        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}`);
+      }
       return;
     }
     await utils.auth.me.invalidate();
