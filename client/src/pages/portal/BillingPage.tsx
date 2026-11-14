@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { money, Loading, ErrorState } from "./common";
@@ -22,6 +23,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 }
 
 export function BillingPage() {
+  const [pix, setPix] = useState<null | { paymentId: string; pixQrCode: string; pixQrCodeBase64: string; pixTicketUrl: string | null; expiresAt: string; amountCents: number; planName: string }>(null);
   const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
   const utils = trpc.useUtils();
@@ -40,6 +42,14 @@ export function BillingPage() {
     onSuccess: ({ checkoutUrl }) => { window.location.assign(checkoutUrl); },
     onError: error => toast.error(error.message),
   });
+  const pixCheckout = trpc.billing.pixCheckout.useMutation({
+    onSuccess: result => { setPix(result); toast.success("Pix gerado. Conclua o pagamento para liberar o acesso."); },
+    onError: error => toast.error(error.message),
+  });
+  const pixStatus = trpc.billing.pixStatus.useQuery(
+    { paymentId: pix?.paymentId ?? "" },
+    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false },
+  );
 
   if (plans.isLoading || usage.isLoading) return <Loading label="Carregando planos e consumo…" />;
   if (plans.error) return <ErrorState message={plans.error.message} onRetry={() => plans.refetch()} />;
@@ -62,6 +72,29 @@ export function BillingPage() {
           Escolha o plano ideal para monitorar licitações. Os limites são compartilhados pelos usuários da mesma empresa e o consumo de pesquisas é renovado a cada mês.
         </p>
       </section>
+
+      {pix && (
+        <section className="rounded-xl border border-cyan-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-[#102B4E]">Pagamento Pix — {pix.planName}</h3>
+              <p className="text-sm text-slate-600">Valor: {money(pix.amountCents / 100)} · válido até {new Date(pix.expiresAt).toLocaleString("pt-BR")}</p>
+            </div>
+            <button type="button" onClick={() => setPix(null)} className="text-sm text-slate-500 underline">Fechar</button>
+          </div>
+          <div className="mt-4 flex flex-col items-center gap-3">
+            <img alt="QR Code Pix" className="h-56 w-56 rounded-lg border border-slate-200 p-2" src={`data:image/png;base64,${pix.pixQrCodeBase64}`} />
+            <p className="text-sm font-semibold text-slate-700">Escaneie o QR Code ou copie o código Pix</p>
+            <textarea readOnly value={pix.pixQrCode} className="min-h-24 w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-700" />
+            <button type="button" onClick={() => { void navigator.clipboard.writeText(pix.pixQrCode).then(() => toast.success("Código Pix copiado."), () => toast.error("Não foi possível copiar o código.")); }} className="w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800">Copiar código Pix</button>
+            {pix.pixTicketUrl && <a href={pix.pixTicketUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-cyan-800 underline">Abrir página de pagamento do Mercado Pago</a>}
+            <p className={pixStatus.data?.status === "approved" ? "text-sm font-semibold text-emerald-700" : "text-sm text-amber-700"}>
+              {pixStatus.data?.status === "approved" ? "Pagamento confirmado. Seu acesso foi liberado." : `Status: ${pixStatus.data?.status ?? "Aguardando pagamento"}`}
+            </p>
+            <button type="button" onClick={() => { void pixStatus.refetch().then(async result => { if (result.data?.status === "approved") { toast.success("Pagamento confirmado!"); await Promise.all([utils.billing.usage.invalidate(), utils.billing.plans.invalidate()]); } else toast.info("O pagamento ainda não foi confirmado."); }); }} className="w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white">Já paguei — verificar pagamento</button>
+          </div>
+        </section>
+      )}
 
       {current ? (
         <section className="space-y-4 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
@@ -120,6 +153,18 @@ export function BillingPage() {
                 className="mt-6 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isCurrent ? "Plano atual" : current ? (changePlan.isPending ? "Processando alteração…" : current.canChangePlan ? "Alterar para este plano" : "Alterar e configurar pagamento") : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
+              </button>
+              <button
+                type="button"
+                disabled={pixCheckout.isPending}
+                onClick={() => {
+                  const document = window.prompt("Se a empresa não tiver CNPJ cadastrado, informe o CPF ou CNPJ do pagador (somente números ou com pontuação):");
+                  if (document === null) return;
+                  pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document.trim() || undefined });
+                }}
+                className="mt-2 w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
+              >
+                {pixCheckout.isPending ? "Gerando Pix…" : "Pagar com Pix"}
               </button>
             </article>
           );
