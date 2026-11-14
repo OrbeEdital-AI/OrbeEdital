@@ -195,7 +195,7 @@ export async function handleMercadoPagoWebhook(req: any) {
     await getDb().update(subscriptions).set({
       provider: "mercadopago",
       providerSubscriptionId: String(remote.id),
-      status,
+      status: status === "pending" && local.status === "active" ? "active" : status,
       cancelledAt: status === "cancelled" ? new Date() : null,
       currentPeriodStart: local.currentPeriodStart,
       updatedAt: new Date(),
@@ -228,7 +228,7 @@ export async function handleMercadoPagoWebhook(req: any) {
       target: [payments.provider, payments.providerPaymentId],
       set: { amountCents, status: paymentStatus, paidAt: paymentStatus === "approved" ? new Date(invoice.date_created || Date.now()) : null, rawStatus, updatedAt: new Date() },
     });
-    if (paymentStatus === "approved") {
+    if (paymentStatus === "approved" && local.status !== "cancelled") {
       await getDb().update(subscriptions).set({ status: "active", currentPeriodStart: local.currentPeriodStart || new Date(), updatedAt: new Date() })
         .where(eq(subscriptions.id, local.id));
       await getDb().update(subscriptions).set({
