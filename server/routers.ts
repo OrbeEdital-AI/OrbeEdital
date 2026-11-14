@@ -30,7 +30,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
-import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus } from "./services/mercadoPago";
+import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
@@ -498,15 +498,38 @@ export const appRouter = router({
       }),
     }),
     recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(100)),
+    refundPayment: financeProcedure.input(z.object({ paymentId: z.string().trim().min(1).max(100) })).mutation(async ({ input, ctx }) => {
+      try {
+        return await refundMercadoPagoPayment(input.paymentId, ctx.user.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível estornar o pagamento." });
+      }
+    }),
     finance: financeProcedure.query(async () => {
       const db = getDb();
-      const [activeSubscriptions, canceledSubscriptions, overdueSubscriptions, activePlans, paymentGroups] = await Promise.all([
+      const [activeSubscriptions, canceledSubscriptions, overdueSubscriptions, activePlans, paymentGroups, paymentGroupsWithDetails] = await Promise.all([
         db.select({ n: count() }).from(subscriptions).where(eq(subscriptions.status, "active")),
         db.select({ n: count() }).from(subscriptions).where(inArray(subscriptions.status, ["cancelled", "canceled"])),
         db.select({ n: count() }).from(subscriptions).where(inArray(subscriptions.status, ["past_due", "expired", "inadimplente"])),
         db.select({ billingInterval: subscriptions.billingInterval, monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents })
           .from(subscriptions).innerJoin(plans, eq(subscriptions.planId, plans.id)).where(eq(subscriptions.status, "active")),
         db.select({ status: payments.status, amountCents: sum(payments.amountCents) }).from(payments).groupBy(payments.status),
+        db.select({
+          id: payments.id, providerPaymentId: payments.providerPaymentId, status: payments.status,
+          amountCents: payments.amountCents, currency: payments.currency, paidAt: payments.paidAt,
+          createdAt: payments.createdAt, rawStatus: payments.rawStatus,
+          subscriptionId: subscriptions.id, subscriptionStatus: subscriptions.status,
+          billingInterval: subscriptions.billingInterval, contractedAt: subscriptions.createdAt,
+          periodStart: subscriptions.currentPeriodStart, renewalAt: subscriptions.currentPeriodEnd,
+          planName: plans.name, companyName: companies.legalName, companyId: payments.companyId,
+          customerName: users.name, customerEmail: users.email,
+        }).from(payments)
+          .leftJoin(subscriptions, eq(payments.subscriptionId, subscriptions.id))
+          .leftJoin(plans, eq(subscriptions.planId, plans.id))
+          .innerJoin(companies, eq(payments.companyId, companies.id))
+          .leftJoin(companyMembers, eq(companyMembers.companyId, companies.id))
+          .leftJoin(users, eq(companyMembers.userId, users.id))
+          .orderBy(desc(payments.createdAt)).limit(100),
       ]);
       const mrrCents = Math.round(activePlans.reduce((total, row) => total + (row.billingInterval === "annual" ? row.annualPriceCents / 12 : row.monthlyPriceCents), 0));
       const byStatus = Object.fromEntries(paymentGroups.map(row => [row.status, Number(row.amountCents ?? 0)]));
