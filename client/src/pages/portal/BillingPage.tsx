@@ -1,4 +1,4 @@
-import { useLocation } from "wouter";
+import { useState } from "react";\nimport { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { money, Loading, ErrorState } from "./common";
@@ -24,7 +24,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 
 export function BillingPage() {
   const [, navigate] = useLocation();
-  const plans = trpc.billing.plans.useQuery();
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");\n  const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
   const profile = trpc.account.profile.useQuery();
   const utils = trpc.useUtils();
@@ -109,36 +109,32 @@ export function BillingPage() {
                 <li>• Até {Number(planLimits.maxSavedSearches ?? 0).toLocaleString("pt-BR")} pesquisas salvas</li>
                 {(plan.features ?? []).map(feature => <li key={feature}>• {feature}</li>)}
               </ul>
-              <button
-                type="button"
-                disabled={checkout.isPending || changePlan.isPending || (Boolean(current) && isCurrent)}
-                onClick={() => {
-                  if (current) {
-                    const billingNotice = current.canChangePlan
-                      ? "A cobrança recorrente atual será atualizada no Mercado Pago."
-                      : "Você será direcionado ao Mercado Pago para cadastrar a cobrança recorrente. Seu plano atual continuará ativo até a confirmação do pagamento.";
-                    if (window.confirm(`Confirma a alteração para o plano ${plan.name} por ${money(plan.monthlyPriceCents / 100)}/mês? ${billingNotice}`)) {
-                      changePlan.mutate({ planId: plan.id });
-                    }
-                    return;
-                  }
+              <div className="mt-6 rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-semibold text-slate-700">Forma de pagamento</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setPaymentMethod("card")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "card" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Cartão de crédito</button>
+                  <button type="button" onClick={() => setPaymentMethod("pix")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "pix" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Pix</button>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual. A renovação deverá ser paga novamente a cada período." : "Cobrança recorrente mensal no cartão."}</p>
+              </div>
+              <button type="button" disabled={checkout.isPending || changePlan.isPending || pixCheckout.isPending || profile.isLoading || (Boolean(current) && isCurrent)} onClick={() => {
+                let document: string | undefined;
+                if (paymentMethod === "pix" && !profile.data?.cnpj) {
+                  const entered = window.prompt("Informe o CPF ou CNPJ do pagador:");
+                  if (entered === null) return;
+                  document = entered.trim();
+                }
+                if (current) {
+                  const description = paymentMethod === "pix" ? "Será gerado um novo Pix. O plano atual continuará ativo até a confirmação do novo pagamento." : "Será iniciada uma nova cobrança recorrente. O plano atual continuará ativo até a confirmação.";
+                  if (!window.confirm(`Confirma a alteração para o plano ${plan.name} por ${money(plan.monthlyPriceCents / 100)}/mês? ${description}`)) return;
+                  changePlan.mutate({ planId: plan.id, method: paymentMethod, document });
+                } else if (paymentMethod === "pix") {
+                  pixCheckout.mutate({ planId: plan.id, interval: "monthly", document });
+                } else {
                   checkout.mutate({ planId: plan.id, interval: "monthly" });
-                }}
-                className="mt-6 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isCurrent ? "Plano atual" : current ? (changePlan.isPending ? "Processando alteração…" : current.canChangePlan ? "Alterar para este plano" : "Alterar e configurar pagamento") : checkout.isPending ? "Preparando checkout…" : "Assinar pelo Mercado Pago"}
-              </button>
-              <button
-                type="button"
-                disabled={pixCheckout.isPending || profile.isLoading}
-                onClick={() => {
-                  const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
-                  if (!profile.data?.cnpj && document === null) return;
-                  pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document?.trim() || undefined });
-                }}
-                className="mt-2 w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
-              >
-                {pixCheckout.isPending ? "Gerando Pix…" : "Pagar com Pix"}
+                }
+              }} className="mt-3 w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white hover:bg-[#066b92] disabled:cursor-not-allowed disabled:opacity-50">
+                {isCurrent ? "Plano atual" : checkout.isPending || changePlan.isPending || pixCheckout.isPending ? "Preparando pagamento…" : current ? "Alterar plano e continuar" : "Continuar para pagamento"}
               </button>
             </article>
           );
