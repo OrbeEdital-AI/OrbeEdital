@@ -25,13 +25,30 @@ type AnalysisResult = {
 };
 
 async function discoverPncpDocuments(opportunityId: string) {
-  const [row] = await getDb().select({ sourceKey: opportunities.sourceKey, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, procurementNumber: opportunities.procurementNumber })
-    .from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
+  const [row] = await getDb().select({
+    sourceKey: opportunities.sourceKey,
+    agencyCnpj: opportunities.agencyCnpj,
+    year: opportunities.year,
+    procurementNumber: opportunities.procurementNumber,
+    rawData: opportunities.rawData,
+  }).from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
   if (!row) return [];
   const keyParts = row.sourceKey.split("/");
-  const cnpj = (keyParts[0] || row.agencyCnpj || "").replace(/\D/g, "");
-  const year = keyParts[1] || String(row.year ?? "");
-  const sequential = keyParts[2] || (row.procurementNumber ?? "").replace(/\D/g, "");
+  const rawData = row.rawData && typeof row.rawData === "object" ? row.rawData as Record<string, unknown> : {};
+  const raw = rawData.raw && typeof rawData.raw === "object" ? rawData.raw as Record<string, unknown> : rawData;
+  const organization = raw.orgaoEntidade && typeof raw.orgaoEntidade === "object" ? raw.orgaoEntidade as Record<string, unknown> : {};
+  const cnpj = String(
+    (keyParts[0]?.replace(/\D/g, "").length === 14 ? keyParts[0] : "") ||
+    row.agencyCnpj || raw.orgaoEntidadeCnpj || organization.cnpj || ""
+  ).replace(/\D/g, "");
+  const year = String(
+    (keyParts.length >= 3 ? keyParts[1] : "") ||
+    raw.anoCompraPncp || raw.anoCompra || row.year || ""
+  );
+  const sequential = String(
+    (keyParts.length >= 3 ? keyParts[2] : "") ||
+    raw.sequencialCompraPncp || raw.sequencialCompra || ""
+  ).replace(/\D/g, "");
   if (cnpj.length !== 14 || !/^\d{4}$/.test(year) || !/^\d+$/.test(sequential)) return [];
   const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + year + "/" + sequential + "/arquivos";
   try {
@@ -116,7 +133,11 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
 
-  const discoveredDocuments = opportunity.sourceCode === "pncp" ? await discoverPncpDocuments(opportunityId) : [];
+  // Compras.gov.br republishes PNCP procurement records. Its source key may be an
+  // internal idCompra, so discover the official PNCP attachment list from raw metadata too.
+  const discoveredDocuments = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode)
+    ? await discoverPncpDocuments(opportunityId)
+    : [];
   const pdf = getOfficialPdf(opportunity, discoveredDocuments);
   const metadata = {
     title: opportunity.title,
