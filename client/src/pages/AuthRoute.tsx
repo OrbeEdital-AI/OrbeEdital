@@ -34,6 +34,13 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       });
       verificationRequired = result.emailVerificationRequired;
       deliveryNotice = result.verificationEmailSent ? "sent" : "unavailable";
+      const catalog = plans.data ?? (await plans.refetch()).data;
+      const selectedPlan = catalog?.find(plan => plan.code === selectedPlanCode);
+      if (!selectedPlan) throw new Error("O plano escolhido não está disponível. Volte à página de planos e selecione novamente.");
+      const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
+      await utils.auth.me.invalidate();
+      window.location.assign(payment.checkoutUrl);
+      return;
     }
     await utils.auth.me.invalidate();
     navigate(verificationRequired ? `/verify-email${deliveryNotice ? `?delivery=${deliveryNotice}` : ""}` : "/app");
