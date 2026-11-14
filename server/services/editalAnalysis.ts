@@ -10,7 +10,7 @@ type AnalysisResult = {
   object: string | null;
   modality: string | null;
   estimatedValue: string | null;
-  proposalDeadline: string | null;
+  proposalStartAt: string | null;\n  proposalDeadline: string | null;
   openingDate: string | null;
   sessionAt: string | null;
   judgmentCriterion: string | null;
@@ -23,6 +23,51 @@ type AnalysisResult = {
   documentAnalyzed: boolean;
   documentName: string | null;
 };
+
+type PncpDateMetadata = {
+  controlNumber: string | null;
+  publicationAt: string | null;
+  proposalReceiptStartsAt: string | null;
+  proposalReceiptEndsAt: string | null;
+};
+
+function formatPncpBrazilDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+  // PNCP date-time fields are local procurement times when no offset is supplied.
+  const local = /^(\\d{4})-(\\d{2})-(\\d{2})[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?$/.exec(raw);
+  if (local) return `${local[3]}/${local[2]}/${local[1]} às ${local[4]}:${local[5]} (horário de Brasília)`;
+  const dateOnly = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(raw);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "America/Sao_Paulo",
+    }).format(parsed) + " (horário de Brasília)";
+  }
+  return raw;
+}
+
+async function getPncpDateMetadata(opportunityId: string): Promise<PncpDateMetadata> {
+  const [row] = await getDb().select({
+    controlNumber: opportunities.controlNumber,
+    rawData: opportunities.rawData,
+  }).from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
+  const rawData = row?.rawData && typeof row.rawData === "object"
+    ? row.rawData as Record<string, unknown>
+    : {};
+  const raw = rawData.raw && typeof rawData.raw === "object"
+    ? rawData.raw as Record<string, unknown>
+    : rawData;
+  return {
+    controlNumber: row?.controlNumber ?? (typeof raw.numeroControlePNCP === "string" ? raw.numeroControlePNCP : null),
+    publicationAt: formatPncpBrazilDate(raw.dataPublicacaoPncp),
+    proposalReceiptStartsAt: formatPncpBrazilDate(raw.dataAberturaProposta ?? raw.dataAberturaPropostaPncp),
+    proposalReceiptEndsAt: formatPncpBrazilDate(raw.dataEncerramentoProposta ?? raw.dataEncerramentoPropostaPncp),
+  };
+}
 
 async function discoverPncpDocuments(opportunityId: string) {
   const [row] = await getDb().select({
@@ -153,7 +198,7 @@ function parseAnalysis(content: unknown): AnalysisResult {
     object: nullable("object"),
     modality: nullable("modality"),
     estimatedValue: nullable("estimatedValue"),
-    proposalDeadline: nullable("proposalDeadline"),
+    proposalStartAt: nullable("proposalStartAt"),\n    proposalDeadline: nullable("proposalDeadline"),
     openingDate: nullable("openingDate"),
     sessionAt: nullable("sessionAt"),
     judgmentCriterion: nullable("judgmentCriterion"),
@@ -230,7 +275,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       });
     }
 
-    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. Compare explicitamente objeto, valor, modalidade e todas as datas dos metadados com o edital. Se houver qualquer divergência, não escolha uma versão nem corrija silenciosamente: registre os dois valores em attentionPoints, identificando qual veio dos metadados e qual veio do documento, e inclua a divergência em missingInformation para conferência humana. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas devem ser reproduzidas como aparecem, sem inferir fuso ou horário. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
+    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
