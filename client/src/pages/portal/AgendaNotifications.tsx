@@ -245,10 +245,10 @@ export function AgendaPage() {
             </div>
           ) : (
             <div className="mt-3">
-              <div className="grid grid-cols-7 border-b border-slate-100">
-                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(day => <div key={day} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">{day}</div>)}
+              <div className={`grid ${view === "day" ? "grid-cols-1" : "grid-cols-7"} border-b border-slate-100`}>
+                {(view === "day" ? [formatDay(dateFromKey(selectedDay), { weekday: "long" })] : ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]).map(day => <div key={day} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">{day}</div>)}
               </div>
-              <div className={`grid grid-cols-7 ${view === "month" ? "" : "min-h-[150px]"}`}>
+              <div className={`grid ${view === "day" ? "grid-cols-1" : "grid-cols-7"} ${view === "month" ? "" : "min-h-[150px]"}`}>
                 {visibleDays.map(day => {
                   const key = dateKey(day);
                   const dayEvents = eventsByDay[key] ?? [];
@@ -256,7 +256,7 @@ export function AgendaPage() {
                   const isSelected = key === selectedDay;
                   const isToday = key === todayKey;
                   return (
-                    <button key={key} onClick={() => { setSelectedDay(key); if (view === "day") setCursor(day); }} className={`group min-h-[76px] overflow-hidden border-b border-r border-slate-100 p-1.5 text-left transition hover:bg-cyan-50/60 sm:min-h-[106px] sm:p-2 ${view === "month" && !isCurrentMonth ? "bg-slate-50/70" : "bg-white"} ${isSelected ? "ring-2 ring-inset ring-cyan-700 bg-cyan-50/40" : ""}`}>
+                    <button key={key} onClick={() => { setSelectedDay(key); setCursor(day); }} className={`group min-h-[76px] overflow-hidden border-b border-r border-slate-100 p-1.5 text-left transition hover:bg-cyan-50/60 sm:min-h-[106px] sm:p-2 ${view === "month" && !isCurrentMonth ? "bg-slate-50/70" : "bg-white"} ${isSelected ? "ring-2 ring-inset ring-cyan-700 bg-cyan-50/40" : ""}`}>
                       <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? "bg-[#102b4e] text-white" : isCurrentMonth || view !== "month" ? "text-slate-700" : "text-slate-300"}`}>{day.getDate()}</span>
                       <div className="mt-1 space-y-1">
                         {dayEvents.slice(0, view === "month" ? 2 : 5).map(event => (
