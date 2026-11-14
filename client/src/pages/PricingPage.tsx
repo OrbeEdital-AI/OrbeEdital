@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { useLocation } from "wouter";
+import { toast } from "sonner";
 import BrandMark from "@/components/BrandMark";
 import { trpc } from "@/lib/trpc";
 
@@ -11,6 +12,7 @@ export default function PricingPage() {
   const auth = trpc.auth.me.useQuery(undefined, { retry: false });
   const checkout = trpc.billing.checkout.useMutation({
     onSuccess: ({ checkoutUrl }) => window.location.assign(checkoutUrl),
+    onError: error => toast.error(error.message),
   });
   const resumeCode = new URLSearchParams(window.location.search).get("resume");
   const selectedCode = new URLSearchParams(window.location.search).get("plan");
@@ -29,6 +31,7 @@ export default function PricingPage() {
           <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#102B4E] sm:text-5xl">Escolha o plano da sua empresa</h1>
           <p className="mt-5 text-base leading-7 text-slate-600">Compare os recursos, os limites mensais e escolha a opção mais adequada. O acesso ao portal é liberado após a confirmação do pagamento.</p>
         </div>
+        {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Escolha o plano novamente para retomar o pagamento e liberar o portal.</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
           <div className="mt-12 grid gap-6 md:grid-cols-2">
             {(plans.data ?? []).map(plan => {
