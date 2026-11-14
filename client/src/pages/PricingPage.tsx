@@ -18,7 +18,7 @@ export default function PricingPage() {
   });
   const pixStatus = trpc.billing.pixStatus.useQuery(
     { paymentId: pix?.paymentId ?? "" },
-    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false },
+    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false, refetchInterval: 5000 },
   );
   const auth = trpc.auth.me.useQuery(undefined, { retry: false });
   const checkout = trpc.billing.checkout.useMutation({
