@@ -30,7 +30,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
-import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout } from "./services/mercadoPago";
+import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
@@ -350,6 +350,32 @@ export const appRouter = router({
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: error instanceof Error ? error.message : "Não foi possível iniciar a assinatura.",
+        });
+      }
+    }),
+    pixCheckout: authenticatedProcedure.input(z.object({
+      planId: z.string().uuid(),
+      interval: z.enum(["monthly", "annual"]).default("monthly"),
+      document: z.string().trim().max(18).optional(),
+    })).mutation(async ({ input, ctx }) => {
+      try {
+        return await createMercadoPagoPix(ctx.user.id, input.planId, input.interval, input.document);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: error instanceof Error ? error.message : "Não foi possível gerar o Pix.",
+        });
+      }
+    }),
+    pixStatus: authenticatedProcedure.input(z.object({
+      paymentId: z.string().trim().min(1).max(80),
+    })).query(async ({ input, ctx }) => {
+      try {
+        return await getMercadoPagoPixStatus(ctx.user.id, input.paymentId);
+      } catch (error) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: error instanceof Error ? error.message : "Cobrança Pix não encontrada.",
         });
       }
     }),
