@@ -239,7 +239,8 @@ export async function getMercadoPagoPixStatus(userId: string, paymentId: string)
   try { pix = JSON.parse(payment.rawStatus || "{}"); } catch { /* older payment record */ }
   return { status: payment.status, paidAt: payment.paidAt, ...pix };
 }
-\nexport async function cancelMercadoPagoSubscription(subscriptionId: string) {
+
+export async function cancelMercadoPagoSubscription(subscriptionId: string) {
   const db = getDb();
   const [subscription] = await db.select().from(subscriptions)
     .where(eq(subscriptions.id, subscriptionId)).limit(1);
