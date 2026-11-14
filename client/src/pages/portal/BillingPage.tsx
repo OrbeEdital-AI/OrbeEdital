@@ -44,7 +44,14 @@ export function BillingPage() {
   });
   const pixCheckout = trpc.billing.pixCheckout.useMutation({
     onSuccess: result => { setPix(result); toast.success("Pix gerado. Conclua o pagamento para liberar o acesso."); },
-    onError: error => toast.error(error.message),
+    onError: (error, variables) => {
+      if (error.message.includes("Informe um CPF ou CNPJ")) {
+        const document = window.prompt("Informe o CPF ou CNPJ do pagador:");
+        if (document?.trim()) pixCheckout.mutate({ ...variables, document: document.trim() });
+        return;
+      }
+      toast.error(error.message);
+    },
   });
   const pixStatus = trpc.billing.pixStatus.useQuery(
     { paymentId: pix?.paymentId ?? "" },
@@ -158,9 +165,7 @@ export function BillingPage() {
                 type="button"
                 disabled={pixCheckout.isPending}
                 onClick={() => {
-                  const document = window.prompt("Se a empresa não tiver CNPJ cadastrado, informe o CPF ou CNPJ do pagador (somente números ou com pontuação):");
-                  if (document === null) return;
-                  pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document.trim() || undefined });
+                  pixCheckout.mutate({ planId: plan.id, interval: "monthly" });
                 }}
                 className="mt-2 w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 disabled:opacity-50"
               >
