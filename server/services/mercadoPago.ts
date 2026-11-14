@@ -23,8 +23,28 @@ async function mpRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error("[mercadopago] API request failed", response.status);
-    throw new Error("Não foi possível comunicar com o Mercado Pago.");
+    const apiError = body && typeof body === "object" ? body as {
+      message?: unknown;
+      error?: unknown;
+      cause?: Array<{ code?: unknown; description?: unknown }>;
+    } : {};
+    const causes = Array.isArray(apiError.cause)
+      ? apiError.cause.map(item => ({
+          code: typeof item?.code === "string" || typeof item?.code === "number" ? item.code : undefined,
+          description: typeof item?.description === "string" ? item.description.slice(0, 300) : undefined,
+        }))
+      : [];
+    console.error("[mercadopago] API request rejected", {
+      status: response.status,
+      error: typeof apiError.error === "string" ? apiError.error : undefined,
+      message: typeof apiError.message === "string" ? apiError.message.slice(0, 300) : undefined,
+      causes,
+    });
+    const detail = causes.map(item => item.description || item.code).filter(Boolean).join("; ")
+      || (typeof apiError.message === "string" ? apiError.message : "");
+    throw new Error(detail
+      ? `O Mercado Pago recusou a solicitação: ${detail}`
+      : "O Mercado Pago recusou a solicitação. Verifique as configurações e tente novamente.");
   }
   return body as T;
 }
