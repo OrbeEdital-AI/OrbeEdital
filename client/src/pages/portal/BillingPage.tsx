@@ -32,6 +32,11 @@ export function BillingPage() {
   const utils = trpc.useUtils();
   const changePlan = trpc.billing.changePlan.useMutation({
     onSuccess: async result => {
+      if ("paymentId" in result) {
+        sessionStorage.setItem("orbeedital_pix_payment", JSON.stringify(result));
+        navigate("/pix-payment");
+        return;
+      }
       if ("checkoutUrl" in result) {
         window.location.assign(result.checkoutUrl);
         return;
