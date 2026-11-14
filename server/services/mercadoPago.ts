@@ -391,14 +391,28 @@ export async function handleMercadoPagoWebhook(req: any) {
     }).where(eq(payments.id, localPayment.id));
     if (paymentStatus === "approved" && local.status !== "cancelled" && local.status !== "failed") {
       const now = new Date();
-      const [previousActive] = await getDb().select({ currentPeriodEnd: subscriptions.currentPeriodEnd })
-        .from(subscriptions).where(and(
-          eq(subscriptions.companyId, local.companyId),
-          inArray(subscriptions.status, ["active", "trialing"]),
-          lt(subscriptions.createdAt, local.createdAt),
-        )).orderBy(desc(subscriptions.createdAt)).limit(1);
-      const periodStart = previousActive?.currentPeriodEnd && previousActive.currentPeriodEnd > now
-        ? previousActive.currentPeriodEnd : now;
+      const previousActives = await getDb().select({
+        id: subscriptions.id,
+        currentPeriodEnd: subscriptions.currentPeriodEnd,
+        provider: subscriptions.provider,
+        providerSubscriptionId: subscriptions.providerSubscriptionId,
+      }).from(subscriptions).where(and(
+        eq(subscriptions.companyId, local.companyId),
+        inArray(subscriptions.status, ["active", "trialing"]),
+        lt(subscriptions.createdAt, local.createdAt),
+      )).orderBy(desc(subscriptions.createdAt));
+      const futurePeriodEnds = previousActives
+        .map(item => item.currentPeriodEnd)
+        .filter((end): end is Date => Boolean(end && end > now))
+        .sort((a, b) => b.getTime() - a.getTime());
+      const periodStart = futurePeriodEnds[0] ?? now;
+      // A Pix renewal replaces any previous billing method. Stop active card
+      // preapprovals remotely before switching the local subscription.
+      for (const previous of previousActives) {
+        if (previous.provider === "mercadopago" && previous.providerSubscriptionId) {
+          await cancelMercadoPagoSubscription(previous.id);
+        }
+      }
       const periodEnd = new Date(periodStart);
       if (local.billingInterval === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
       else periodEnd.setMonth(periodEnd.getMonth() + 1);
