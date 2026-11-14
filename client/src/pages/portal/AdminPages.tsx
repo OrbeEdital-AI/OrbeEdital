@@ -316,7 +316,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left text-xs">
             <thead className="border-b text-slate-500">
-              <tr><th className="p-2">Cliente / empresa</th><th className="p-2">Plano</th><th className="p-2">Valor</th><th className="p-2">Status</th><th className="p-2">Pagamento</th><th className="p-2">Contratação</th><th className="p-2">Renovação</th><th className="p-2">Ação</th></tr>
+              <tr><th className="p-2">Cliente / empresa</th><th className="p-2">Plano</th><th className="p-2">Valor</th><th className="p-2">Status</th><th className="p-2">Meio / pagamento</th><th className="p-2">Contratação</th><th className="p-2">Renovação</th><th className="p-2">Ação</th></tr>
             </thead>
             <tbody>
               {(d.payments ?? []).map((payment: any) => {
