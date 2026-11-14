@@ -41,9 +41,10 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
         const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
         await utils.auth.me.invalidate();
         window.location.assign(payment.checkoutUrl);
-      } catch {
+      } catch (error) {
         await utils.auth.me.invalidate();
-        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}&checkoutError=1`);
+        const message = error instanceof Error ? error.message : "Não foi possível iniciar o pagamento.";
+        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}&checkoutError=${encodeURIComponent(message)}`);
       }
       return;
     }
