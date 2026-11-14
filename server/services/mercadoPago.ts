@@ -142,13 +142,22 @@ export async function cancelMercadoPagoSubscription(subscriptionId: string) {
     throw new Error("Assinatura pendente não encontrada no Mercado Pago.");
   }
   if (subscription.status === "cancelled") return;
-  await mpRequest<any>(`/preapproval/${encodeURIComponent(subscription.providerSubscriptionId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ status: "cancelled" }),
-  });
+  try {
+    await mpRequest<any>(`/preapproval/${encodeURIComponent(subscription.providerSubscriptionId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+  } catch (error) {
+    // Mercado Pago rejects updates when the preapproval is already cancelled.
+    // Treat this specific response as an idempotent success and reconcile local state.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes("you can not modify a cancelled preapproval")) {
+      throw error;
+    }
+  }
   await db.update(subscriptions).set({
     status: "cancelled",
-    cancelledAt: new Date(),
+    cancelledAt: subscription.cancelledAt ?? new Date(),
     updatedAt: new Date(),
   }).where(eq(subscriptions.id, subscription.id));
 }
