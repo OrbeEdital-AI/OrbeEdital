@@ -598,7 +598,9 @@ export function OpportunityDetailPage() {
         </div>
         {!item.noticeUrl && !(Array.isArray(item.documents) && item.documents.length > 0) && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            Esta oportunidade não possui um link de edital/documento cadastrado. A IA poderá analisar somente os metadados disponíveis, sem afirmar que leu o edital.
+            {item.sourceCode === "pncp"
+              ? "O link do edital não está salvo no cadastro. O OrbeEdital tentará localizar os anexos diretamente na API oficial do PNCP; se não houver PDF público, a análise ficará limitada aos metadados."
+              : "Esta fonte ainda não possui integração de documentos nesta etapa. A IA analisará somente os metadados disponíveis, sem afirmar que leu o edital."}
           </p>
         )}
         {editalAnalysis.data && (
