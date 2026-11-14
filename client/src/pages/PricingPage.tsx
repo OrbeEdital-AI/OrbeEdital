@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { useState } from "react";\nimport { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import BrandMark from "@/components/BrandMark";
@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 export default function PricingPage() {
-  const [, navigate] = useLocation();
+  const [, navigate] = useLocation();\n  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");
   const plans = trpc.billing.plans.useQuery();
   const profile = trpc.account.profile.useQuery();
   const pixCheckout = trpc.billing.pixCheckout.useMutation({
@@ -62,13 +62,26 @@ export default function PricingPage() {
                     {(plan.features ?? []).map(feature => <li className="flex gap-2" key={feature}><Check className="shrink-0 text-emerald-600" size={17}/>{feature}</li>)}
                   </ul>
                 </>}
-                <button disabled={checkout.isPending} onClick={() => {
-                  if (auth.data) checkout.mutate({ planId: plan.id, interval: "monthly" });
-                  else navigate(`/register?plan=${encodeURIComponent(plan.code)}`);
-                }} className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
-                  {auth.data ? (checkout.isPending ? "Aguarde…" : resumeCode ? "Tentar pagamento novamente" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
+                {auth.data && <div className="mt-8 rounded-xl border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-700">Forma de pagamento</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPaymentMethod("card")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "card" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Cartão</button>
+                    <button type="button" onClick={() => setPaymentMethod("pix")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "pix" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Pix</button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual, com nova cobrança a cada renovação." : "Cobrança recorrente mensal no cartão."}</p>
+                </div>}
+                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading} onClick={() => {
+                  if (!auth.data) { navigate(`/register?plan=${encodeURIComponent(plan.code)}`); return; }
+                  if (paymentMethod === "pix") {
+                    const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
+                    if (!profile.data?.cnpj && document === null) return;
+                    pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document?.trim() || undefined });
+                  } else {
+                    checkout.mutate({ planId: plan.id, interval: "monthly" });
+                  }
+                }} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
+                  {auth.data ? (checkout.isPending || pixCheckout.isPending ? "Aguarde…" : "Continuar para pagamento") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
-                {plan.code === "teste-gratis" && auth.data && <button type="button" disabled={pixCheckout.isPending || profile.isLoading} onClick={() => { const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:"); if (!profile.data?.cnpj && document === null) return; pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document?.trim() || undefined }); }} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-700 px-5 py-3.5 font-bold text-cyan-800 transition hover:bg-cyan-50 disabled:opacity-60">{pixCheckout.isPending ? "Gerando Pix…" : "Pagar R$ 1,00 com Pix"}</button>}
                 {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Este é o plano selecionado no seu cadastro.</p>}
               </article>;
             })}
