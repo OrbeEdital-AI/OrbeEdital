@@ -1,5 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { getOpportunityDetail } from "./opportunities";
+import { getDb } from "../db";
+import { opportunities } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { invokeLLM, type Message } from "../_core/llm";
 
 type AnalysisResult = {
@@ -21,8 +24,28 @@ type AnalysisResult = {
   documentName: string | null;
 };
 
-function getOfficialPdf(opportunity: NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>) {
+async function discoverPncpDocuments(opportunityId: string) {
+  const [row] = await getDb().select({ agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, procurementNumber: opportunities.procurementNumber })
+    .from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
+  if (!row || !row.agencyCnpj || !row.year || !row.procurementNumber) return [];
+  const cnpj = row.agencyCnpj.replace(/\\D/g, "");
+  const sequential = row.procurementNumber.replace(/\\D/g, "");
+  if (cnpj.length !== 14 || !/^\\d{4}$/.test(String(row.year)) || !sequential) return [];
+  const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + row.year + "/" + sequential + "/arquivos";
+  try {
+    const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+    if (!response.ok) return [];
+    const payload = await response.json() as { documentos?: unknown };
+    return Array.isArray(payload.documentos) ? payload.documentos.filter(item => item && typeof item === "object") as Record<string, unknown>[] : [];
+  } catch (error) {
+    console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
+    return [];
+  }
+}
+
+function getOfficialPdf(opportunity: NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>, discovered: Record<string, unknown>[] = []) {
   const candidates = [
+    ...discovered,
     ...(Array.isArray(opportunity.documents) ? opportunity.documents : []),
     { url: opportunity.noticeUrl, name: "Edital" },
   ];
@@ -89,7 +112,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
 
-  const pdf = getOfficialPdf(opportunity);
+  const discoveredDocuments = opportunity.sourceCode === "pncp" ? await discoverPncpDocuments(opportunityId) : [];
+  const pdf = getOfficialPdf(opportunity, discoveredDocuments);
   const metadata = {
     title: opportunity.title,
     description: opportunity.description,
