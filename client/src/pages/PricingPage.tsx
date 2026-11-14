@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -8,7 +9,17 @@ const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "curren
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
+  const [pix, setPix] = useState<null | { paymentId: string; pixQrCode: string; pixQrCodeBase64: string; pixTicketUrl: string | null; expiresAt: string; amountCents: number; planName: string }>(null);
   const plans = trpc.billing.plans.useQuery();
+  const profile = trpc.account.profile.useQuery();
+  const pixCheckout = trpc.billing.pixCheckout.useMutation({
+    onSuccess: result => { setPix(result); toast.success("Pix de teste gerado. Conclua o pagamento para liberar o acesso."); },
+    onError: error => toast.error(error.message),
+  });
+  const pixStatus = trpc.billing.pixStatus.useQuery(
+    { paymentId: pix?.paymentId ?? "" },
+    { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: false },
+  );
   const auth = trpc.auth.me.useQuery(undefined, { retry: false });
   const checkout = trpc.billing.checkout.useMutation({
     onSuccess: ({ checkoutUrl }) => window.location.assign(checkoutUrl),
@@ -33,6 +44,7 @@ export default function PricingPage() {
           <p className="mt-5 text-base leading-7 text-slate-600">{resumeCode ? "Finalize a contratação do plano selecionado para liberar o acesso à plataforma." : "Escolha o plano ideal para sua empresa. O acesso é liberado após a confirmação do pagamento."}</p>
         </div>
         {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Continue a contratação abaixo; não é necessário refazer o cadastro nem escolher outro plano.</p>}
+        {pix && <section className="mx-auto mt-8 max-w-xl rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-[#102B4E]">Pix de teste — {pix.planName}</h2><p className="text-sm text-slate-600">Valor: {money(pix.amountCents)} · válido até {new Date(pix.expiresAt).toLocaleString("pt-BR")}</p></div><button type="button" onClick={() => setPix(null)} className="text-sm text-slate-500 underline">Fechar</button></div><div className="mt-4 flex flex-col items-center gap-3"><img alt="QR Code Pix" className="h-56 w-56 rounded-lg border border-slate-200 p-2" src={`data:image/png;base64,${pix.pixQrCodeBase64}`} /><p className="text-sm font-semibold text-slate-700">Escaneie o QR Code ou copie o código Pix</p><textarea readOnly value={pix.pixQrCode} className="min-h-24 w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-700" /><button type="button" onClick={() => { void navigator.clipboard.writeText(pix.pixQrCode).then(() => toast.success("Código Pix copiado."), () => toast.error("Não foi possível copiar o código.")); }} className="w-full rounded-lg border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800">Copiar código Pix</button>{pix.pixTicketUrl && <a href={pix.pixTicketUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-cyan-800 underline">Abrir página de pagamento do Mercado Pago</a>}<p className={pixStatus.data?.status === "approved" ? "text-sm font-semibold text-emerald-700" : "text-sm text-amber-700"}>{pixStatus.data?.status === "approved" ? "Pagamento confirmado. Seu acesso foi liberado." : `Status: ${pixStatus.data?.status ?? "Aguardando pagamento"}`}</p><button type="button" onClick={() => { void pixStatus.refetch().then(result => { if (result.data?.status === "approved") toast.success("Pagamento confirmado! Seu acesso foi liberado."); else toast.info("O pagamento ainda não foi confirmado."); }); }} className="w-full rounded-lg bg-[#087eaa] px-4 py-3 text-sm font-semibold text-white">Já paguei — verificar pagamento</button></div></section>}
         {checkoutError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{checkoutError}</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
           <div className="mt-12 grid gap-6 md:grid-cols-3">
@@ -63,6 +75,7 @@ export default function PricingPage() {
                 }} className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
                   {auth.data ? (checkout.isPending ? "Aguarde…" : resumeCode ? "Tentar pagamento novamente" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
+                {plan.code === "teste-gratis" && auth.data && <button type="button" disabled={pixCheckout.isPending || profile.isLoading} onClick={() => { const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:"); if (!profile.data?.cnpj && document === null) return; pixCheckout.mutate({ planId: plan.id, interval: "monthly", document: document?.trim() || undefined }); }} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-700 px-5 py-3.5 font-bold text-cyan-800 transition hover:bg-cyan-50 disabled:opacity-60">{pixCheckout.isPending ? "Gerando Pix…" : "Pagar R$ 1,00 com Pix"}</button>}
                 {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Este é o plano selecionado no seu cadastro.</p>}
               </article>;
             })}
