@@ -16,6 +16,7 @@ export default function PricingPage() {
   });
   const resumeCode = new URLSearchParams(window.location.search).get("resume");
   const selectedCode = new URLSearchParams(window.location.search).get("plan");
+  const checkoutError = new URLSearchParams(window.location.search).get("checkoutError");
 
   return (
     <main className="min-h-screen bg-[#f4f8fb] text-slate-800">
@@ -29,12 +30,13 @@ export default function PricingPage() {
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-700">Planos OrbeEdital</p>
           <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#102B4E] sm:text-5xl">Escolha o plano da sua empresa</h1>
-          <p className="mt-5 text-base leading-7 text-slate-600">Escolha o plano ideal para sua empresa. O acesso é liberado após a confirmação do pagamento.</p>
+          <p className="mt-5 text-base leading-7 text-slate-600">{resumeCode ? "Finalize a contratação do plano selecionado para liberar o acesso à plataforma." : "Escolha o plano ideal para sua empresa. O acesso é liberado após a confirmação do pagamento."}</p>
         </div>
-        {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Escolha o plano novamente para retomar o pagamento e liberar o portal.</p>}
+        {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Continue a contratação abaixo; não é necessário refazer o cadastro nem escolher outro plano.</p>}
+        {checkoutError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{checkoutError}</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
           <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {(plans.data ?? []).map(plan => {
+            {(plans.data ?? []).filter(plan => !resumeCode || plan.code === resumeCode).map(plan => {
               const limits = plan.limits ?? {};
               const isSelected = selectedCode === plan.code || resumeCode === plan.code;
               return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-white p-7 shadow-sm ${plan.code === "profissional" ? "border-cyan-400 ring-2 ring-cyan-100" : "border-slate-200"}`}>
@@ -59,9 +61,9 @@ export default function PricingPage() {
                   if (auth.data) checkout.mutate({ planId: plan.id, interval: "monthly" });
                   else navigate(`/register?plan=${encodeURIComponent(plan.code)}`);
                 }} className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
-                  {auth.data ? (checkout.isPending ? "Aguarde…" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
+                  {auth.data ? (checkout.isPending ? "Aguarde…" : resumeCode ? "Tentar pagamento novamente" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
-                {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Retome sua contratação com este plano.</p>}
+                {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Este é o plano selecionado no seu cadastro.</p>}
               </article>;
             })}
           </div>
