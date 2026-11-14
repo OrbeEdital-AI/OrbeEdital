@@ -1,4 +1,5 @@
-import { useState } from "react";\nimport { useLocation } from "wouter";
+import { useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { money, Loading, ErrorState } from "./common";
@@ -24,7 +25,8 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 
 export function BillingPage() {
   const [, navigate] = useLocation();
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");\n  const plans = trpc.billing.plans.useQuery();
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");
+  const plans = trpc.billing.plans.useQuery();
   const usage = trpc.billing.usage.useQuery();
   const profile = trpc.account.profile.useQuery();
   const utils = trpc.useUtils();
