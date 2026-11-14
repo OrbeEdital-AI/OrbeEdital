@@ -25,13 +25,15 @@ type AnalysisResult = {
 };
 
 async function discoverPncpDocuments(opportunityId: string) {
-  const [row] = await getDb().select({ agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, procurementNumber: opportunities.procurementNumber })
+  const [row] = await getDb().select({ sourceKey: opportunities.sourceKey, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, procurementNumber: opportunities.procurementNumber })
     .from(opportunities).where(eq(opportunities.id, opportunityId)).limit(1);
-  if (!row || !row.agencyCnpj || !row.year || !row.procurementNumber) return [];
-  const cnpj = row.agencyCnpj.replace(/\\D/g, "");
-  const sequential = row.procurementNumber.replace(/\\D/g, "");
-  if (cnpj.length !== 14 || !/^\\d{4}$/.test(String(row.year)) || !sequential) return [];
-  const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + row.year + "/" + sequential + "/arquivos";
+  if (!row) return [];
+  const keyParts = row.sourceKey.split("/");
+  const cnpj = (keyParts[0] || row.agencyCnpj || "").replace(/\\D/g, "");
+  const year = keyParts[1] || String(row.year ?? "");
+  const sequential = keyParts[2] || (row.procurementNumber ?? "").replace(/\\D/g, "");
+  if (cnpj.length !== 14 || !/^\\d{4}$/.test(year) || !/^\\d+$/.test(sequential)) return [];
+  const url = "https://pncp.gov.br/api/consulta/v1/orgaos/" + cnpj + "/compras/" + year + "/" + sequential + "/arquivos";
   try {
     const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
     if (!response.ok) return [];
