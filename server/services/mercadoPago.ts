@@ -136,9 +136,9 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
 
 
 function validCpfCnpj(value: string) {
-  const digits = value.replace(/\\D/g, "");
+  const digits = value.replace(/\D/g, "");
   if (digits.length === 11) {
-    if (/^(\\d)\\1+$/.test(digits)) return false;
+    if (/^(\d)\\1+$/.test(digits)) return false;
     const calc = (base: string, factor: number) => {
       let total = 0;
       for (const digit of base) total += Number(digit) * factor--;
@@ -149,7 +149,7 @@ function validCpfCnpj(value: string) {
       calc(digits.slice(0, 10), 11) === Number(digits[10]);
   }
   if (digits.length === 14) {
-    if (/^(\\d)\\1+$/.test(digits)) return false;
+    if (/^(\d)\\1+$/.test(digits)) return false;
     const digit = (base: string, weights: number[]) => {
       const total = base.split("").reduce((sum, n, i) => sum + Number(n) * weights[i], 0);
       const rest = total % 11;
@@ -174,8 +174,8 @@ export async function createMercadoPagoPix(userId: string, planId: string, inter
   if (!plan) throw new Error("Plano indisponível.");
   const amountCents = interval === "annual" ? plan.annualPriceCents : plan.monthlyPriceCents;
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error("Este plano não possui cobrança Pix disponível.");
-  const companyCnpj = String(membership.company.cnpj || "").replace(/\\D/g, "");
-  const document = companyCnpj || String(payerDocument || "").replace(/\\D/g, "");
+  const companyCnpj = String(membership.company.cnpj || "").replace(/\D/g, "");
+  const document = companyCnpj || String(payerDocument || "").replace(/\D/g, "");
   if (!validCpfCnpj(document)) throw new Error(companyCnpj ? "O CNPJ cadastrado da empresa é inválido. Atualize o cadastro antes de pagar." : "Informe um CPF ou CNPJ válido para gerar o Pix.");
   const documentType = document.length === 14 ? "CNPJ" : "CPF";
 
