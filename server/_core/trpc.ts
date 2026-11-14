@@ -2,6 +2,9 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from "@shared/const";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { companyMembers, plans, subscriptions } from "../../drizzle/schema";
+import { getDb } from "../db";
 
 const t = initTRPC.context<TrpcContext>().create({ transformer: superjson });
 export const router = t.router;
@@ -17,7 +20,21 @@ const requireVerifiedEmail = t.middleware(async ({ ctx, next }) => {
   }
   return next({ ctx: { ...ctx, user: ctx.user } });
 });
-export const protectedProcedure = t.procedure.use(requireUser).use(requireVerifiedEmail);
+export const authenticatedProcedure = t.procedure.use(requireUser);
+const requireActiveSubscription = t.middleware(async ({ ctx, next }) => {
+  if (["superadmin", "admin", "source_operator", "support", "finance"].includes(ctx.user.role)) {
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }
+  const [membership] = await getDb().select({ companyId: companyMembers.companyId })
+    .from(companyMembers).where(eq(companyMembers.userId, ctx.user.id)).limit(1);
+  const [active] = membership ? await getDb().select({ id: subscriptions.id }).from(subscriptions)
+    .innerJoin(plans, eq(subscriptions.planId, plans.id))
+    .where(and(eq(subscriptions.companyId, membership.companyId), inArray(subscriptions.status, ["active", "trialing"]), eq(plans.active, true)))
+    .orderBy(desc(subscriptions.createdAt)).limit(1) : [];
+  if (!active) throw new TRPCError({ code: "FORBIDDEN", message: "Sua assinatura ainda não está ativa. Conclua o pagamento do plano para acessar o portal." });
+  return next({ ctx: { ...ctx, user: ctx.user } });
+});
+export const protectedProcedure = t.procedure.use(requireUser).use(requireVerifiedEmail).use(requireActiveSubscription);
 
 function requireRoles(roles: readonly string[]) {
   return t.middleware(async ({ ctx, next }) => {
