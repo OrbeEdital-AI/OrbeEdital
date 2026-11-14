@@ -471,7 +471,9 @@ export function OpportunityDetailPage() {
     },
     onError: error => toast.error(error.message),
   });
-  const editalAnalysis = trpc.opportunities.analyzeEdital.useMutation();
+  const editalAnalysis = trpc.opportunities.analyzeEdital.useMutation({
+    onError: error => toast.error(error.message),
+  });
   if (query.isLoading)
     return <Loading label="Carregando dados da oportunidade…" />;
   if (query.error?.data?.code === "NOT_FOUND") return <NotFound />;
