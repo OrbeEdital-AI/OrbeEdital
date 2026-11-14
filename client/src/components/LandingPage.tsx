@@ -61,7 +61,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
               </button>
             )}
             <button className="inline-flex items-center gap-2 rounded-full bg-[#0c3153] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-[#16466f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 sm:px-5" onClick={onGetStarted} type="button">
-              Criar conta <ArrowRight aria-hidden="true" size={16} />
+              Ver planos <ArrowRight aria-hidden="true" size={16} />
             </button>
           </nav>
         </div>
@@ -177,7 +177,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             <p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-700">Simples para começar</p>
             <h2 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-[#102f4d] sm:text-4xl">Sua busca por oportunidades começa aqui.</h2>
             <p className="mt-5 text-base leading-7 text-slate-600">Crie sua conta e conheça um ambiente pensado para centralizar a pesquisa e facilitar o acompanhamento das oportunidades.</p>
-            <button className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#0c3153] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-[#16466f]" onClick={onGetStarted} type="button">Criar minha conta <ArrowRight size={17} /></button>
+            <button className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#0c3153] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-[#16466f]" onClick={onGetStarted} type="button">Ver planos <ArrowRight size={17} /></button>
           </div>
           <div className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-8">
             <div className="space-y-6">
@@ -210,7 +210,7 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
             <h2 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">Encontre novas possibilidades para sua empresa.</h2>
             <p className="mt-4 text-sm leading-7 text-slate-300">Conheça o OrbeEdital e organize sua jornada de busca por oportunidades públicas.</p>
           </div>
-          <button className="inline-flex shrink-0 items-center gap-3 rounded-full bg-gradient-to-r from-cyan-400 to-teal-300 px-7 py-4 font-bold text-[#08253d] shadow-xl shadow-black/20 transition hover:-translate-y-1" onClick={onGetStarted} type="button">Começar agora <ArrowRight size={18} /></button>
+          <button className="inline-flex shrink-0 items-center gap-3 rounded-full bg-gradient-to-r from-cyan-400 to-teal-300 px-7 py-4 font-bold text-[#08253d] shadow-xl shadow-black/20 transition hover:-translate-y-1" onClick={onGetStarted} type="button">Ver planos <ArrowRight size={18} /></button>
         </div>
       </section>
 
