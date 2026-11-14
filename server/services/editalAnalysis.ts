@@ -3,7 +3,7 @@ import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
 import { opportunities } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
-import { invokeLLM, type Message } from "../_core/llm";
+
 
 type AnalysisResult = {
   executiveSummary: string;
@@ -161,23 +161,66 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     })),
   };
 
-  const messages: Message[] = [
-    {
-      role: "system",
-      content: "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas devem ser reproduzidas como aparecem, sem inferir fuso ou horário. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital."
-    },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: "Analise esta oportunidade e, se anexado, o edital oficial. Metadados estruturados (não equivalem à leitura do edital):\n" + JSON.stringify(metadata) },
-        ...(pdf ? [{ type: "file_url" as const, file_url: { url: pdf.url, mime_type: "application/pdf" as const } }] : []),
-      ],
-    },
-  ];
 
   try {
-    const response = await invokeLLM({ messages, responseFormat: { type: "json_object" }, maxTokens: 3500 });
-    const answer = response.choices?.[0]?.message?.content;
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    const parts: Array<Record<string, unknown>> = [{
+      text: "Analise esta oportunidade e, se anexado, o edital oficial. Metadados estruturados (não equivalem à leitura do edital):\\n" + JSON.stringify(metadata),
+    }];
+
+    if (pdf) {
+      const pdfResponse = await fetch(pdf.url, {
+        headers: { Accept: "application/pdf" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!pdfResponse.ok) throw new Error(`Official PDF download failed: HTTP ${pdfResponse.status}`);
+      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+      const maxPdfBytes = 40 * 1024 * 1024;
+      if (pdfBuffer.length > maxPdfBytes) throw new Error("Official PDF exceeds the 40 MB inline processing limit");
+      if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        throw new Error("The official document URL did not return a valid PDF");
+      }
+      parts.push({
+        inlineData: {
+          mimeType: "application/pdf",
+          data: pdfBuffer.toString("base64"),
+        },
+      });
+    }
+
+    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas devem ser reproduzidas como aparecem, sem inferir fuso ou horário. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 3500,
+        },
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+
+    if (!response.ok) {
+      const providerError = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      throw new Error(`Gemini API failed with HTTP ${response.status}: ${providerError?.error?.message || "provider request rejected"}`);
+    }
+
+    const payload = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const answer = payload.candidates?.[0]?.content?.parts
+      ?.map(part => part.text || "")
+      .join("") || "";
     const analysis = parseAnalysis(answer);
     if (pdf) {
       analysis.documentAnalyzed = true;
