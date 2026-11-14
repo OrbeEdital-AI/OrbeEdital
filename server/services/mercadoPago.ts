@@ -176,7 +176,8 @@ export async function createMercadoPagoPix(userId: string, planId: string, inter
   if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error("Este plano não possui cobrança Pix disponível.");
   const companyCnpj = String(membership.company.cnpj || "").replace(/\D/g, "");
   const document = companyCnpj || String(payerDocument || "").replace(/\D/g, "");
-  if (!validCpfCnpj(document)) throw new Error(companyCnpj ? "O CNPJ cadastrado da empresa é inválido. Atualize o cadastro antes de pagar." : "Informe um CPF ou CNPJ válido para gerar o Pix.");
+  if (!document) throw new Error("Informe um CPF ou CNPJ para gerar o Pix.");
+  if (!validCpfCnpj(document)) throw new Error(companyCnpj ? "O CNPJ cadastrado da empresa é inválido. Atualize o cadastro antes de pagar." : "O CPF ou CNPJ informado é inválido.");
   const documentType = document.length === 14 ? "CNPJ" : "CPF";
 
   const [localSubscription] = await db.insert(subscriptions).values({
