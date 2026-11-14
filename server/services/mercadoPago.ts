@@ -183,7 +183,7 @@ export async function handleMercadoPagoWebhook(req: any) {
     const localId = String(remote.external_reference || "");
     if (!localId) return;
     const statusMap: Record<string, string> = {
-      authorized: "active",
+      authorized: "pending",
       pending: "pending",
       paused: "past_due",
       cancelled: "cancelled",
@@ -197,10 +197,10 @@ export async function handleMercadoPagoWebhook(req: any) {
       providerSubscriptionId: String(remote.id),
       status,
       cancelledAt: status === "cancelled" ? new Date() : null,
-      currentPeriodStart: status === "active" ? (local.currentPeriodStart || new Date()) : local.currentPeriodStart,
+      currentPeriodStart: local.currentPeriodStart,
       updatedAt: new Date(),
     }).where(eq(subscriptions.id, local.id));
-    if (status === "active") {
+    if (false) {
       // Replace an older admin/manual or pending subscription only after the new
       // Mercado Pago subscription is authorized, preserving access during checkout.
       await getDb().update(subscriptions).set({
