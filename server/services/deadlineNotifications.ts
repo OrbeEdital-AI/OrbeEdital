@@ -34,7 +34,8 @@ export async function dispatchDeadlineNotifications() {
   const db = getDb();
   const now = new Date();
   const today = dateKey(now);
-  const horizon = new Date(now.getTime() + 8 * 86_400_000);
+  const startOfToday = new Date(`${today}T00:00:00-03:00`);
+  const horizon = new Date(startOfToday.getTime() + 8 * 86_400_000);
   const rows = await db.select({
     userId: favorites.userId,
     opportunityId: opportunities.id,
@@ -45,9 +46,9 @@ export async function dispatchDeadlineNotifications() {
   }).from(favorites)
     .innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
     .where(or(
-      and(isNotNull(opportunities.proposalDeadline), gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, horizon)),
-      and(isNotNull(opportunities.openingDate), gte(opportunities.openingDate, now), lt(opportunities.openingDate, horizon)),
-      and(isNotNull(opportunities.sessionAt), gte(opportunities.sessionAt, now), lt(opportunities.sessionAt, horizon)),
+      and(isNotNull(opportunities.proposalDeadline), gte(opportunities.proposalDeadline, startOfToday), lt(opportunities.proposalDeadline, horizon)),
+      and(isNotNull(opportunities.openingDate), gte(opportunities.openingDate, startOfToday), lt(opportunities.openingDate, horizon)),
+      and(isNotNull(opportunities.sessionAt), gte(opportunities.sessionAt, startOfToday), lt(opportunities.sessionAt, horizon)),
     ));
 
   const events: AgendaEvent[] = [];
