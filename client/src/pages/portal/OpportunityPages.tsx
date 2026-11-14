@@ -14,6 +14,7 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  Sparkles,
   SlidersHorizontal,
   ChevronsLeft,
   ChevronsRight,
@@ -470,6 +471,9 @@ export function OpportunityDetailPage() {
     },
     onError: error => toast.error(error.message),
   });
+  const editalAnalysis = trpc.opportunities.analyzeEdital.useMutation({
+    onError: error => toast.error(error.message),
+  });
   if (query.isLoading)
     return <Loading label="Carregando dados da oportunidade…" />;
   if (query.error?.data?.code === "NOT_FOUND") return <NotFound />;
@@ -572,6 +576,91 @@ export function OpportunityDetailPage() {
             oficial.
           </span>
         </div>
+      </section>
+      <section className="rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="grid size-10 place-items-center rounded-xl bg-cyan-100 text-cyan-900"><Sparkles size={20} /></span>
+            <div>
+              <h3 className="font-semibold text-[#102B4E]">Análise inteligente do edital</h3>
+              <p className="text-xs text-slate-600">Leitura assistida por IA, com evidências e pontos para conferência</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={editalAnalysis.isPending}
+            onClick={() => editalAnalysis.mutate({ id: item.id })}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#102B4E] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
+          >
+            <Sparkles size={16} />
+            {editalAnalysis.isPending ? "Analisando documento…" : editalAnalysis.data ? "Analisar novamente" : "Analisar edital com IA"}
+          </button>
+        </div>
+        {!item.noticeUrl && !(Array.isArray(item.documents) && item.documents.length > 0) && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            Esta oportunidade não possui um link de edital/documento cadastrado. A IA poderá analisar somente os metadados disponíveis, sem afirmar que leu o edital.
+          </p>
+        )}
+        {editalAnalysis.data && (
+          <div className="mt-5 space-y-4 border-t border-cyan-100 pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${editalAnalysis.data.analysis.documentAnalyzed ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                {editalAnalysis.data.analysis.documentAnalyzed ? "Documento oficial analisado" : "Análise limitada aos dados cadastrados"}
+              </span>
+              <span className="text-xs text-slate-500">Gerada em {dateTime(editalAnalysis.data.generatedAt)}</span>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-[#102B4E]">Resumo executivo</h4>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editalAnalysis.data.analysis.executiveSummary}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ["Objeto", editalAnalysis.data.analysis.object],
+                ["Modalidade", editalAnalysis.data.analysis.modality],
+                ["Valor estimado", editalAnalysis.data.analysis.estimatedValue],
+                ["Critério de julgamento", editalAnalysis.data.analysis.judgmentCriterion],
+                ["Prazo de propostas", editalAnalysis.data.analysis.proposalDeadline],
+                ["Abertura", editalAnalysis.data.analysis.openingDate],
+                ["Sessão pública", editalAnalysis.data.analysis.sessionAt],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+                  <p className="mt-1 text-sm text-slate-800">{value || "Não localizado com segurança"}</p>
+                </div>
+              ))}
+            </div>
+            {[
+              ["Exigências de habilitação", editalAnalysis.data.analysis.qualificationRequirements],
+              ["Checklist documental", editalAnalysis.data.analysis.documentChecklist],
+              ["Riscos para revisão", editalAnalysis.data.analysis.risks],
+              ["Pontos de atenção", editalAnalysis.data.analysis.attentionPoints],
+              ["Informações não localizadas", editalAnalysis.data.analysis.missingInformation],
+            ].map(([title, entries]) => Array.isArray(entries) && entries.length > 0 && (
+              <div key={title}>
+                <h4 className="text-sm font-semibold text-[#102B4E]">{title}</h4>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                  {entries.map((entry: string, index: number) => <li key={index}>{entry}</li>)}
+                </ul>
+              </div>
+            ))}
+            {editalAnalysis.data.analysis.evidence.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-[#102B4E]">Evidências encontradas no documento</h4>
+                <div className="mt-2 space-y-2">
+                  {editalAnalysis.data.analysis.evidence.map((evidence, index) => (
+                    <blockquote key={index} className="rounded-lg border-l-2 border-cyan-500 bg-white p-3 text-sm text-slate-700">
+                      <p className="font-semibold">{evidence.topic}{evidence.page ? ` · Página ${evidence.page}` : ""}</p>
+                      <p className="mt-1">“{evidence.excerpt}”</p>
+                    </blockquote>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="rounded-lg bg-slate-100 p-3 text-xs leading-5 text-slate-600">
+              A análise é assistiva e não substitui a leitura do edital nem a avaliação jurídica. Confira cada exigência e prazo diretamente na publicação oficial antes de tomar decisões.
+            </p>
+          </div>
+        )}
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="font-semibold text-[#102B4E]">Itens e quantidades</h3>
