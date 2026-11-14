@@ -138,7 +138,7 @@ export async function createMercadoPagoCheckout(userId: string, planId: string, 
 function validCpfCnpj(value: string) {
   const digits = value.replace(/\D/g, "");
   if (digits.length === 11) {
-    if (/^(\d)\\1+$/.test(digits)) return false;
+    if (/^(\d)\1+$/.test(digits)) return false;
     const calc = (base: string, factor: number) => {
       let total = 0;
       for (const digit of base) total += Number(digit) * factor--;
@@ -149,7 +149,7 @@ function validCpfCnpj(value: string) {
       calc(digits.slice(0, 10), 11) === Number(digits[10]);
   }
   if (digits.length === 14) {
-    if (/^(\d)\\1+$/.test(digits)) return false;
+    if (/^(\d)\1+$/.test(digits)) return false;
     const digit = (base: string, weights: number[]) => {
       const total = base.split("").reduce((sum, n, i) => sum + Number(n) * weights[i], 0);
       const rest = total % 11;
