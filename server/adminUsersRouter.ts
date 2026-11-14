@@ -211,12 +211,12 @@ export const adminUsersRouter = router({
         if (companyId) {
           const members = await tx.select({ userId: companyMembers.userId }).from(companyMembers)
             .where(eq(companyMembers.companyId, companyId));
-          if (members.every(member => member.userId === target.id)) {
-            await tx.delete(companies).where(eq(companies.id, companyId));
-            removedCompany = true;
-          }
+          removedCompany = members.every(member => member.userId === target.id);
         }
 
+        // Write the audit record while the company FK still exists.
+        // Deleting the company afterward applies ON DELETE SET NULL to audit_logs.company_id,
+        // preserving the audit entry without retaining a dangling company reference.
         await tx.insert(auditLogs).values({
           actorUserId: ctx.user.id,
           companyId,
@@ -230,6 +230,10 @@ export const adminUsersRouter = router({
             deletedAt: new Date().toISOString(),
           },
         });
+
+        if (companyId && removedCompany) {
+          await tx.delete(companies).where(eq(companies.id, companyId));
+        }
         await tx.delete(users).where(eq(users.id, target.id));
       });
 
