@@ -3,6 +3,7 @@ import { ArrowLeft, CheckCircle2, Clock3, Copy, ShieldCheck } from "lucide-react
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type PixPayment = {
   paymentId: string;
@@ -19,6 +20,7 @@ const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "curren
 export default function PixPaymentPage() {
   const [, navigate] = useLocation();
   const [pix, setPix] = useState<PixPayment | null>(null);
+  const auth = useAuth();
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem("orbeedital_pix_payment");
@@ -45,6 +47,11 @@ export default function PixPaymentPage() {
   const approved = status.data?.status === "approved";
   const expired = new Date(pix.expiresAt).getTime() < Date.now() && !approved;
 
+  useEffect(() => {
+    if (!approved || auth.loading) return;
+    navigate(auth.user ? "/app" : "/login");
+  }, [approved, auth.loading, auth.user, navigate]);
+
   return <main className="min-h-screen bg-[#f4f8fb] px-4 py-8 text-slate-800 sm:py-12">
     <div className="mx-auto max-w-xl">
       <button onClick={() => navigate("/app/billing")} className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[#153454]"><ArrowLeft size={16}/> Voltar</button>
@@ -62,6 +69,8 @@ export default function PixPaymentPage() {
             <CheckCircle2 className="mx-auto mb-2" size={28}/>
             <p className="font-bold">Pagamento confirmado!</p>
             <p className="mt-1 text-sm">Seu acesso ao OrbeEdital foi liberado.</p>
+            <p className="mt-2 text-xs">Redirecionando para {auth.user ? "o painel do cliente" : "a tela de login"}…</p>
+            <button type="button" onClick={() => navigate(auth.user ? "/app" : "/login")} className="mt-4 rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white">{auth.user ? "Ir para o painel" : "Fazer login"}</button>
           </div> : <>
             <img alt="QR Code Pix" className="h-60 w-60 rounded-lg border border-slate-200 p-2" src={`data:image/png;base64,${pix.pixQrCodeBase64}`}/>
             <p className="text-center text-sm font-semibold text-slate-700">Escaneie o QR Code com o aplicativo do seu banco</p>
