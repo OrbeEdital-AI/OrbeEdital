@@ -176,18 +176,19 @@ export function LandingPage({ onGetStarted, onLogin }: LandingPageProps) {
           <div>
             <p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-700">Simples para começar</p>
             <h2 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-[#102f4d] sm:text-4xl">Sua busca por oportunidades começa aqui.</h2>
-            <p className="mt-5 text-base leading-7 text-slate-600">Crie sua conta e conheça um ambiente pensado para centralizar a pesquisa e facilitar o acompanhamento das oportunidades.</p>
+            <p className="mt-5 text-base leading-7 text-slate-600">Escolha um plano, crie sua conta e conclua o pagamento. O portal é liberado após a confirmação da assinatura.</p>
             <button className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#0c3153] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-blue-950/10 transition hover:-translate-y-0.5 hover:bg-[#16466f]" onClick={onGetStarted} type="button">Ver planos <ArrowRight size={17} /></button>
           </div>
           <div className="rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-8">
             <div className="space-y-6">
               {[
-                { n: "1", title: "Crie seu acesso", text: "Cadastre sua conta para entrar no ambiente OrbeEdital." },
-                { n: "2", title: "Pesquise oportunidades", text: "Use palavras-chave e filtros para encontrar editais relevantes." },
-                { n: "3", title: "Confira e acompanhe", text: "Consulte os detalhes na fonte oficial e organize o que interessa." },
+                { n: "1", title: "Escolha seu plano", text: "Compare preços, recursos e limites para sua empresa." },
+                { n: "2", title: "Crie sua conta", text: "Informe os dados do usuário e da empresa." },
+                { n: "3", title: "Conclua o pagamento", text: "Finalize a assinatura recorrente com segurança pelo Mercado Pago." },
+                { n: "4", title: "Acesse o portal", text: "Após a confirmação do pagamento, seu acesso é liberado automaticamente." },
               ].map((step, index) => (
                 <div className="relative flex gap-4" key={step.n}>
-                  {index < 2 && <span aria-hidden="true" className="absolute left-5 top-11 h-[calc(100%+1.5rem)] w-px bg-slate-200" />}
+                  {index < 3 && <span aria-hidden="true" className="absolute left-5 top-11 h-[calc(100%+1.5rem)] w-px bg-slate-200" />}
                   <span className="relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e5f7fa] text-sm font-bold text-[#087eaa]">{step.n}</span>
                   <div className="pt-0.5"><h3 className="text-sm font-bold text-[#123452]">{step.title}</h3><p className="mt-1.5 text-sm leading-6 text-slate-500">{step.text}</p></div>
                 </div>
