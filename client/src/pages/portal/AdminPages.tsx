@@ -328,8 +328,8 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
                   <td className="p-2"><div className="font-semibold text-slate-800">{payment.customerName || "Cliente"}</div><div className="text-slate-500">{payment.customerEmail || "—"}</div><div className="text-slate-500">{payment.companyName}</div></td>
                   <td className="p-2">{payment.planName || "—"}<div className="text-slate-500">{payment.billingInterval === "annual" ? "Anual" : "Mensal"}</div></td>
                   <td className="p-2 font-semibold">{money(payment.amountCents / 100)}</td>
-                  <td className="p-2">{status}</td>
-                  <td className="p-2">{payment.paidAt ? date(payment.paidAt) : "—"}<div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
+                  <td className="p-2">{status}<div className="text-slate-500">Assinatura: {payment.subscriptionStatus || "—"}</div></td>
+                  <td className="p-2">{meta.pixQrCode ? "Pix manual" : "Cartão / recorrente"}<div>{payment.paidAt ? date(payment.paidAt) : "Aguardando confirmação"}</div><div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
                   <td className="p-2">{date(payment.contractedAt || payment.createdAt)}</td>
                   <td className="p-2">{payment.renewalAt ? date(payment.renewalAt) : payment.status === "pending" ? "Após confirmação" : "—"}</td>
                   <td className="p-2">{canRefund ? <button type="button" disabled={refund.isPending} onClick={() => { if (window.confirm(`Confirma o estorno de ${money(payment.amountCents / 100)}? A assinatura vinculada também será cancelada e não haverá novas renovações.`)) refund.mutate({ paymentId: payment.providerPaymentId }); }} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
