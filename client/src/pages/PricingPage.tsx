@@ -1,4 +1,5 @@
-import { useState } from "react";\nimport { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import BrandMark from "@/components/BrandMark";
@@ -7,7 +8,8 @@ import { trpc } from "@/lib/trpc";
 const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 
 export default function PricingPage() {
-  const [, navigate] = useLocation();\n  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");
+  const [, navigate] = useLocation();
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");
   const plans = trpc.billing.plans.useQuery();
   const profile = trpc.account.profile.useQuery();
   const pixCheckout = trpc.billing.pixCheckout.useMutation({
