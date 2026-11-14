@@ -56,7 +56,7 @@ async function discoverPncpDocuments(opportunityId: string) {
   const sequential = String(
     controlMatch?.[2] || raw.sequencialCompraPncp || raw.sequencialCompra ||
     (sourceParts.length >= 3 ? sourceParts[2] : "")
-  ).replace(/\\D/g, "").replace(/^0+(?=\\d)/, "");
+  ).replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 
   if (!/^[A-Z0-9]{14}$/.test(cnpj) || !/^\d{4}$/.test(year) || !/^\d+$/.test(sequential)) {
     console.warn("[edital-analysis] PNCP lookup skipped: missing or invalid procurement identifiers", {
@@ -144,7 +144,12 @@ function parseAnalysis(content: unknown): AnalysisResult {
   }) : [];
   const nullable = (key: string) => typeof value[key] === "string" && (value[key] as string).trim() ? (value[key] as string).trim() : null;
   return {
-    executiveSummary: nullable("executiveSummary") ?? "A IA não conseguiu produzir um resumo confiável.",
+    executiveSummary: nullable("executiveSummary") ?? [
+      nullable("object") ? `Objeto identificado: ${nullable("object")}.` : "",
+      nullable("modality") ? `Modalidade: ${nullable("modality")}.` : "",
+      nullable("estimatedValue") ? `Valor estimado: ${nullable("estimatedValue")}.` : "",
+      "Resumo executivo não retornado pela IA; confira os campos e as evidências abaixo.",
+    ].filter(Boolean).join(" "),
     object: nullable("object"),
     modality: nullable("modality"),
     estimatedValue: nullable("estimatedValue"),
