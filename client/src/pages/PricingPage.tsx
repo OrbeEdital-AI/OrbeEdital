@@ -29,7 +29,7 @@ export default function PricingPage() {
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-bold uppercase tracking-[.2em] text-cyan-700">Planos OrbeEdital</p>
           <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#102B4E] sm:text-5xl">Escolha o plano da sua empresa</h1>
-          <p className="mt-5 text-base leading-7 text-slate-600">Compare os recursos, os limites mensais e escolha a opção mais adequada. O acesso aos planos pagos é liberado após a confirmação do pagamento. O plano gratuito é ativado diretamente, sem cobrança.</p>
+          <p className="mt-5 text-base leading-7 text-slate-600">Escolha o plano ideal para sua empresa. O acesso é liberado após a confirmação do pagamento.</p>
         </div>
         {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Escolha o plano novamente para retomar o pagamento e liberar o portal.</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
@@ -42,22 +42,24 @@ export default function PricingPage() {
                   <h2 className="text-2xl font-bold text-[#102B4E]">{plan.name}</h2>
                   {plan.code === "profissional" && <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold text-cyan-900">Mais completo</span>}
                 </div>
-                {plan.description && <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">{plan.description}</p>}
+                {plan.code !== "teste-gratis" && plan.description && <p className="mt-3 min-h-12 text-sm leading-6 text-slate-500">{plan.description}</p>}
                 <p className="mt-6 text-4xl font-bold tracking-tight text-[#102B4E]">{plan.monthlyPriceCents === 0 ? "Grátis" : money(plan.monthlyPriceCents)}{plan.monthlyPriceCents > 0 && <span className="text-sm font-medium text-slate-500">/mês</span>}</p>
-                <p className="mt-1 text-xs text-slate-500">{plan.monthlyPriceCents === 0 ? "Sem cobrança e sem cadastro de cartão" : "Cobrança recorrente mensal pelo Mercado Pago"}</p>
-                <div className="my-6 border-t border-slate-100"/>
-                <h3 className="text-sm font-bold text-[#153454]">Limites incluídos</h3>
-                <ul className="mt-3 space-y-3 text-sm text-slate-600">
-                  <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSearchesPerMonth ?? 0).toLocaleString("pt-BR")} pesquisas por mês</li>
-                  <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxFavorites ?? 0).toLocaleString("pt-BR")} oportunidades favoritas</li>
-                  <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSavedSearches ?? 0).toLocaleString("pt-BR")} pesquisas salvas</li>
-                  {(plan.features ?? []).map(feature => <li className="flex gap-2" key={feature}><Check className="shrink-0 text-emerald-600" size={17}/>{feature}</li>)}
-                </ul>
+                <p className="mt-1 text-xs text-slate-500">Cobrança recorrente mensal pelo Mercado Pago</p>
+                {plan.code !== "teste-gratis" && <>
+                  <div className="my-6 border-t border-slate-100"/>
+                  <h3 className="text-sm font-bold text-[#153454]">Limites incluídos</h3>
+                  <ul className="mt-3 space-y-3 text-sm text-slate-600">
+                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSearchesPerMonth ?? 0).toLocaleString("pt-BR")} pesquisas por mês</li>
+                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxFavorites ?? 0).toLocaleString("pt-BR")} oportunidades favoritas</li>
+                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSavedSearches ?? 0).toLocaleString("pt-BR")} pesquisas salvas</li>
+                    {(plan.features ?? []).map(feature => <li className="flex gap-2" key={feature}><Check className="shrink-0 text-emerald-600" size={17}/>{feature}</li>)}
+                  </ul>
+                </>}
                 <button disabled={checkout.isPending} onClick={() => {
                   if (auth.data) checkout.mutate({ planId: plan.id, interval: "monthly" });
                   else navigate(`/register?plan=${encodeURIComponent(plan.code)}`);
                 }} className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
-                  {auth.data ? (checkout.isPending ? "Ativando plano…" : plan.monthlyPriceCents === 0 ? "Ativar plano gratuito" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
+                  {auth.data ? (checkout.isPending ? "Aguarde…" : "Assinar este plano") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
                 {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Retome sua contratação com este plano.</p>}
               </article>;
