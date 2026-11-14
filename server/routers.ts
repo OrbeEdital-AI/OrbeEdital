@@ -242,26 +242,6 @@ export const appRouter = router({
           ),
         ))
         .orderBy(opportunities.proposalDeadline);
-      const reminders = rows.filter(row => row.opportunity.proposalDeadline &&
-        row.opportunity.proposalDeadline.getTime() <= now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      for (const row of reminders) {
-        const existing = await db.select({ id: notifications.id }).from(notifications)
-          .where(and(
-            eq(notifications.userId, ctx.user.id),
-            eq(notifications.opportunityId, row.opportunity.id),
-            eq(notifications.type, "deadline_reminder"),
-          )).limit(1);
-        if (!existing.length) {
-          await db.insert(notifications).values({
-            userId: ctx.user.id,
-            opportunityId: row.opportunity.id,
-            type: "deadline_reminder",
-            title: "Prazo de licitação se aproximando",
-            message: `A oportunidade "${row.opportunity.title}" encerra o recebimento de propostas em breve.`,
-            href: `/app/opportunities/${row.opportunity.id}`,
-          });
-        }
-      }
       return rows.map(row => ({
         ...row.opportunity,
         sourceName: row.sourceName,
@@ -272,21 +252,6 @@ export const appRouter = router({
   notifications: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const db = getDb();
-      const now = new Date();
-      const soon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      const due = await db.select({ id: opportunities.id, title: opportunities.title })
-        .from(favorites).innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
-        .where(and(eq(favorites.userId, ctx.user.id), gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, soon)));
-      for (const opportunity of due) {
-        const existing = await db.select({ id: notifications.id }).from(notifications)
-          .where(and(eq(notifications.userId, ctx.user.id), eq(notifications.opportunityId, opportunity.id), eq(notifications.type, "deadline_reminder"))).limit(1);
-        if (!existing.length) await db.insert(notifications).values({
-          userId: ctx.user.id, opportunityId: opportunity.id, type: "deadline_reminder",
-          title: "Prazo de licitação se aproximando",
-          message: `A oportunidade "${opportunity.title}" encerra o recebimento de propostas em breve.`,
-          href: `/app/opportunities/${opportunity.id}`,
-        });
-      }
       const rows = await db.select().from(notifications)
         .where(eq(notifications.userId, ctx.user.id))
         .orderBy(desc(notifications.createdAt))
