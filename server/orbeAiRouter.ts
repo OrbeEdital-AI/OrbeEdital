@@ -267,6 +267,123 @@ export const orbeAiRouter = router({
     };
   }),
 
+  chatHistory: protectedProcedure
+    .input(z.object({ conversationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const rows = await getDb().select({
+        id: auditLogs.id,
+        createdAt: auditLogs.createdAt,
+        details: auditLogs.details,
+      }).from(auditLogs)
+        .where(and(
+          eq(auditLogs.actorUserId, ctx.user.id),
+          eq(auditLogs.action, "orbe_ai.chat.message"),
+          eq(auditLogs.entityId, input.conversationId),
+        ))
+        .orderBy(asc(auditLogs.createdAt))
+        .limit(60);
+      return rows.map(row => ({
+        id: row.id,
+        createdAt: row.createdAt,
+        role: row.details.role === "assistant" ? "assistant" as const : "user" as const,
+        content: typeof row.details.content === "string" ? row.details.content : "",
+      }));
+    }),
+
+  chatSend: protectedProcedure
+    .input(z.object({
+      conversationId: z.string().uuid(),
+      message: z.string().trim().min(1).max(3000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const planSummary = await getPlanUsageSummary(ctx.user.id);
+      if (!planSummary.hasSubscription || planSummary.plan?.code !== "profissional") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "O chat da Orbe IA é exclusivo do plano Profissional." });
+      }
+      const db = getDb();
+      const [membership] = await db.select({
+        companyId: companyMembers.companyId,
+        company: companies,
+        profile: companyProfiles,
+      }).from(companyMembers)
+        .innerJoin(companies, eq(companyMembers.companyId, companies.id))
+        .leftJoin(companyProfiles, eq(companyProfiles.companyId, companies.id))
+        .where(eq(companyMembers.userId, ctx.user.id)).limit(1);
+      if (!membership) throw new TRPCError({ code: "NOT_FOUND", message: "Não encontramos uma empresa vinculada à sua conta." });
+
+      const previous = await db.select({ details: auditLogs.details })
+        .from(auditLogs)
+        .where(and(
+          eq(auditLogs.actorUserId, ctx.user.id),
+          eq(auditLogs.action, "orbe_ai.chat.message"),
+          eq(auditLogs.entityId, input.conversationId),
+        ))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(12);
+      const history = previous.reverse().flatMap(row => {
+        const role = row.details.role === "assistant" ? "model" : "user";
+        const content = typeof row.details.content === "string" ? row.details.content : "";
+        return content ? [{ role, parts: [{ text: content }] }] : [];
+      });
+      await db.insert(auditLogs).values({
+        actorUserId: ctx.user.id,
+        companyId: membership.companyId,
+        action: "orbe_ai.chat.message",
+        entityType: "orbe_ai_conversation",
+        entityId: input.conversationId,
+        details: { role: "user", content: input.message },
+      });
+
+      const profile = membership.profile;
+      const companyContext = {
+        empresa: membership.company.legalName,
+        segmentoPrincipal: membership.company.primarySegment,
+        produtos: stringList(profile?.products),
+        servicos: stringList(profile?.services),
+        segmentos: stringList(profile?.segments),
+        palavrasChave: stringList(profile?.keywords),
+        estadosAtendidos: stringList(profile?.servedStates),
+        municipiosAtendidos: stringList(profile?.servedMunicipalities),
+        codigosCATMAT: stringList(profile?.catmatCodes),
+        codigosCATSER: stringList(profile?.catserCodes),
+      };
+      const systemInstruction = "Você é a Orbe IA, assistente especializada em licitações públicas brasileiras, integrada à plataforma OrbeEdital. Responda em português brasileiro, com clareza e orientação prática. Use o contexto da empresa abaixo para personalizar recomendações, mas não invente dados, oportunidades, prazos, valores, regras de edital, documentos ou resultados de consultas. Você não tem acesso em tempo real a toda a base de oportunidades nesta conversa: quando o usuário pedir uma busca atual, explique que deve executar o Radar ou abrir Oportunidades; não simule resultados. Para análise de edital específico, solicite o identificador/link ou oriente abrir a oportunidade e usar a análise de edital. Diferencie orientação geral de exigência comprovada no edital. Não garanta habilitação, vitória ou conformidade jurídica; indique pontos para conferência humana. Sugira próximos passos objetivos e evite respostas longas quando não necessário. Contexto cadastrado da empresa: " + JSON.stringify(companyContext);
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "A configuração da Orbe IA está indisponível no momento." });
+      const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [...history, { role: "user", parts: [{ text: input.message }] }],
+            generationConfig: { maxOutputTokens: 1200, temperature: 0.35 },
+          }),
+          signal: AbortSignal.timeout(45_000),
+        });
+        if (!response.ok) throw new Error("Gemini HTTP " + response.status);
+        const payload = await response.json() as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        };
+        const answer = payload.candidates?.[0]?.content?.parts?.map(part => part.text ?? "").join("").trim();
+        if (!answer) throw new Error("Resposta vazia do modelo");
+        await db.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          companyId: membership.companyId,
+          action: "orbe_ai.chat.message",
+          entityType: "orbe_ai_conversation",
+          entityId: input.conversationId,
+          details: { role: "assistant", content: answer, model, ...(payload.usageMetadata ?? {}) },
+        });
+        return { conversationId: input.conversationId, content: answer };
+      } catch (error) {
+        console.error("[orbe-ai-chat] generation failed", error instanceof Error ? error.message : "unknown");
+        throw new TRPCError({ code: "BAD_GATEWAY", message: "Não consegui gerar uma resposta agora. Tente novamente em instantes." });
+      }
+    }),
+
   adminUsage: superadminProcedure.query(async () => {
     return getDb().select({
       id: auditLogs.id,
@@ -279,7 +396,7 @@ export const orbeAiRouter = router({
     }).from(auditLogs)
       .leftJoin(users, eq(auditLogs.actorUserId, users.id))
       .leftJoin(companies, eq(auditLogs.companyId, companies.id))
-      .where(inArray(auditLogs.action, ["orbe_ai.radar.executed", "orbe_ai.edital_analysis.completed", "orbe_ai.edital_analysis.failed"]))
+      .where(inArray(auditLogs.action, ["orbe_ai.radar.executed", "orbe_ai.edital_analysis.completed", "orbe_ai.edital_analysis.failed", "orbe_ai.chat.message"]))
       .orderBy(desc(auditLogs.createdAt))
       .limit(100);
   }),
