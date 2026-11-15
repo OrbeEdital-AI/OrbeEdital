@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft, Database, LayoutDashboard,
-  LogOut, Search, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History, Menu, X,
+  LogOut, Search, MessageCircle, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
