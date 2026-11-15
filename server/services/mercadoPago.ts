@@ -440,6 +440,59 @@ export async function refundMercadoPagoPayment(paymentId: string, actorUserId: s
   return { refunded: true, amountCents: payment.amountCents };
 }
 
+
+/**
+ * Reconcile an externally refunded payment and shut down every subscription
+ * belonging to the same company. The remote payment is checked before local
+ * financial state is changed; recurring preapprovals are cancelled remotely.
+ */
+export async function reconcileExternallyRefundedPayment(paymentId: string, actorUserId: string) {
+  const db = getDb();
+  const [payment] = await db.select().from(payments).where(and(
+    eq(payments.provider, "mercadopago"),
+    eq(payments.providerPaymentId, paymentId),
+  )).limit(1);
+  if (!payment) throw new Error("Pagamento não encontrado.");
+  const remote = await mpRequest<any>(`/v1/payments/${encodeURIComponent(paymentId)}`);
+  const remoteStatus = String(remote.status || "").toLowerCase();
+  const refundedAmount = Array.isArray(remote.refunds)
+    ? remote.refunds.reduce((total: number, item: any) => total + Number(item.amount || 0), 0)
+    : 0;
+  const transactionAmount = Number(remote.transaction_amount || payment.amountCents / 100);
+  const fullyRefunded = remoteStatus === "refunded" || remoteStatus === "charged_back" ||
+    (transactionAmount > 0 && refundedAmount >= transactionAmount - 0.01);
+  if (!fullyRefunded) {
+    throw new Error(`O Mercado Pago ainda não confirma estorno integral (status remoto: ${remoteStatus || "desconhecido"}). Nenhum acesso foi alterado.`);
+  }
+
+  const companySubscriptions = await db.select().from(subscriptions)
+    .where(eq(subscriptions.companyId, payment.companyId));
+  for (const subscription of companySubscriptions) {
+    if (subscription.status === "cancelled" || subscription.status === "canceled") continue;
+    if (subscription.provider === "mercadopago" && subscription.providerSubscriptionId) {
+      await cancelMercadoPagoSubscription(subscription.id);
+    } else {
+      const now = new Date();
+      await db.update(subscriptions).set({ status: "cancelled", cancelledAt: now, updatedAt: now })
+        .where(eq(subscriptions.id, subscription.id));
+    }
+  }
+
+  let raw: Record<string, unknown> = {};
+  try { raw = JSON.parse(payment.rawStatus || "{}"); } catch { /* preserve existing metadata */ }
+  raw = { ...raw, refundReconciledAt: new Date().toISOString(), remotePaymentStatus: remoteStatus, refundedAmount };
+  await db.update(payments).set({
+    status: "refunded", rawStatus: JSON.stringify(raw), updatedAt: new Date(),
+  }).where(eq(payments.id, payment.id));
+
+  await db.insert(auditLogs).values({
+    actorUserId, companyId: payment.companyId, action: "payment.refund_reconciled",
+    entityType: "payment", entityId: payment.id,
+    details: { providerPaymentId: paymentId, amountCents: payment.amountCents, remoteStatus, refundedAmount, cancelledSubscriptionIds: companySubscriptions.map(item => item.id) },
+  });
+  return { refunded: true, cancelledSubscriptions: companySubscriptions.length, remoteStatus, refundedAmount };
+}
+
 function validWebhookSignature(signature: string, requestId: string, dataId: string, secret: string) {
   const parts = Object.fromEntries(signature.split(",").map(part => {
     const index = part.indexOf("=");
