@@ -267,6 +267,30 @@ export const orbeAiRouter = router({
     };
   }),
 
+  chatConversations: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await getDb().select({
+      conversationId: auditLogs.entityId,
+      createdAt: auditLogs.createdAt,
+      details: auditLogs.details,
+    }).from(auditLogs)
+      .where(and(
+        eq(auditLogs.actorUserId, ctx.user.id),
+        eq(auditLogs.action, "orbe_ai.chat.message"),
+      ))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(300);
+    const conversations = new Map<string, { conversationId: string; updatedAt: Date; preview: string }>();
+    for (const row of rows) {
+      if (!row.conversationId || conversations.has(row.conversationId)) continue;
+      conversations.set(row.conversationId, {
+        conversationId: row.conversationId,
+        updatedAt: row.createdAt,
+        preview: typeof row.details.content === "string" ? row.details.content.slice(0, 110) : "Conversa",
+      });
+    }
+    return [...conversations.values()].slice(0, 12);
+  }),
+
   chatHistory: protectedProcedure
     .input(z.object({ conversationId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
