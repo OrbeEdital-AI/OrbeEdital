@@ -583,7 +583,7 @@ export function OpportunityDetailPage() {
             <span className="grid size-10 place-items-center rounded-xl bg-cyan-100 text-cyan-900"><Sparkles size={20} /></span>
             <div>
               <h3 className="font-semibold text-[#102B4E]">Análise inteligente do edital</h3>
-              <p className="text-xs text-slate-600">Leitura assistida por IA, com evidências e pontos para conferência</p>
+              <p className="text-xs text-slate-600">Exigências, checklist, riscos e evidências do edital — sem repetir os dados do cadastro</p>
             </div>
           </div>
           <button
@@ -603,27 +603,6 @@ export function OpportunityDetailPage() {
                 {editalAnalysis.data.analysis.documentAnalyzed ? "Documento oficial analisado" : "Análise limitada aos dados cadastrados"}
               </span>
               <span className="text-xs text-slate-500">Gerada em {dateTime(editalAnalysis.data.generatedAt)}</span>
-            </div>
-            <div>
-              <h4 className="text-sm font-semibold text-[#102B4E]">Resumo executivo</h4>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editalAnalysis.data.analysis.executiveSummary}</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {[
-                ["Objeto", editalAnalysis.data.analysis.object],
-                ["Modalidade", editalAnalysis.data.analysis.modality],
-                ["Valor estimado", editalAnalysis.data.analysis.estimatedValue],
-                ["Critério de julgamento", editalAnalysis.data.analysis.judgmentCriterion],
-                ["Início do recebimento de propostas", editalAnalysis.data.analysis.proposalStartAt],
-                ["Fim do recebimento de propostas", editalAnalysis.data.analysis.proposalDeadline],
-                ["Abertura", editalAnalysis.data.analysis.openingDate],
-                ["Sessão pública", editalAnalysis.data.analysis.sessionAt],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-lg border border-slate-200 bg-white p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-                  <p className="mt-1 text-sm text-slate-800">{value || "Não localizado com segurança"}</p>
-                </div>
-              ))}
             </div>
             {[
               ["Exigências de habilitação", editalAnalysis.data.analysis.qualificationRequirements],
