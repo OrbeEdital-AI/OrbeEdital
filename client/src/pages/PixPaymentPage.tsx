@@ -34,6 +34,13 @@ export default function PixPaymentPage() {
     { enabled: Boolean(pix?.paymentId), refetchOnWindowFocus: true, refetchInterval: 5000 },
   );
 
+  const approved = status.data?.status === "approved";
+
+  useEffect(() => {
+    if (!approved || auth.loading) return;
+    navigate(auth.user ? "/app" : "/login");
+  }, [approved, auth.loading, auth.user, navigate]);
+
   if (!pix) {
     return <main className="grid min-h-screen place-items-center bg-[#f4f8fb] px-5 text-center text-slate-700">
       <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -44,13 +51,7 @@ export default function PixPaymentPage() {
     </main>;
   }
 
-  const approved = status.data?.status === "approved";
   const expired = new Date(pix.expiresAt).getTime() < Date.now() && !approved;
-
-  useEffect(() => {
-    if (!approved || auth.loading) return;
-    navigate(auth.user ? "/app" : "/login");
-  }, [approved, auth.loading, auth.user, navigate]);
 
   return <main className="min-h-screen bg-[#f4f8fb] px-4 py-8 text-slate-800 sm:py-12">
     <div className="mx-auto max-w-xl">
