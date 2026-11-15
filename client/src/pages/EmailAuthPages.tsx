@@ -32,8 +32,14 @@ export function VerifyEmailPage() {
   const verify = trpc.auth.verifyEmail.useMutation({
     onSuccess: async () => {
       setVerified(true);
-      setFeedback("E-mail confirmado. Sua conta está pronta para uso.");
+      setFeedback("E-mail confirmado. Abrindo o painel do cliente…");
       await utils.auth.me.invalidate();
+      const session = await auth.refetch();
+      if (session.data?.emailVerifiedAt) {
+        navigate("/app");
+      } else {
+        setFeedback("E-mail confirmado. Entre na sua conta para acessar o painel.");
+      }
     },
     onError: error => setFeedback(error.message),
   });
