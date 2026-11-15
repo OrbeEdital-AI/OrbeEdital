@@ -185,19 +185,22 @@ function getOfficialPdfs(
       const parsed = new URL(rawUrl);
       const host = parsed.hostname.toLowerCase();
       const officialHost = host === "gov.br" || host.endsWith(".gov.br");
-      const name = String(record.tipoDocumentoNome ?? record.titulo ?? record.name ?? record.title ?? record.nomeArquivo ?? "Documento oficial");
-      const documentType = name.toLocaleLowerCase("pt-BR");
+      const name = [record.tipoDocumentoNome, record.titulo, record.name, record.title, record.nomeArquivo]
+        .find(value => typeof value === "string" && value.trim())?.toString() ?? "Documento oficial";
+      const documentType = [
+        record.tipoDocumentoNome, record.titulo, record.name, record.title, record.nomeArquivo,
+      ].filter(value => typeof value === "string").join(" ").toLocaleLowerCase("pt-BR");
       const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? "").toLowerCase();
       const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
       const isPdf = /\.pdf$/i.test(parsed.pathname) || mime.includes("pdf") || relevantType;
-      if (parsed.protocol !== "https:" || !officialHost || !isPdf || (!relevantType && name !== "Documento oficial")) continue;
+      if (parsed.protocol !== "https:" || !officialHost || !isPdf) continue;
       const url = parsed.toString();
       if (seen.has(url)) continue;
       seen.add(url);
       const kind = /retifica|esclarecimento|impugna/i.test(documentType) ? "retificação/esclarecimento"
         : /termo de referência|projeto básico|estudo técnico/i.test(documentType) ? "referência técnica"
         : /anexo|planilha|modelo|memorial|proposta/i.test(documentType) ? "anexo"
-        : /edital|aviso|minuta/i.test(documentType) ? "edital/aviso" : "documento";
+        : /edital|aviso|minuta/i.test(documentType) ? "edital/aviso" : "anexo/documento complementar";
       documents.push({ url, name, kind });
     } catch {
       // Ignore malformed document URLs supplied by external procurement sources.
