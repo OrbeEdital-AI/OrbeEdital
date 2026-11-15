@@ -72,7 +72,7 @@ export default function PricingPage() {
                   </div>
                   <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual, com nova cobrança a cada renovação." : paymentMethod === "card" ? "Cobrança recorrente mensal no cartão." : "Selecione uma forma de pagamento para continuar."}</p>
                 </div>}
-                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading || !paymentMethod || (Boolean(resumeCode) && (auth.isLoading || !auth.data))} onClick={() => {
+                <button disabled={checkout.isPending || pixCheckout.isPending || ((Boolean(auth.data) || Boolean(resumeCode)) && !paymentMethod) || (Boolean(resumeCode) && (auth.isLoading || !auth.data))} onClick={() => {
                   if (!auth.data) { navigate(`/register?plan=${encodeURIComponent(plan.code)}`); return; }
                   if (paymentMethod === "pix") {
                     const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
