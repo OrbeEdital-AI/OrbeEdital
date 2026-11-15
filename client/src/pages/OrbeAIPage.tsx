@@ -28,16 +28,16 @@ export function OrbeAIPage() {
   const [conversationId, setConversationId] = useState("");
   const conversations = trpc.orbeAi.chatConversations.useQuery();
   useEffect(() => {
-    if (conversationId) return;
+    if (conversationId || !conversations.isFetched) return;
     const latest = conversations.data?.[0]?.conversationId;
     setConversationId(latest || crypto.randomUUID());
-  }, [conversationId, conversations.data]);
+  }, [conversationId, conversations.data, conversations.isFetched]);
   const [draft, setDraft] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const history = trpc.orbeAi.chatHistory.useQuery({ conversationId }, { enabled: Boolean(conversationId) });
   const profile = trpc.account.profile.useQuery();
   const send = trpc.orbeAi.chatSend.useMutation({
-    onSuccess: async () => { setLocalMessages([]); await history.refetch(); },
+    onSuccess: async () => { setLocalMessages([]); await Promise.all([history.refetch(), conversations.refetch()]); },
     onError: error => toast.error(error.message),
   });
   const radar = trpc.orbeAi.radar.useMutation({
