@@ -100,7 +100,7 @@ export const orbeAiRouter = router({
         .from(followedOpportunities).innerJoin(opportunities, eq(followedOpportunities.opportunityId, opportunities.id))
         .where(eq(followedOpportunities.userId, ctx.user.id)).orderBy(desc(followedOpportunities.updatedAt)).limit(50),
     ]);
-    const uniqueInterestRows = [...new Map([...favoriteRows, ...followedRows].map(row => [row.id, row])).values()];
+    const uniqueInterestRows = [...new Map([...favoriteRows, ...followedRows].map(row => [row.id, row] as const)).values()];
     const interestTerms = learnedInterestTerms(uniqueInterestRows);
 
     const servedStates = stringList(profile?.servedStates).map(value => value.toUpperCase());
