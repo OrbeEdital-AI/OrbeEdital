@@ -42,11 +42,11 @@ export default function PricingPage() {
         {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Continue a contratação abaixo; não é necessário refazer o cadastro nem escolher outro plano.</p>}
         {checkoutError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{checkoutError}</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
+          <div className="mt-12 grid grid-cols-1 justify-items-center gap-6">
             {(plans.data ?? []).filter(plan => !resumeCode || plan.code === resumeCode).map(plan => {
               const limits = plan.limits ?? {};
               const isSelected = selectedCode === plan.code || resumeCode === plan.code;
-              return <article key={plan.id} className={`flex flex-col rounded-2xl border bg-white p-7 shadow-sm ${plan.code === "profissional" ? "border-cyan-400 ring-2 ring-cyan-100" : "border-slate-200"}`}>
+              return <article key={plan.id} className={`flex w-full max-w-xl flex-col rounded-2xl border bg-white p-7 shadow-sm ${plan.code === "profissional" ? "border-cyan-400 ring-2 ring-cyan-100" : "border-slate-200"}`}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-2xl font-bold text-[#102B4E]">{plan.name}</h2>
                   {plan.code === "profissional" && <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold text-cyan-900">Mais completo</span>}
