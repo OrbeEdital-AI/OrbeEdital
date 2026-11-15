@@ -112,6 +112,7 @@ export const orbeAiRouter = router({
     const PAGE_SIZE = 250;
     let offset = 0;
     let candidateCount = 0;
+    let totalMatchedCount = 0;
     const matches: Array<{
       id: string; title: string; description: string | null; agencyName: string | null;
       municipality: string | null; state: string | null; estimatedValue: string | null;
@@ -168,39 +169,48 @@ export const orbeAiRouter = router({
           opportunity.title, opportunity.description ?? "", opportunity.agencyName ?? "",
           opportunity.procurementType ?? "", opportunity.modality ?? "",
         ].join(" ");
-        const matchedProfileTerms = profileTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
-        const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
-        const matchingItems = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
+        const explicitTerms = [
+          ...stringList(profile?.products).map(term => ({ term, weight: 35 })),
+          ...stringList(profile?.services).map(term => ({ term, weight: 35 })),
+          ...stringList(profile?.keywords).map(term => ({ term, weight: 20 })),
+          ...stringList(profile?.segments).map(term => ({ term, weight: 12 })),
+        ];
+        const matchedExplicit = explicitTerms.filter(entry => hasTerm(searchable, entry.term));
+        const matchedProfileTerms = matchedExplicit.map(entry => entry.term).slice(0, 5);
+        const primarySegmentMatch = Boolean(membership.company.primarySegment && hasTerm(searchable, membership.company.primarySegment));
+        const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 3);
+        const opportunityItemsForMatch = itemsByOpportunity.get(opportunity.id) ?? [];
+        const matchingItems = opportunityItemsForMatch.filter(item => {
           const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
-          const code = (item.catalogCode ?? "").replace(/\D/g, "");
+          const code = (item.catalogCode ?? "").replace(/\\D/g, "");
           const codeMatch = code && catalogCodes.some(target => code === target);
-          const termMatch = profileTerms.some(term => hasTerm(itemText, term));
+          const termMatch = explicitTerms.some(entry => entry.weight >= 20 && hasTerm(itemText, entry.term));
           return Boolean(codeMatch || termMatch);
         });
+        const matchedCatalogCodes = opportunityItemsForMatch
+          .filter(item => catalogCodes.includes((item.catalogCode ?? "").replace(/\\D/g, "")))
+          .map(item => item.catalogCode)
+          .filter((code): code is string => Boolean(code));
         const reasons: string[] = [];
-        let score = Math.min(60, matchedProfileTerms.length * 15);
-        if (matchedProfileTerms.length) reasons.push("Perfil empresarial: " + matchedProfileTerms.join(", "));
+        let score = Math.min(70, matchedExplicit.reduce((sum, entry) => sum + entry.weight, 0));
+        if (matchedProfileTerms.length) reasons.push("Correspondência no perfil: " + matchedProfileTerms.join(", "));
+        if (primarySegmentMatch && !matchedProfileTerms.length) {
+          score += 8;
+          reasons.push("Segmento geral da empresa relacionado — aderência fraca");
+        }
         if (matchedInterestTerms.length) {
-          score += Math.min(15, matchedInterestTerms.length * 5);
-          reasons.push("Interesses identificados nos seus favoritos e acompanhamentos: " + matchedInterestTerms.join(", "));
+          score += Math.min(8, matchedInterestTerms.length * 3);
+          reasons.push("Interesse complementar observado nos seus favoritos: " + matchedInterestTerms.join(", "));
         }
         if (matchingItems.length) {
           score += 25;
-          reasons.push("Item da oportunidade compatível com produtos/serviços ou código de catálogo");
+          reasons.push("Descrição de item compatível com produto/serviço cadastrado");
         }
-        const hasGeographicPreference = servedStates.length > 0 || servedMunicipalities.length > 0;
-        const geographicMatch =
-          (!servedStates.length || Boolean(opportunity.state && servedStates.includes(opportunity.state.toUpperCase()))) &&
-          (!servedMunicipalities.length || Boolean(opportunity.municipality && servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city))));
-        if (hasGeographicPreference && geographicMatch) {
-          score += 10;
-          reasons.push("Localidade dentro da área de atendimento informada");
+        if (matchedCatalogCodes.length) {
+          score += 40;
+          reasons.push("Código CATMAT/CATSER correspondente: " + [...new Set(matchedCatalogCodes)].join(", "));
         }
-        if (value !== null && (minimumValue !== null || maximumValue !== null)) {
-          score += 5;
-          reasons.push("Valor dentro da faixa definida no perfil");
-        }
-        if (score <= 0) return [];
+        if (score < 25) return [];
         return [{
           id: opportunity.id,
           title: opportunity.title,
@@ -218,6 +228,7 @@ export const orbeAiRouter = router({
         }];
       });
 
+      totalMatchedCount += pageMatches.length;
       matches.push(...pageMatches);
       matches.sort((a, b) => b.score - a.score);
       if (matches.length > 40) matches.length = 40;
@@ -231,12 +242,13 @@ export const orbeAiRouter = router({
       entityType: "orbe_ai",
       entityId: membership.companyId,
       details: {
-        matchedCount: matches.length,
+        matchedCount: totalMatchedCount,
+        displayedCount: matches.length,
         candidateCount,
         coverageLimited: false,
         itemRowsLimited: false,
         learnedInterestTerms: interestTerms.length,
-        matchingMode: "profile_and_interest_rules_v2",
+        matchingMode: "weighted_relevance_threshold_v3",
         provider: "internal",
         planCode: planSummary.plan?.code ?? null,
       },
@@ -245,7 +257,8 @@ export const orbeAiRouter = router({
     return {
       generatedAt: new Date().toISOString(),
       candidateCount,
-      matchedCount: matches.length,
+      matchedCount: totalMatchedCount,
+      displayedCount: matches.length,
       coverageLimited: false,
       itemRowsLimited: false,
       learnedInterestCount: interestTerms.length,
