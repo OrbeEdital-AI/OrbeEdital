@@ -95,7 +95,7 @@ export function OrbeAIPage() {
     setDraft("");
 
     const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const asksRadar = /\b(radar|compatibilidades|compatíveis|compativeis)\b/.test(normalized)
+    const asksRadar = /\b(radar|compatibilidades|compatíveis|compativeis)\b/.test(normalized) || /\bpara minha empresa\b/.test(normalized)
       && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
@@ -184,7 +184,7 @@ export function OrbeAIPage() {
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
           <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
         </div>)}
-        {(send.isPending || radar.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
+        {(send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
       </div>
 
