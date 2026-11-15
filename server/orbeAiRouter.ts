@@ -172,7 +172,7 @@ export const orbeAiRouter = router({
         const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
         const matchingItems = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
           const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
-          const code = (item.catalogCode ?? "").replace(/\\D/g, "");
+          const code = (item.catalogCode ?? "").replace(/\D/g, "");
           const codeMatch = code && catalogCodes.some(target => code === target);
           const termMatch = profileTerms.some(term => hasTerm(itemText, term));
           return Boolean(codeMatch || termMatch);
