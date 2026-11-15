@@ -116,7 +116,11 @@ export const orbeAiRouter = router({
       let score = Math.min(60, matchedTerms.length * 15);
       if (matchedTerms.length) reasons.push("Termos compatíveis: " + matchedTerms.join(", "));
       if (matchingCatalog.length) { score += 25; reasons.push("Código CATMAT/CATSER compatível"); }
-      if (servedStates.length || servedMunicipalities.length) {
+      const hasGeographicPreference = servedStates.length > 0 || servedMunicipalities.length > 0;
+      const geographicMatch =
+        (!servedStates.length || Boolean(opportunity.state && servedStates.includes(opportunity.state.toUpperCase()))) &&
+        (!servedMunicipalities.length || Boolean(opportunity.municipality && servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city))));
+      if (hasGeographicPreference && geographicMatch) {
         score += 10;
         reasons.push("Localidade dentro da área de atendimento informada");
       }
