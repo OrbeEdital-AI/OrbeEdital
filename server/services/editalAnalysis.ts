@@ -187,7 +187,7 @@ function getOfficialPdfs(
       const documentType = name.toLocaleLowerCase("pt-BR");
       const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? "").toLowerCase();
       const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
-      const isPdf = /\\.pdf$/i.test(parsed.pathname) || mime.includes("pdf") || relevantType;
+      const isPdf = /\.pdf$/i.test(parsed.pathname) || mime.includes("pdf") || relevantType;
       if (parsed.protocol !== "https:" || !officialHost || !isPdf || (!relevantType && name !== "Documento oficial")) continue;
       const url = parsed.toString();
       if (seen.has(url)) continue;
