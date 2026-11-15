@@ -41,10 +41,10 @@ export function OrbeAIPage() {
     onError: error => toast.error(error.message),
   });
   const analyzeEdital = trpc.opportunities.analyzeEdital.useMutation();
-  const persistToolResult = async (content: string) => {
+  const persistToolResult = async (content: string, userPrompt: string) => {
     await send.mutateAsync({
       conversationId,
-      message: "Resultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\n" + content.slice(0, 2700),
+      message: "O usuário pediu: " + userPrompt.slice(0, 350) + "\nResultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\n" + content.slice(0, 2250),
     });
     await Promise.all([history.refetch(), conversations.refetch()]);
   };
@@ -83,11 +83,11 @@ export function OrbeAIPage() {
 
     const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const asksRadar = /\b(radar|encontr(e|ar)|buscar|busque|pesquis(e|ar)|ache|achar)\b/.test(normalized)
-      && /\b(licitac|oportunidad|pregao|edital)\\w*/.test(normalized);
+      && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
     const asksAnalysis = /\b(analis(e|ar)|leia|ler|examinar|verificar)\b/.test(normalized)
-      && /\b(edital|documento|anexo|retificacao)\\w*/.test(normalized);
+      && /\b(edital|documento|anexo|retificacao)\w*/.test(normalized);
 
     try {
       if (asksRadar) {
@@ -98,7 +98,7 @@ export function OrbeAIPage() {
         const toolResult = result.matchedCount
           ? `Radar executado agora. ${result.candidateCount} oportunidades verificadas; ${result.matchedCount} compatibilidades; ${result.displayedCount} exibidas.\n${summary}\nAderência não representa chance de vitória nem habilitação.`
           : `Radar executado agora. ${result.candidateCount} oportunidades verificadas e nenhuma atingiu o critério mínimo de aderência.`;
-        await persistToolResult(toolResult);
+        await persistToolResult(toolResult, message);
         setLocalMessages(current => [...current, { role: "assistant", content: "Consultei o Radar diretamente na base do OrbeEdital. " + (result.matchedCount ? `Encontrei ${result.matchedCount} compatibilidades entre ${result.candidateCount} oportunidades verificadas. Registrei os resultados na conversa; veja abaixo minha síntese.` : "Não encontrei oportunidades que atingissem o critério mínimo. Podemos revisar o perfil da empresa.") }]);
       } else if (asksAnalysis && opportunityId) {
         const result = await analyzeEdital.mutateAsync({ id: opportunityId });
