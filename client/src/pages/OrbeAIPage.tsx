@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { Sparkles, Target, MapPin, CalendarClock, Building2, RefreshCw, Gauge, ShieldCheck } from "lucide-react";
+import {
+  Sparkles, Target, MapPin, CalendarClock, Building2, RefreshCw, Gauge, ShieldCheck,
+  Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle,
+} from "lucide-react";
 
 function dateLabel(value: string | Date | null) {
   if (!value) return "Prazo não informado";
@@ -14,74 +17,109 @@ function currency(value: string | null) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const suggestions = [
+  { label: "Encontrar licitações para minha empresa", icon: Search },
+  { label: "Como saber se minha empresa está apta a participar?", icon: ClipboardCheck },
+  { label: "Quais documentos devo preparar para uma licitação?", icon: FileSearch },
+  { label: "Como avaliar se uma oportunidade vale a pena?", icon: Target },
+];
+
 export function OrbeAIPage() {
+  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [draft, setDraft] = useState("");
+  const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const history = trpc.orbeAi.chatHistory.useQuery({ conversationId });
   const profile = trpc.account.profile.useQuery();
-  const radar = trpc.orbeAi.radar.useMutation({
-    onSuccess: result => toast.success(`Radar concluído: ${result.matchedCount} oportunidade(s) compatível(is).`),
+  const send = trpc.orbeAi.chatSend.useMutation({
+    onSuccess: async () => { await history.refetch(); },
     onError: error => toast.error(error.message),
   });
-  const profileTerms = [
-    ...(profile.data?.profile?.products ?? []),
-    ...(profile.data?.profile?.services ?? []),
-    ...(profile.data?.profile?.keywords ?? []),
-    ...(profile.data?.profile?.segments ?? []),
-    ...(profile.data?.primarySegment ? [profile.data.primarySegment] : []),
-  ];
-  const hasProfile = profileTerms.length > 0 || Boolean(profile.data?.profile?.catmatCodes?.length || profile.data?.profile?.catserCodes?.length);
-  const result = radar.data;
+  const radar = trpc.orbeAi.radar.useMutation({
+    onSuccess: result => {
+      const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência`).join("\\n");
+      const response = result.matchedCount
+        ? `Concluí o Radar. Verifiquei ${result.candidateCount.toLocaleString("pt-BR")} oportunidades e encontrei ${result.matchedCount.toLocaleString("pt-BR")} compatibilidades. Estas são as primeiras recomendações:\\n\\n${summary}\\n\\nA pontuação indica aderência ao perfil, não garante habilitação ou vitória. Abra cada oportunidade para conferir o edital.`
+        : "Concluí o Radar, mas não encontrei oportunidades que atingissem o critério mínimo de aderência. Podemos revisar os produtos, serviços e códigos do perfil da empresa.";
+      setLocalMessages(current => [...current, { role: "assistant", content: response }]);
+      toast.success("Radar concluído.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const savedMessages = (history.data ?? []).map(message => ({ role: message.role, content: message.content }));
+  const messages = [...savedMessages, ...localMessages];
+  const hasProfile = Boolean(
+    profile.data?.primarySegment ||
+    profile.data?.profile?.products?.length ||
+    profile.data?.profile?.services?.length ||
+    profile.data?.profile?.keywords?.length ||
+    profile.data?.profile?.catmatCodes?.length ||
+    profile.data?.profile?.catserCodes?.length
+  );
 
-  return <div className="space-y-5">
-    <section className="overflow-hidden rounded-2xl border border-cyan-100 bg-gradient-to-br from-[#102B4E] via-[#17496b] to-[#087eaa] p-6 text-white shadow-sm sm:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-100/25 bg-white/10 px-3 py-1 text-xs font-semibold text-cyan-50"><Sparkles size={14}/> ORBE IA · PLANO PROFISSIONAL</div>
-          <h2 className="mt-4 text-2xl font-bold sm:text-3xl">Meu Radar de Licitações</h2>
-          <p className="mt-2 text-sm leading-6 text-blue-50/90">Encontre oportunidades abertas que combinam com os produtos, serviços, regiões e códigos informados no perfil da sua empresa.</p>
+  const startNewConversation = () => {
+    setConversationId(crypto.randomUUID());
+    setLocalMessages([]);
+    setDraft("");
+  };
+  const submitMessage = (value = draft) => {
+    const message = value.trim();
+    if (!message || send.isPending) return;
+    setLocalMessages(current => [...current, { role: "user", content: message }]);
+    setDraft("");
+    send.mutate({ conversationId, message }, {
+      onError: () => setLocalMessages(current => current.slice(0, -1)),
+    });
+  };
+
+  return <div className="mx-auto flex min-h-[calc(100vh-150px)] max-w-5xl flex-col gap-4">
+    <section className="overflow-hidden rounded-2xl border border-cyan-100 bg-gradient-to-br from-[#102B4E] via-[#17496b] to-[#087eaa] p-5 text-white shadow-sm sm:p-7">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-white/20 bg-white/10 p-3"><Sparkles size={25}/></div>
+          <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">Orbe IA · Plano Profissional</p><h2 className="mt-1 text-2xl font-bold">Seu assistente de licitações</h2></div>
         </div>
-        <div className="rounded-2xl border border-white/15 bg-white/10 p-4"><Target size={34}/><p className="mt-2 text-xs font-semibold uppercase tracking-wide text-cyan-100">Compatibilidade</p></div>
+        <button type="button" onClick={startNewConversation} className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-3 py-2 text-sm font-semibold hover:bg-white/10"><Plus size={16}/> Nova conversa</button>
       </div>
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button type="button" disabled={radar.isPending || profile.isLoading || !hasProfile} onClick={() => radar.mutate()} className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-bold text-[#102B4E] shadow-sm transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-60">
-          {radar.isPending ? <RefreshCw size={16} className="animate-spin"/> : <Sparkles size={16}/>}
-          {radar.isPending ? "Analisando oportunidades…" : "Executar meu radar"}
-        </button>
-        <Link href="/app/profile" className="rounded-lg border border-white/30 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10">Completar perfil da empresa</Link>
-      </div>
+      <p className="mt-4 max-w-3xl text-sm leading-6 text-blue-50/90">Converse sobre oportunidades, editais, habilitação e estratégia. A Orbe IA considera as informações cadastradas no perfil da sua empresa e informa quando precisar consultar uma fonte ou documento.</p>
     </section>
 
-    {!profile.isLoading && !hasProfile && <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-      <p className="font-semibold">Seu perfil ainda precisa de informações para gerar recomendações.</p>
-      <p className="mt-1">Informe produtos, serviços, segmentos, palavras-chave ou códigos CATMAT/CATSER. O Radar também considera sua região de atendimento e faixa de valores.</p>
-      <Link href="/app/profile" className="mt-3 inline-flex font-semibold underline">Atualizar perfil empresarial</Link>
-    </section>}
-
-    {result && <>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Oportunidades verificadas</p><p className="mt-2 text-2xl font-bold text-[#102B4E]">{result.candidateCount.toLocaleString("pt-BR")}</p></div>
-        <div className="rounded-xl border bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Compatíveis encontradas</p><p className="mt-2 text-2xl font-bold text-cyan-800">{result.matchedCount.toLocaleString("pt-BR")}</p></div>
-        <div className="rounded-xl border bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Última execução</p><p className="mt-2 text-sm font-semibold text-[#102B4E]">{dateLabel(result.generatedAt)}</p></div>
+    <section className="flex min-h-[520px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-3">
+        <div className="flex items-center gap-2"><div className="rounded-full bg-cyan-100 p-2 text-cyan-800"><Bot size={18}/></div><div><p className="text-sm font-bold text-[#102B4E]">Conversa com a Orbe IA</p><p className="text-[11px] text-slate-500">Histórico salvo nesta conta</p></div></div>
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Assistente ativo</span>
       </div>
-      {(result.coverageLimited || result.itemRowsLimited) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <p className="font-semibold">Análise parcial da base</p>
-        <p className="mt-1">Há mais registros abertos do que o limite processado nesta execução. Execute novamente mais tarde e confira também a busca geral de oportunidades; esta lista não representa toda a base.</p>
-      </div>}
-      {result.learnedInterestCount > 0 && <p className="text-xs text-slate-500">O Radar também considerou padrões identificados nos seus favoritos e nas oportunidades que você acompanha.</p>}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-bold text-[#102B4E]">Oportunidades compatíveis</h3><p className="text-sm text-slate-500">Ordenadas pela pontuação de aderência ao perfil da empresa.</p></div><span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-900">Até 40 resultados</span></div>
-        {result.items.map(item => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-wide text-cyan-800">{item.sourceName}</p><h4 className="mt-1 font-bold text-[#102B4E]">{item.title}</h4><p className="mt-1 text-sm text-slate-500">{item.agencyName ?? "Órgão não informado"}</p></div>
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800"><Gauge size={17}/><span className="text-lg font-bold">{item.score}%</span><span className="text-[10px] font-semibold uppercase">aderência</span></div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+        {!messages.length && <div className="mx-auto max-w-2xl py-6 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#17496b] to-[#087eaa] text-white"><Sparkles size={28}/></div>
+          <h3 className="mt-4 text-xl font-bold text-[#102B4E]">Olá! Vamos trabalhar nas suas licitações?</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Posso ajudar a entender editais, preparar sua empresa e avaliar oportunidades. Escolha uma sugestão ou escreva sua pergunta.</p>
+          <div className="mt-6 grid gap-2 text-left sm:grid-cols-2">
+            {suggestions.map(({ label, icon: Icon }) => <button key={label} type="button" onClick={() => submitMessage(label)} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50"><Icon size={18} className="shrink-0 text-cyan-800"/><span>{label}</span><ArrowRight size={15} className="ml-auto shrink-0 text-slate-400"/></button>)}
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600"><span className="inline-flex items-center gap-1"><MapPin size={14}/>{[item.municipality, item.state].filter(Boolean).join(" / ") || "Local não informado"}</span><span className="inline-flex items-center gap-1"><CalendarClock size={14}/>Prazo: {dateLabel(item.proposalDeadline)}{item.needsDeadlineCheck ? " · confirmar no edital" : ""}</span><span className="inline-flex items-center gap-1"><Building2 size={14}/>{currency(item.estimatedValue)}</span></div>
-          {item.reasons.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{item.reasons.map(reason => <span key={reason} className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs text-cyan-900">{reason}</span>)}</div>}
-          <div className="mt-4 border-t pt-3"><Link href={`/app/opportunities/${item.id}`} className="text-sm font-semibold text-cyan-800 hover:underline">Ver oportunidade e edital →</Link></div>
-        </article>)}
-        {!result.items.length && <div className="rounded-xl border border-dashed bg-white p-8 text-center"><Target className="mx-auto h-9 w-9 text-slate-400"/><p className="mt-3 font-semibold text-[#102B4E]">Nenhuma compatibilidade encontrada nesta execução</p><p className="mt-1 text-sm text-slate-500">Revise os produtos, serviços, palavras-chave, regiões e códigos do perfil da empresa.</p></div>}
-      </section>
-      <p className="text-xs leading-5 text-slate-500">O Radar usa correspondência entre o perfil empresarial e os dados disponíveis nas oportunidades. A pontuação é indicativa, não garante habilitação nem substitui a leitura do edital e a conferência dos requisitos.</p>
-    </>}
-    {!result && !radar.isPending && <section className="rounded-xl border bg-white p-6 text-sm text-slate-600"><p className="font-semibold text-[#102B4E]">Como funciona</p><p className="mt-1">O sistema cruza palavras-chave, itens, códigos de catálogo, localização e faixa de valores. A execução inicial usa processamento interno de baixo custo, sem consumir chamadas do modelo generativo.</p></section>}
+        </div>}
+        {messages.map((message, index) => <div key={index} className={`flex items-start gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
+          <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
+          <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
+        </div>)}
+        {send.isPending && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> Analisando sua pergunta…</span></div></div>}
+        {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
+      </div>
+
+      <div className="border-t bg-white p-3 sm:p-4">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button type="button" disabled={radar.isPending || !hasProfile} onClick={() => radar.mutate()} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"><Target size={14}/>{radar.isPending ? "Executando Radar…" : "Executar meu Radar"}</button>
+          <Link href="/app/opportunities" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Search size={14}/> Abrir oportunidades</Link>
+          <Link href="/app/profile" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Building2 size={14}/> Perfil da empresa</Link>
+        </div>
+        {!hasProfile && <p className="mb-2 text-xs text-amber-700">Complete o perfil da empresa para receber recomendações mais relevantes.</p>}
+        <form onSubmit={event => { event.preventDefault(); submitMessage(); }} className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
+          <textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessage(); } }} rows={2} maxLength={3000} placeholder="Pergunte sobre licitações, editais ou sua empresa…" className="max-h-36 min-h-[48px] flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"/>
+          <button type="submit" disabled={!draft.trim() || send.isPending} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
+        </form>
+        <p className="mt-2 text-[10px] leading-4 text-slate-400">A Orbe IA pode cometer erros. Confirme exigências, prazos e decisões no edital e nas fontes oficiais. Não substitui análise jurídica ou a conferência do órgão.</p>
+      </div>
+    </section>
   </div>;
 }
 
