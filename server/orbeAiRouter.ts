@@ -124,7 +124,7 @@ export const orbeAiRouter = router({
     const coverageLimited = candidateRows.length > CANDIDATE_LIMIT;
     const candidates = candidateRows.slice(0, CANDIDATE_LIMIT);
     const candidateIds = candidates.map(row => row.opportunity.id);
-    const itemRows = catalogCodes.length && candidateIds.length
+    const itemRows = candidateIds.length
       ? await db.select({
           opportunityId: opportunityItems.opportunityId,
           catalogCode: opportunityItems.catalogCode,
