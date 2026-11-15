@@ -409,6 +409,41 @@ export const auditLogs = pgTable(
   table => [index("audit_logs_actor_idx").on(table.actorUserId, table.createdAt), index("audit_logs_entity_idx").on(table.entityType, table.entityId)],
 );
 
+
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
+    subject: text("subject").notNull(),
+    category: text("category").default("general").notNull(),
+    status: text("status").default("open").notNull(),
+    priority: text("priority").default("normal").notNull(),
+    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  table => [
+    index("support_tickets_user_updated_idx").on(table.userId, table.updatedAt),
+    index("support_tickets_queue_idx").on(table.status, table.priority, table.lastMessageAt),
+  ],
+);
+
+export const supportMessages = pgTable(
+  "support_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ticketId: uuid("ticket_id").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+    senderUserId: uuid("sender_user_id").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    isInternal: boolean("is_internal").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [index("support_messages_ticket_created_idx").on(table.ticketId, table.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type SafeUser = Omit<User, "passwordHash">;
