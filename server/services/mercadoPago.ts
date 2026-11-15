@@ -224,6 +224,106 @@ export async function createMercadoPagoPix(userId: string, planId: string, inter
   }
 }
 
+
+export async function verifyMercadoPagoPayments(userId: string) {
+  const db = getDb();
+  const [membership] = await db.select({ companyId: companyMembers.companyId })
+    .from(companyMembers).where(eq(companyMembers.userId, userId)).limit(1);
+  if (!membership) throw new Error("Empresa não encontrada.");
+
+  let checked = 0;
+  let activated = 0;
+  const pixPayments = await db.select().from(payments).where(and(
+    eq(payments.companyId, membership.companyId),
+    eq(payments.provider, "mercadopago"),
+  )).orderBy(desc(payments.createdAt)).limit(30);
+
+  for (const payment of pixPayments) {
+    let metadata: Record<string, unknown> = {};
+    try { metadata = JSON.parse(payment.rawStatus || "{}"); } catch { /* not Pix metadata */ }
+    if (!metadata.pixQrCode || !payment.providerPaymentId) continue;
+    checked += 1;
+    const result = await getMercadoPagoPixStatus(userId, payment.providerPaymentId).catch(error => {
+      console.warn("[billing.verifyPayment] Pix reconciliation failed:", error instanceof Error ? error.message : "unknown");
+      return null;
+    });
+    if (result?.status === "approved") activated += 1;
+  }
+
+  const pendingSubscriptions = await db.select().from(subscriptions).where(and(
+    eq(subscriptions.companyId, membership.companyId),
+    eq(subscriptions.provider, "mercadopago"),
+    inArray(subscriptions.status, ["pending", "past_due"]),
+  )).orderBy(desc(subscriptions.createdAt)).limit(20);
+
+  for (const local of pendingSubscriptions) {
+    if (!local.providerSubscriptionId) continue;
+    checked += 1;
+    const remote = await mpRequest<any>(`/preapproval/${encodeURIComponent(local.providerSubscriptionId)}`);
+    if (String(remote.id) !== String(local.providerSubscriptionId) ||
+        String(remote.external_reference || "") !== String(local.id)) continue;
+
+    if (remote.status === "cancelled") {
+      await db.update(subscriptions).set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
+        .where(eq(subscriptions.id, local.id));
+      continue;
+    }
+    if (remote.status === "paused") {
+      await db.update(subscriptions).set({ status: "past_due", updatedAt: new Date() })
+        .where(eq(subscriptions.id, local.id));
+    }
+
+    const invoiceSearch = await mpRequest<any>(
+      `/authorized_payments/search?preapproval_id=${encodeURIComponent(local.providerSubscriptionId)}&limit=20&sort=date_created&criteria=desc`
+    );
+    const invoices = Array.isArray(invoiceSearch.results) ? invoiceSearch.results : [];
+    for (const invoice of invoices) {
+      const paymentId = String(invoice.payment?.id || "");
+      if (!paymentId) continue;
+      const remotePayment = await mpRequest<any>(`/v1/payments/${encodeURIComponent(paymentId)}`);
+      if (String(remotePayment.id) !== paymentId ||
+          String(remotePayment.status || "") !== "approved" ||
+          String(remotePayment.currency_id || "BRL") !== "BRL" ||
+          Math.round(Number(remotePayment.transaction_amount || 0) * 100) !== Math.round(Number(invoice.transaction_amount || 0) * 100)) continue;
+
+      const amountCents = Math.round(Number(remotePayment.transaction_amount) * 100);
+      await db.insert(payments).values({
+        subscriptionId: local.id, companyId: local.companyId, provider: "mercadopago",
+        providerPaymentId: paymentId, amountCents, currency: "BRL", status: "approved",
+        paidAt: new Date(remotePayment.date_approved || remotePayment.date_created || Date.now()),
+        rawStatus: JSON.stringify({ invoiceId: String(invoice.id || ""), reconciledBy: "billing.verifyPayment" }),
+      }).onConflictDoUpdate({
+        target: [payments.provider, payments.providerPaymentId],
+        set: { subscriptionId: local.id, companyId: local.companyId, amountCents, currency: "BRL",
+          status: "approved", paidAt: new Date(remotePayment.date_approved || remotePayment.date_created || Date.now()),
+          updatedAt: new Date() },
+      });
+
+      if (local.status !== "active" && local.status !== "cancelled") {
+        const now = new Date();
+        const periodStart = local.currentPeriodStart || new Date(remotePayment.date_approved || Date.now());
+        const periodEnd = new Date(periodStart);
+        if (local.billingInterval === "annual") periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+        else periodEnd.setMonth(periodEnd.getMonth() + 1);
+        await db.update(subscriptions).set({
+          status: "active", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd,
+          gracePeriodEndsAt: null, updatedAt: now,
+        }).where(eq(subscriptions.id, local.id));
+        await db.update(subscriptions).set({
+          status: "cancelled", cancelledAt: now, updatedAt: now,
+        }).where(and(
+          eq(subscriptions.companyId, local.companyId),
+          inArray(subscriptions.status, ["active", "trialing"]),
+          lt(subscriptions.createdAt, local.createdAt),
+        ));
+        activated += 1;
+      }
+    }
+  }
+
+  return { checked, activated };
+}
+
 export async function getMercadoPagoPixStatus(userId: string, paymentId: string) {
   const db = getDb();
   const [membership] = await db.select({ companyId: companyMembers.companyId }).from(companyMembers)
