@@ -64,7 +64,7 @@ export default function PricingPage() {
                     {(plan.features ?? []).map(feature => <li className="flex gap-2" key={feature}><Check className="shrink-0 text-emerald-600" size={17}/>{feature}</li>)}
                   </ul>
                 </>}
-                {auth.data && <div className="mt-8 rounded-xl border border-slate-200 p-3">
+                {(auth.data || resumeCode) && <div className="mt-8 rounded-xl border border-slate-200 p-3">
                   <p className="text-sm font-semibold text-slate-700">Forma de pagamento</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setPaymentMethod("card")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "card" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Cartão</button>
@@ -72,7 +72,7 @@ export default function PricingPage() {
                   </div>
                   <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual, com nova cobrança a cada renovação." : "Cobrança recorrente mensal no cartão."}</p>
                 </div>}
-                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading} onClick={() => {
+                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading || (Boolean(resumeCode) && (auth.isLoading || !auth.data))} onClick={() => {
                   if (!auth.data) { navigate(`/register?plan=${encodeURIComponent(plan.code)}`); return; }
                   if (paymentMethod === "pix") {
                     const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
@@ -82,7 +82,7 @@ export default function PricingPage() {
                     checkout.mutate({ planId: plan.id, interval: "monthly" });
                   }
                 }} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
-                  {auth.data ? (checkout.isPending || pixCheckout.isPending ? "Aguarde…" : "Continuar para pagamento") : "Escolher este plano"} <ArrowRight size={17}/>
+                  {resumeCode && (auth.isLoading || !auth.data) ? "Carregando sua sessão…" : auth.data ? (checkout.isPending || pixCheckout.isPending ? "Aguarde…" : "Continuar para pagamento") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
                 {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Este é o plano selecionado no seu cadastro.</p>}
               </article>;
