@@ -278,6 +278,13 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
     },
     onError: error => toast.error(error.message),
   });
+  const reconcileRefund = trpc.admin.reconcileRefund.useMutation({
+    onSuccess: async result => {
+      toast.success(`Estorno externo confirmado. ${result.cancelledSubscriptions} assinatura(s) cancelada(s); acesso bloqueado.`);
+      await utils.admin.finance.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const query = trpc.admin.finance.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading)
@@ -332,7 +339,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
                   <td className="p-2">{meta.pixQrCode ? "Pix manual" : "Cartão / recorrente"}<div>{payment.paidAt ? date(payment.paidAt) : "Aguardando confirmação"}</div><div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
                   <td className="p-2">{date(payment.contractedAt || payment.createdAt)}</td>
                   <td className="p-2">{payment.renewalAt ? date(payment.renewalAt) : payment.status === "pending" ? "Após confirmação" : "—"}</td>
-                  <td className="p-2">{canRefund ? <button type="button" disabled={refund.isPending} onClick={() => { if (window.confirm(`Confirma o estorno de ${money(payment.amountCents / 100)}? A assinatura vinculada também será cancelada e não haverá novas renovações.`)) refund.mutate({ paymentId: payment.providerPaymentId }); }} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
+                  <td className="p-2">{canRefund ? <><button type="button" disabled={refund.isPending || reconcileRefund.isPending} onClick={() => { if (window.confirm(`Confirma o estorno de ${money(payment.amountCents / 100)}? A assinatura vinculada também será cancelada e não haverá novas renovações.`)) refund.mutate({ paymentId: payment.providerPaymentId }); }} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button><button type="button" disabled={reconcileRefund.isPending || refund.isPending} onClick={() => { if (window.confirm("O estorno já foi feito diretamente no Mercado Pago? O OrbeEdital vai conferir o status remoto e, se estiver integralmente estornado, cancelar todas as assinaturas desta empresa.")) reconcileRefund.mutate({ paymentId: payment.providerPaymentId }); }} className="mt-2 rounded-lg border px-3 py-2 font-semibold disabled:opacity-50">Sincronizar estorno externo</button></> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
                 </tr>;
               })}
             </tbody>
