@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
-import { opportunities } from "../../drizzle/schema";
+import { auditLogs, companyMembers, opportunities } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 
@@ -49,6 +49,24 @@ function formatPncpBrazilDate(value: unknown): string | null {
     }).format(parsed) + " (horário de Brasília)";
   }
   return raw;
+}
+
+async function logAnalysisAudit(userId: string, opportunityId: string, action: string, details: Record<string, unknown>) {
+  try {
+    const db = getDb();
+    const [membership] = await db.select({ companyId: companyMembers.companyId })
+      .from(companyMembers).where(eq(companyMembers.userId, userId)).limit(1);
+    await db.insert(auditLogs).values({
+      actorUserId: userId,
+      companyId: membership?.companyId ?? null,
+      action,
+      entityType: "opportunity",
+      entityId: opportunityId,
+      details,
+    });
+  } catch (error) {
+    console.warn("[edital-analysis] audit log could not be saved", error instanceof Error ? error.message : "unknown");
+  }
 }
 
 async function getPncpDateMetadata(opportunityId: string): Promise<PncpDateMetadata> {
@@ -219,6 +237,10 @@ function parseAnalysis(content: unknown): AnalysisResult {
 }
 
 export async function analyzeOpportunityEdital(opportunityId: string, userId: string) {
+  const startedAt = Date.now();
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  let documentSizeBytes = 0;
+  let tokenUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } = {};
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
 
@@ -259,7 +281,6 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
     const parts: Array<Record<string, unknown>> = [{
       text: "Analise esta oportunidade e, se anexado, o edital oficial. Metadados estruturados (não equivalem à leitura do edital):\\n" + JSON.stringify(metadata),
     }];
@@ -271,6 +292,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       });
       if (!pdfResponse.ok) throw new Error(`Official PDF download failed: HTTP ${pdfResponse.status}`);
       const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+      documentSizeBytes = pdfBuffer.length;
       const maxPdfBytes = 40 * 1024 * 1024;
       if (pdfBuffer.length > maxPdfBytes) throw new Error("Official PDF exceeds the 40 MB inline processing limit");
       if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
@@ -310,7 +332,9 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
 
     const payload = await response.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
     };
+    tokenUsage = payload.usageMetadata ?? {};
     const answer = payload.candidates?.[0]?.content?.parts
       ?.map(part => part.text || "")
       .join("") || "";
@@ -338,6 +362,18 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       analysis.documentAnalyzed = true;
       analysis.documentName = analysis.documentName ?? pdf.name;
     }
+    await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.completed", {
+      provider: "google_gemini",
+      model,
+      documentAnalyzed: analysis.documentAnalyzed,
+      documentName: analysis.documentName,
+      documentSizeBytes,
+      promptTokenCount: tokenUsage.promptTokenCount ?? null,
+      candidatesTokenCount: tokenUsage.candidatesTokenCount ?? null,
+      totalTokenCount: tokenUsage.totalTokenCount ?? null,
+      elapsedMs: Date.now() - startedAt,
+      sourceCode: opportunity.sourceCode,
+    });
     return {
       opportunityId,
       generatedAt: new Date().toISOString(),
@@ -346,8 +382,17 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       analysis,
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown";
+    await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.failed", {
+      provider: "google_gemini",
+      model,
+      documentAnalyzed: false,
+      documentSizeBytes,
+      elapsedMs: Date.now() - startedAt,
+      error: message.slice(0, 300),
+    });
     if (error instanceof TRPCError) throw error;
-    console.error("[edital-analysis] failed", error instanceof Error ? error.message : "unknown");
+    console.error("[edital-analysis] failed", message);
     throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível analisar o edital agora. Confira se o documento oficial está acessível e tente novamente." });
   }
 }
