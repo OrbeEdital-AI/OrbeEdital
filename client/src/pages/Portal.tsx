@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Shield,
+  Sparkles,
   X,
   Wallet,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { ProfilePage, SavedSearches } from "./portal/AccountPages";
 import { BillingPage } from "./portal/BillingPage";
 import { AgendaPage, NotificationsPage } from "./portal/AgendaNotifications";
 import { SupportPage } from "./SupportPages";
+import { OrbeAIPage } from "./OrbeAIPage";
 import {
   Dashboard,
   OpportunityDetailPage,
@@ -117,12 +119,14 @@ export default function Portal() {
   const canViewAdmin = ["superadmin", "admin", "source_operator"].includes(
     me?.role ?? ""
   );
+  const hasProfessionalPlan = planUsage.data?.plan?.code === "profissional";
   const sections = useMemo(
     () => [
       { label: "Visão geral", href: "/app", icon: LayoutDashboard },
       { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
       { label: "Agenda de licitações", href: "/app/agenda", icon: CalendarRange },
       { label: "Notificações", href: "/app/notifications", icon: Bell },
+      ...(hasProfessionalPlan ? [{ label: "Orbe IA", href: "/app/orbe-ia", icon: Sparkles }] : []),
       { label: "Suporte", href: "/app/support", icon: Headphones },
       { label: "Favoritos", href: "/app/favorites", icon: Heart },
       { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
@@ -142,7 +146,7 @@ export default function Portal() {
         ? [{ label: "Financeiro", href: "/app/admin/finance", icon: Wallet }]
         : []),
     ],
-    [canManageSources, canViewFinance, canViewAdmin]
+    [canManageSources, canViewFinance, canViewAdmin, hasProfessionalPlan]
   );
 
   if (auth.loading)
@@ -421,6 +425,9 @@ export default function Portal() {
             </Route>
             <Route path="/app/support">
               <SupportPage />
+            </Route>
+            <Route path="/app/orbe-ia">
+              <OrbeAIPage />
             </Route>
             <Route path="/app/profile">
               <ProfilePage />
