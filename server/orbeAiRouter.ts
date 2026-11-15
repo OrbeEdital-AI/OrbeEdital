@@ -53,7 +53,7 @@ export const orbeAiRouter = router({
     const catalogCodes = [...new Set([
       ...stringList(profile?.catmatCodes),
       ...stringList(profile?.catserCodes),
-    ].map(code => code.replace(/\\D/g, "")).filter(Boolean))].slice(0, 200);
+    ].map(code => code.replace(/\D/g, "")).filter(Boolean))].slice(0, 200);
     if (!terms.length && !catalogCodes.length) {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Complete o perfil da empresa com produtos, serviços, segmentos, palavras-chave ou códigos CATMAT/CATSER para ativar o Radar." });
     }
@@ -109,7 +109,7 @@ export const orbeAiRouter = router({
       ].join(" "));
       const matchedTerms = terms.filter(term => searchable.includes(term)).slice(0, 5);
       const matchingCatalog = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
-        const code = (item.catalogCode ?? "").replace(/\\D/g, "");
+        const code = (item.catalogCode ?? "").replace(/\D/g, "");
         return code && catalogCodes.some(target => code === target || code.startsWith(target) || target.startsWith(code));
       });
       const reasons: string[] = [];
