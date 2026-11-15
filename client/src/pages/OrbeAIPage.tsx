@@ -44,15 +44,15 @@ export function OrbeAIPage() {
   const persistToolResult = async (content: string) => {
     await send.mutateAsync({
       conversationId,
-      message: "Resultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\\n" + content,
+      message: "Resultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\n" + content.slice(0, 2700),
     });
     await Promise.all([history.refetch(), conversations.refetch()]);
   };
   const radar = trpc.orbeAi.radar.useMutation({
     onSuccess: result => {
-      const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência`).join("\\n");
+      const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência`).join("\n");
       const response = result.matchedCount
-        ? `Concluí o Radar. Verifiquei ${result.candidateCount.toLocaleString("pt-BR")} oportunidades e encontrei ${result.matchedCount.toLocaleString("pt-BR")} compatibilidades. Estas são as primeiras recomendações:\\n\\n${summary}\\n\\nA pontuação indica aderência ao perfil, não garante habilitação ou vitória. Abra cada oportunidade para conferir o edital.`
+        ? `Concluí o Radar. Verifiquei ${result.candidateCount.toLocaleString("pt-BR")} oportunidades e encontrei ${result.matchedCount.toLocaleString("pt-BR")} compatibilidades. Estas são as primeiras recomendações:\n\n${summary}\n\nA pontuação indica aderência ao perfil, não garante habilitação ou vitória. Abra cada oportunidade para conferir o edital.`
         : "Concluí o Radar, mas não encontrei oportunidades que atingissem o critério mínimo de aderência. Podemos revisar os produtos, serviços e códigos do perfil da empresa.";
       setLocalMessages(current => [...current, { role: "assistant", content: response }]);
       toast.success("Radar concluído.");
@@ -81,30 +81,30 @@ export function OrbeAIPage() {
     setLocalMessages(current => [...current, { role: "user", content: message }]);
     setDraft("");
 
-    const normalized = message.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
-    const asksRadar = /\\b(radar|encontr(e|ar)|buscar|busque|pesquis(e|ar)|ache|achar)\\b/.test(normalized)
-      && /\\b(licitac|oportunidad|pregao|edital)\\w*/.test(normalized);
+    const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const asksRadar = /\b(radar|encontr(e|ar)|buscar|busque|pesquis(e|ar)|ache|achar)\b/.test(normalized)
+      && /\b(licitac|oportunidad|pregao|edital)\\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
-      ?? message.match(/\\/app\\/opportunities\\/([0-9a-f-]{36})/i)?.[1];
-    const asksAnalysis = /\\b(analis(e|ar)|leia|ler|examinar|verificar)\\b/.test(normalized)
-      && /\\b(edital|documento|anexo|retificacao)\\w*/.test(normalized);
+      ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
+    const asksAnalysis = /\b(analis(e|ar)|leia|ler|examinar|verificar)\b/.test(normalized)
+      && /\b(edital|documento|anexo|retificacao)\\w*/.test(normalized);
 
     try {
       if (asksRadar) {
         const result = await radar.mutateAsync();
         const summary = result.items.slice(0, 12).map((item, index) =>
           `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}`
-        ).join("\\n");
+        ).join("\n");
         const toolResult = result.matchedCount
-          ? `Radar executado agora. ${result.candidateCount} oportunidades verificadas; ${result.matchedCount} compatibilidades; ${result.displayedCount} exibidas.\\n${summary}\\nAderência não representa chance de vitória nem habilitação.`
+          ? `Radar executado agora. ${result.candidateCount} oportunidades verificadas; ${result.matchedCount} compatibilidades; ${result.displayedCount} exibidas.\n${summary}\nAderência não representa chance de vitória nem habilitação.`
           : `Radar executado agora. ${result.candidateCount} oportunidades verificadas e nenhuma atingiu o critério mínimo de aderência.`;
         await persistToolResult(toolResult);
         setLocalMessages(current => [...current, { role: "assistant", content: "Consultei o Radar diretamente na base do OrbeEdital. " + (result.matchedCount ? `Encontrei ${result.matchedCount} compatibilidades entre ${result.candidateCount} oportunidades verificadas. Registrei os resultados na conversa; veja abaixo minha síntese.` : "Não encontrei oportunidades que atingissem o critério mínimo. Podemos revisar o perfil da empresa.") }]);
       } else if (asksAnalysis && opportunityId) {
         const result = await analyzeEdital.mutateAsync({ id: opportunityId });
         const a = result.analysis;
-        const evidence = a.evidence.slice(0, 8).map(item => `- ${item.topic}: “${item.excerpt}” (${item.document ?? "documento não identificado"}${item.page ? ", página " + item.page : ""})`).join("\\n");
-        const toolResult = `Análise oficial concluída para a oportunidade ${opportunityId}.\\nResumo: ${a.executiveSummary}\\nDocumentos efetivamente analisados: ${a.documentsAnalyzed.join("; ") || "nenhum PDF processado"}.\\nDocumentos localizados e não processados: ${a.documentsNotProcessed.join("; ") || "nenhum informado"}.\\nExigências: ${a.qualificationRequirements.join("; ") || "não identificadas"}.\\nChecklist: ${a.documentChecklist.join("; ") || "não identificado"}.\\nRiscos: ${a.risks.join("; ") || "não identificados"}.\\nPontos de atenção: ${a.attentionPoints.join("; ") || "nenhum"}.\\nEvidências:\\n${evidence}\\nInformações ausentes: ${a.missingInformation.join("; ") || "nenhuma informada"}.\\nLeitura de documento PDF: ${a.documentAnalyzed ? "sim" : "não; análise limitada aos metadados"}.`;
+        const evidence = a.evidence.slice(0, 8).map(item => `- ${item.topic}: “${item.excerpt}” (${item.document ?? "documento não identificado"}${item.page ? ", página " + item.page : ""})`).join("\n");
+        const toolResult = `Análise oficial concluída para a oportunidade ${opportunityId}.\nResumo: ${a.executiveSummary}\nDocumentos efetivamente analisados: ${a.documentsAnalyzed.join("; ") || "nenhum PDF processado"}.\nDocumentos localizados e não processados: ${a.documentsNotProcessed.join("; ") || "nenhum informado"}.\nExigências: ${a.qualificationRequirements.join("; ") || "não identificadas"}.\nChecklist: ${a.documentChecklist.join("; ") || "não identificado"}.\nRiscos: ${a.risks.join("; ") || "não identificados"}.\nPontos de atenção: ${a.attentionPoints.join("; ") || "nenhum"}.\nEvidências:\n${evidence}\nInformações ausentes: ${a.missingInformation.join("; ") || "nenhuma informada"}.\nLeitura de documento PDF: ${a.documentAnalyzed ? "sim" : "não; análise limitada aos metadados"}.`;
         await persistToolResult(toolResult);
         setLocalMessages(current => [...current, { role: "assistant", content: `Analisei a oportunidade. ${a.documentAnalyzed ? "Os PDFs listados foram efetivamente enviados para leitura." : "A análise ficou limitada aos metadados, pois nenhum PDF foi processado."} Consulte o resumo, as exigências e as evidências registradas nesta conversa.` }]);
       } else if (asksAnalysis && !opportunityId) {
