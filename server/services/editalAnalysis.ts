@@ -23,6 +23,8 @@ type AnalysisResult = {
   missingInformation: string[];
   documentAnalyzed: boolean;
   documentName: string | null;
+  documentsAnalyzed: string[];
+  documentsNotProcessed: string[];
 };
 
 type PncpDateMetadata = {
@@ -160,34 +162,48 @@ async function discoverPncpDocuments(opportunityId: string) {
   return [];
 }
 
-function getOfficialPdf(opportunity: NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>, discovered: Record<string, unknown>[] = []) {
+function getOfficialPdfs(
+  opportunity: NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>,
+  discovered: Record<string, unknown>[] = [],
+) {
   const candidates = [
     ...discovered,
     ...(Array.isArray(opportunity.documents) ? opportunity.documents : []),
     { url: opportunity.noticeUrl, name: "Edital" },
   ];
+  const seen = new Set<string>();
+  const documents: Array<{ url: string; name: string; kind: string }> = [];
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate as Record<string, unknown>;
-    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href]
+    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo]
       .find(value => typeof value === "string" && value.trim());
     if (typeof rawUrl !== "string") continue;
     try {
       const parsed = new URL(rawUrl);
       const host = parsed.hostname.toLowerCase();
       const officialHost = host === "gov.br" || host.endsWith(".gov.br");
-      const documentType = String(record.tipoDocumentoNome ?? record.titulo ?? record.name ?? record.title ?? "").toLowerCase();
-      const isPdf = /\.pdf$/i.test(parsed.pathname) ||
-        String(record.mimeType ?? record.contentType ?? "").toLowerCase().includes("pdf") ||
-        /edital|termo de referência|projeto básico|aviso de contratação/.test(documentType);
-      if (parsed.protocol === "https:" && officialHost && isPdf) {
-        return { url: parsed.toString(), name: String(record.name ?? record.title ?? "Edital oficial") };
-      }
+      const name = String(record.tipoDocumentoNome ?? record.titulo ?? record.name ?? record.title ?? record.nomeArquivo ?? "Documento oficial");
+      const documentType = name.toLocaleLowerCase("pt-BR");
+      const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? "").toLowerCase();
+      const isPdf = /\\.pdf$/i.test(parsed.pathname) || mime.includes("pdf");
+      const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
+      if (parsed.protocol !== "https:" || !officialHost || !isPdf || (!relevantType && name !== "Documento oficial")) continue;
+      const url = parsed.toString();
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const kind = /retifica|esclarecimento|impugna/i.test(documentType) ? "retificação/esclarecimento"
+        : /termo de referência|projeto básico|estudo técnico/i.test(documentType) ? "referência técnica"
+        : /anexo|planilha|modelo|memorial|proposta/i.test(documentType) ? "anexo"
+        : /edital|aviso|minuta/i.test(documentType) ? "edital/aviso" : "documento";
+      documents.push({ url, name, kind });
     } catch {
       // Ignore malformed document URLs supplied by external procurement sources.
     }
   }
-  return null;
+  const priority = (kind: string) => kind === "retificação/esclarecimento" ? 0
+    : kind === "edital/aviso" ? 1 : kind === "referência técnica" ? 2 : 3;
+  return documents.sort((a, b) => priority(a.kind) - priority(b.kind));
 }
 
 function parseAnalysis(content: unknown): AnalysisResult {
@@ -233,6 +249,8 @@ function parseAnalysis(content: unknown): AnalysisResult {
     missingInformation: strings("missingInformation"),
     documentAnalyzed: value.documentAnalyzed === true,
     documentName: nullable("documentName"),
+    documentsAnalyzed: strings("documentsAnalyzed"),
+    documentsNotProcessed: strings("documentsNotProcessed"),
   };
 }
 
@@ -240,6 +258,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
   const startedAt = Date.now();
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   let documentSizeBytes = 0;
+  let documentsAnalyzed: string[] = [];
+  let documentsNotProcessed: string[] = [];
   let tokenUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } = {};
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
@@ -249,7 +269,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
   const discoveredDocuments = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode)
     ? await discoverPncpDocuments(opportunityId)
     : [];
-  const pdf = getOfficialPdf(opportunity, discoveredDocuments);
+  const pdfs = getOfficialPdfs(opportunity, discoveredDocuments);
   const pncpDates = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode)
     ? await getPncpDateMetadata(opportunityId)
     : null;
@@ -282,28 +302,46 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
     const parts: Array<Record<string, unknown>> = [{
-      text: "Analise esta oportunidade e, se anexado, o edital oficial. Metadados estruturados (não equivalem à leitura do edital):\\n" + JSON.stringify(metadata),
+      text: "Analise esta oportunidade e todos os documentos PDF oficiais anexados nesta solicitação. Metadados estruturados não equivalem à leitura do edital. Cada arquivo será identificado pelo nome e tipo; cite a página e o documento de origem nas evidências.\\n" + JSON.stringify({ metadata, documentosOficiaisLocalizados: pdfs.map(doc => ({ nome: doc.name, tipo: doc.kind })) }),
     }];
 
-    if (pdf) {
-      const pdfResponse = await fetch(pdf.url, {
-        headers: { Accept: "application/pdf" },
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!pdfResponse.ok) throw new Error(`Official PDF download failed: HTTP ${pdfResponse.status}`);
-      const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-      documentSizeBytes = pdfBuffer.length;
-      const maxPdfBytes = 40 * 1024 * 1024;
-      if (pdfBuffer.length > maxPdfBytes) throw new Error("Official PDF exceeds the 40 MB inline processing limit");
-      if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
-        throw new Error("The official document URL did not return a valid PDF");
+    const maxAggregateBytes = 40 * 1024 * 1024;
+    for (const document of pdfs) {
+      try {
+        const pdfResponse = await fetch(document.url, {
+          headers: { Accept: "application/pdf" },
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (!pdfResponse.ok) {
+          documentsNotProcessed.push(document.name + " (download HTTP " + pdfResponse.status + ")");
+          continue;
+        }
+        const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+        if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+          documentsNotProcessed.push(document.name + " (arquivo não é um PDF válido)");
+          continue;
+        }
+        if (documentSizeBytes + pdfBuffer.length > maxAggregateBytes) {
+          documentsNotProcessed.push(document.name + " (limite total de 40 MB por análise atingido)");
+          continue;
+        }
+        documentSizeBytes += pdfBuffer.length;
+        documentsAnalyzed.push(document.name);
+        parts.push({
+          text: "Documento oficial: " + document.name + ". Categoria: " + document.kind + ".",
+        });
+        parts.push({
+          inlineData: {
+            mimeType: "application/pdf",
+            data: pdfBuffer.toString("base64"),
+          },
+        });
+      } catch (error) {
+        documentsNotProcessed.push(document.name + " (falha ao baixar: " + (error instanceof Error ? error.message : "erro desconhecido") + ")");
       }
-      parts.push({
-        inlineData: {
-          mimeType: "application/pdf",
-          data: pdfBuffer.toString("base64"),
-        },
-      });
+    }
+    if (pdfs.length && !documentsAnalyzed.length) {
+      throw new Error("Nenhum dos PDFs oficiais localizados pôde ser baixado e validado");
     }
 
     const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
@@ -358,15 +396,23 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
         !/diverg[eê]ncia.*(proposta|abertura)/i.test(point)
       );
     }
-    if (pdf) {
-      analysis.documentAnalyzed = true;
-      analysis.documentName = analysis.documentName ?? pdf.name;
+    analysis.documentsAnalyzed = documentsAnalyzed;
+    analysis.documentsNotProcessed = documentsNotProcessed;
+    analysis.documentAnalyzed = documentsAnalyzed.length > 0;
+    analysis.documentName = documentsAnalyzed.length ? documentsAnalyzed.join("; ") : null;
+    if (!documentsAnalyzed.length) {
+      analysis.missingInformation.push("Nenhum PDF oficial foi efetivamente processado; a análise se limita aos metadados disponíveis.");
+    }
+    if (documentsNotProcessed.length) {
+      analysis.missingInformation.push("Documentos oficiais localizados, mas não processados: " + documentsNotProcessed.join("; "));
     }
     await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.completed", {
       provider: "google_gemini",
       model,
       documentAnalyzed: analysis.documentAnalyzed,
       documentName: analysis.documentName,
+      documentsAnalyzed,
+      documentsNotProcessed,
       documentSizeBytes,
       promptTokenCount: tokenUsage.promptTokenCount ?? null,
       candidatesTokenCount: tokenUsage.candidatesTokenCount ?? null,
