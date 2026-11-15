@@ -10,8 +10,9 @@ import BrandMark from "@/components/BrandMark";
 import { toast } from "sonner";
 import { AdminOverview, FinancePage, SourcesPage } from "@/pages/portal/AdminPages";
 import AdminAuditPage from "@/pages/AdminAuditPage";
+import { AdminSupportPage } from "@/pages/SupportPages";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings";
+type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support";
 
 const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
   { title: "Operação", items: [
@@ -20,6 +21,7 @@ const navGroups: { title: string; items: { id: Section; label: string; icon: typ
   ]},
   { title: "Pessoas e acesso", items: [
     { id: "customers", label: "Clientes e usuários", icon: Users },
+    { id: "support", label: "Suporte ao cliente", icon: MessageCircle },
     { id: "permissions", label: "Papéis e permissões", icon: ShieldCheck },
   ]},
   { title: "Governança", items: [
@@ -38,6 +40,7 @@ const sectionDescriptions: Record<Section, string> = {
   finance: "Consulte os registros financeiros disponíveis e identifique integrações pendentes.",
   permissions: "Entenda os papéis existentes e os limites de acesso aplicados no servidor.",
   audit: "Rastreie operações administrativas registradas e seus responsáveis.",
+  support: "Gerencie a fila, prioridades, responsáveis, mensagens e histórico dos atendimentos.",
   settings: "Veja quais configurações já estão disponíveis e quais aguardam implementação.",
 };
 
@@ -292,6 +295,7 @@ export default function AdminConsole() {
         {section === "finance" && <FinancePage isAdmin={true}/>}
         {section === "permissions" && <PermissionsPage/>}
         {section === "audit" && <AdminAuditPage/>}
+        {section === "support" && <AdminSupportPage/>}
         {section === "settings" && <SettingsPage/>}
       </div>
     </main>
