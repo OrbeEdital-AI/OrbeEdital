@@ -21,6 +21,10 @@ function requiredEnvironment(name: string): string {
 
 async function resolveScheduledTask(req: Request): Promise<string> {
   const request = req as unknown as { headers: { cookie?: string; authorization?: string } };
+  const supabaseCronSecret = process.env.SUPABASE_CRON_SECRET?.trim();
+  if (supabaseCronSecret && request.headers.authorization === `Bearer ${supabaseCronSecret}`) {
+    return "supabase-cron:all-sources";
+  }
   const cronSecret = process.env.CRON_SECRET?.trim();
   if (cronSecret && request.headers.authorization === `Bearer ${cronSecret}`) {
     return "vercel-cron:compras.gov.br";
@@ -95,6 +99,42 @@ export async function handleScheduledSync(req: Request) {
     .select()
     .from(connectors)
     .where(inArray(connectors.code, [...CONNECTORS]));
+
+  if (taskUid === "supabase-cron:all-sources") {
+    const runs: Array<Record<string, unknown>> = [];
+    for (const source of enabledSources.filter(item => item.enabled)) {
+      try {
+        const result = source.code === "pncp"
+          ? await syncConnector("pncp", { mode: "open", allPages: true, pageSize: 50 })
+          : await syncConnector("compras.gov.br", {
+              daysBack: 7,
+              modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
+              allPages: true,
+              pageSize: 500,
+            });
+        runs.push({ source: source.code, status: "completed", ...result });
+        await getDb().insert(auditLogs).values({
+          action: "source.schedule.completed",
+          entityType: "connector",
+          entityId: source.code,
+          details: { status: "synchronized", runId: result.runId, fetched: result.fetched, inserted: result.inserted, updated: result.updated, durationMs: result.durationMs, scheduler: "supabase_cron" },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 240) : "Unknown error";
+        runs.push({ source: source.code, status: "failed", error: message });
+        await getDb().insert(auditLogs).values({
+          action: "source.schedule.failed",
+          entityType: "connector",
+          entityId: source.code,
+          details: { status: "failed", message, scheduler: "supabase_cron" },
+        }).catch(() => undefined);
+      }
+    }
+    const notificationSummary = await dispatchDeadlineNotifications().catch(() => ({
+      scannedEvents: 0, createdReminders: 0, createdSummaries: 0, failed: true,
+    }));
+    return { status: "synchronized" as const, scheduler: "supabase_cron", runs, notifications: notificationSummary };
+  }
   const matched = enabledSources.find(source => {
     const configuration =
       source.configuration && typeof source.configuration === "object"
