@@ -18,6 +18,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import BrandMark from "@/components/BrandMark";
 import type { AnyOpportunity } from "./portal/common";
@@ -65,6 +66,14 @@ export default function Portal() {
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
   const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
+  const verifyPayment = trpc.billing.verifyPayment.useMutation({
+    onSuccess: async result => {
+      await planUsage.refetch();
+      if (result.activated > 0) toast.success("Pagamento confirmado. Seu acesso está sendo liberado.");
+      else toast.info("Consulta concluída. Ainda não encontramos uma cobrança aprovada.");
+    },
+    onError: error => toast.error(error.message || "Não foi possível consultar o Mercado Pago."),
+  });
   const resumePlan = trpc.billing.resumePlan.useQuery(undefined, { enabled: !!auth.user && emailVerified });
   const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: 60000 });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
@@ -212,7 +221,7 @@ export default function Portal() {
           <p className="mt-3 text-sm leading-6 text-slate-600">{returnedFromCheckout ? "O Mercado Pago retornou ao OrbeEdital. A liberação acontece automaticamente assim que recebermos a confirmação do pagamento. Esta página verifica o status periodicamente." : "Sua conta foi criada, mas o portal ainda está bloqueado porque não encontramos uma assinatura ativa. Escolha um plano e conclua o pagamento para liberar o acesso."}</p>
           {returnedFromCheckout && <p className="mt-4 text-xs text-slate-500">Não é necessário realizar outro pagamento enquanto a confirmação estiver sendo processada.</p>}
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-            <button onClick={() => planUsage.refetch()} className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700">Verificar pagamento</button>
+            <button disabled={verifyPayment.isPending} onClick={() => verifyPayment.mutate()} className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 disabled:cursor-wait disabled:opacity-60">{verifyPayment.isPending ? "Consultando Mercado Pago…" : "Verificar pagamento"}</button>
             <button disabled={resumePlan.isLoading} onClick={() => navigate(resumePlan.data ? `/plans?resume=${encodeURIComponent(resumePlan.data)}` : "/plans")} className="rounded-lg bg-[#0c3153] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">Ver planos</button>
           </div>
           <button onClick={() => logout.mutate()} className="mt-5 text-sm text-slate-500 underline">Sair da conta</button>
