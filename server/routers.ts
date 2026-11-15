@@ -1,7 +1,7 @@
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
-import { and, count, desc, eq, gte, inArray, isNotNull, lt, or, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNotNull, lt, or, sql, sum } from "drizzle-orm";
 import { z } from "zod";
 import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites, notifications } from "../drizzle/schema";
 import {
