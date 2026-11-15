@@ -9,7 +9,7 @@ const money = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "curren
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix">("card");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "pix" | null>(null);
   const plans = trpc.billing.plans.useQuery();
   const profile = trpc.account.profile.useQuery();
   const pixCheckout = trpc.billing.pixCheckout.useMutation({
@@ -70,9 +70,9 @@ export default function PricingPage() {
                     <button type="button" onClick={() => setPaymentMethod("card")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "card" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Cartão</button>
                     <button type="button" onClick={() => setPaymentMethod("pix")} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${paymentMethod === "pix" ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>Pix</button>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual, com nova cobrança a cada renovação." : "Cobrança recorrente mensal no cartão."}</p>
+                  <p className="mt-2 text-xs text-slate-500">{paymentMethod === "pix" ? "Pagamento manual, com nova cobrança a cada renovação." : paymentMethod === "card" ? "Cobrança recorrente mensal no cartão." : "Selecione uma forma de pagamento para continuar."}</p>
                 </div>}
-                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading || (Boolean(resumeCode) && (auth.isLoading || !auth.data))} onClick={() => {
+                <button disabled={checkout.isPending || pixCheckout.isPending || profile.isLoading || !paymentMethod || (Boolean(resumeCode) && (auth.isLoading || !auth.data))} onClick={() => {
                   if (!auth.data) { navigate(`/register?plan=${encodeURIComponent(plan.code)}`); return; }
                   if (paymentMethod === "pix") {
                     const document = profile.data?.cnpj ? undefined : window.prompt("Informe o CPF ou CNPJ do pagador:");
@@ -82,7 +82,7 @@ export default function PricingPage() {
                     checkout.mutate({ planId: plan.id, interval: "monthly" });
                   }
                 }} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c3153] px-5 py-3.5 font-bold text-white transition hover:bg-[#16466f] disabled:opacity-60">
-                  {resumeCode && (auth.isLoading || !auth.data) ? "Carregando sua sessão…" : auth.data ? (checkout.isPending || pixCheckout.isPending ? "Aguarde…" : "Continuar para pagamento") : "Escolher este plano"} <ArrowRight size={17}/>
+                  {resumeCode && (auth.isLoading || !auth.data) ? "Carregando sua sessão…" : auth.data ? (checkout.isPending || pixCheckout.isPending ? "Aguarde…" : paymentMethod ? "Continuar para pagamento" : "Escolha Pix ou Cartão") : "Escolher este plano"} <ArrowRight size={17}/>
                 </button>
                 {isSelected && resumeCode && <p className="mt-3 text-center text-xs text-cyan-800">Este é o plano selecionado no seu cadastro.</p>}
               </article>;
