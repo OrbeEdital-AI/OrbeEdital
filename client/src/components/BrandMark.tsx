@@ -9,7 +9,7 @@ export function BrandMark({ className = "", showWordmark = true, title = "Orbe E
       <circle cx="27" cy="29" r="9" stroke={dark ? "#087EAA" : "#087EAA"} strokeWidth="2.8"/><circle cx="27" cy="29" r="4.2" fill="#42D5E8"/>
       <path d="m33.5 35.5 5 5" stroke="#42D5E8" strokeWidth="2.8" strokeLinecap="round"/>
     </svg>
-    {showWordmark && <span className={`whitespace-nowrap text-[15px] font-extrabold tracking-[0.13em] ${dark ? "text-white" : "text-[#102B4E]"}`}>ORBE<span className={dark ? "text-[#8BEAF5]" : "text-[#42D5E8]"}>EDITAL</span></span>}
+    {showWordmark && <span className={`whitespace-nowrap text-[15px] font-extrabold tracking-[0.13em] ${dark ? "text-white" : "text-[#102B4E]"}`}>ORBE<span className={dark ? "text-[#F5C76B]" : "text-[#42D5E8]"}>EDITAL</span></span>}
   </span>;
 }
 export default BrandMark;
