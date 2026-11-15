@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -301,6 +301,17 @@ export const orbeAiRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "O chat da Orbe IA é exclusivo do plano Profissional." });
       }
       const db = getDb();
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const [dailyUsage] = await db.select({ total: count() }).from(auditLogs)
+        .where(and(
+          eq(auditLogs.actorUserId, ctx.user.id),
+          eq(auditLogs.action, "orbe_ai.chat.message"),
+          gte(auditLogs.createdAt, dayStart),
+        ));
+      if ((dailyUsage?.total ?? 0) >= 60) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Você atingiu o limite diário de mensagens da Orbe IA. Tente novamente amanhã." });
+      }
       const [membership] = await db.select({
         companyId: companyMembers.companyId,
         company: companies,
