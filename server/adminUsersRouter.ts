@@ -31,6 +31,8 @@ export const adminUsersRouter = router({
           email: users.email,
           role: users.role,
           emailVerifiedAt: users.emailVerifiedAt,
+          suspendedAt: users.suspendedAt,
+          suspensionReason: users.suspensionReason,
           createdAt: users.createdAt,
           lastSignedIn: users.lastSignedIn,
           companyName: sql<string | null>`(select c.legal_name from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
@@ -238,6 +240,45 @@ export const adminUsersRouter = router({
       });
 
       return { deleted: true, email: target.email };
+    }),
+
+  setSuspension: superadminProcedure
+    .input(z.object({
+      userId: z.string().uuid(),
+      suspended: z.boolean(),
+      reason: z.string().trim().max(500).optional(),
+    }).superRefine((value, ctx) => {
+      if (value.suspended && !value.reason) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reason"], message: "Informe o motivo da suspensão." });
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const [target] = await tx.select({
+          id: users.id, role: users.role, email: users.email,
+          suspendedAt: users.suspendedAt, suspensionReason: users.suspensionReason,
+        }).from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+        if (target.role !== "user") throw new TRPCError({ code: "FORBIDDEN", message: "Somente contas de clientes podem ser suspensas por esta tela." });
+        if (input.suspended && target.suspendedAt) return { updated: false, suspended: true, revokedCount: 0 };
+        if (!input.suspended && !target.suspendedAt) return { updated: false, suspended: false, revokedCount: 0 };
+        const now = new Date();
+        await tx.update(users).set({
+          suspendedAt: input.suspended ? now : null,
+          suspensionReason: input.suspended ? input.reason!.trim() : null,
+          updatedAt: now,
+        }).where(eq(users.id, input.userId));
+        const revoked = input.suspended
+          ? await tx.delete(authSessions).where(eq(authSessions.userId, input.userId)).returning({ tokenHash: authSessions.tokenHash })
+          : [];
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: input.suspended ? "user.account.suspended" : "user.account.reactivated",
+          entityType: "user",
+          entityId: input.userId,
+          details: { targetEmail: target.email, reason: input.suspended ? input.reason!.trim() : target.suspensionReason, revokedSessionCount: revoked.length },
+        });
+        return { updated: true, suspended: input.suspended, revokedCount: revoked.length };
+      });
     }),
 
   revokeSessions: superadminProcedure
