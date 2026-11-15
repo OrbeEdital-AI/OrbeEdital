@@ -7,6 +7,7 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getPlanUsageSummary } from "./services/planLimits";
+import { searchOpportunities } from "./services/opportunities";
 import { router, protectedProcedure, superadminProcedure } from "./_core/trpc";
 
 const OPEN_STATUSES = ["published", "receiving_proposals", "open", "in_progress"];
@@ -55,6 +56,53 @@ function learnedInterestTerms(rows: Array<{ title: string; description: string |
 }
 
 export const orbeAiRouter = router({
+  searchBase: protectedProcedure
+    .input(z.object({
+      query: z.string().trim().min(2).max(160),
+      page: z.number().int().min(1).max(4).default(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const planSummary = await getPlanUsageSummary(ctx.user.id);
+      if (!planSummary.hasSubscription || planSummary.plan?.code !== "profissional") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "A busca assistida da Orbe IA é exclusiva do plano Profissional." });
+      }
+      const result = await searchOpportunities({
+        query: input.query,
+        onlyOpen: true,
+        page: input.page,
+      }, ctx.user.id);
+      await getDb().insert(auditLogs).values({
+        actorUserId: ctx.user.id,
+        action: "orbe_ai.search.executed",
+        entityType: "orbe_ai_search",
+        details: {
+          query: input.query,
+          total: result.total,
+          returned: result.items.length,
+          page: result.page,
+          source: "synced_database",
+        },
+      });
+      return {
+        query: input.query,
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+        items: result.items.slice(0, 12).map(item => ({
+          id: item.id,
+          title: item.title,
+          municipality: item.municipality,
+          state: item.state,
+          estimatedValue: item.estimatedValue,
+          proposalDeadline: item.proposalDeadline,
+          sourceName: item.sourceName,
+          sourceUrl: item.sourceUrl,
+          modality: item.modality,
+          agencyName: item.agencyName,
+        })),
+      };
+    }),
+
   radar: protectedProcedure.mutation(async ({ ctx }) => {
     const planSummary = await getPlanUsageSummary(ctx.user.id);
     if (!planSummary.hasSubscription || planSummary.plan?.code !== "profissional") {
