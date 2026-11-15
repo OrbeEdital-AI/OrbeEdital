@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -10,8 +10,6 @@ import { getPlanUsageSummary } from "./services/planLimits";
 import { router, protectedProcedure, superadminProcedure } from "./_core/trpc";
 
 const OPEN_STATUSES = ["published", "receiving_proposals", "open", "in_progress"];
-const CANDIDATE_LIMIT = 1200;
-const ITEM_LIMIT = 6000;
 const STOP_WORDS = new Set([
   "para", "com", "sem", "por", "uma", "uns", "umas", "dos", "das", "que", "de", "da", "do",
   "em", "no", "na", "nos", "nas", "ao", "aos", "e", "ou", "se", "ser", "ter", "mais", "menos",
@@ -111,101 +109,120 @@ export const orbeAiRouter = router({
 
     // Oportunidades sem prazo também entram, mas ficam identificadas para conferência.
     // Status "unknown" foi removido para não tratar registros sem situação confirmada como abertos.
-    const candidateRows = await db.select({
-      opportunity: opportunities,
-      sourceName: connectors.name,
-      sourceCode: connectors.code,
-    }).from(opportunities)
-      .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
-      .where(and(
-        inArray(opportunities.status, OPEN_STATUSES),
-        or(gte(opportunities.proposalDeadline, now), isNull(opportunities.proposalDeadline)),
-      ))
-      .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate))
-      .limit(CANDIDATE_LIMIT + 1);
+    const PAGE_SIZE = 250;
+    let offset = 0;
+    let candidateCount = 0;
+    const matches: Array<{
+      id: string; title: string; description: string | null; agencyName: string | null;
+      municipality: string | null; state: string | null; estimatedValue: string | null;
+      proposalDeadline: Date | null; sourceName: string; sourceCode: string;
+      score: number; reasons: string[]; needsDeadlineCheck: boolean;
+    }> = [];
 
-    const coverageLimited = candidateRows.length > CANDIDATE_LIMIT;
-    const candidates = candidateRows.slice(0, CANDIDATE_LIMIT);
-    const candidateIds = candidates.map(row => row.opportunity.id);
-    const itemRows = candidateIds.length
-      ? await db.select({
-          opportunityId: opportunityItems.opportunityId,
-          catalogCode: opportunityItems.catalogCode,
-          catalogSystem: opportunityItems.catalogSystem,
-          description: opportunityItems.description,
-        }).from(opportunityItems)
-        .where(inArray(opportunityItems.opportunityId, candidateIds))
-        .limit(ITEM_LIMIT)
-      : [];
-    const itemRowsLimited = itemRows.length >= ITEM_LIMIT;
-    const itemsByOpportunity = new Map<string, typeof itemRows>();
-    for (const item of itemRows) {
-      const list = itemsByOpportunity.get(item.opportunityId) ?? [];
-      list.push(item);
-      itemsByOpportunity.set(item.opportunityId, list);
-    }
+    // Percorre todos os registros em lotes estáveis, sem truncar a cobertura total.
+    while (true) {
+      const candidateRows = await db.select({
+        opportunity: opportunities,
+        sourceName: connectors.name,
+        sourceCode: connectors.code,
+      }).from(opportunities)
+        .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
+        .where(and(
+          inArray(opportunities.status, OPEN_STATUSES),
+          or(gte(opportunities.proposalDeadline, now), isNull(opportunities.proposalDeadline)),
+        ))
+        .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate), asc(opportunities.id))
+        .limit(PAGE_SIZE)
+        .offset(offset);
 
-    const matches = candidates.flatMap(({ opportunity, sourceName, sourceCode }) => {
-      if (servedStates.length && (!opportunity.state || !servedStates.includes(opportunity.state.toUpperCase()))) return [];
-      if (servedMunicipalities.length && (!opportunity.municipality ||
-          !servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city)))) return [];
-      const value = money(opportunity.estimatedValue);
-      if (value !== null && minimumValue !== null && value < minimumValue) return [];
-      if (value !== null && maximumValue !== null && value > maximumValue) return [];
+      if (!candidateRows.length) break;
+      offset += candidateRows.length;
+      candidateCount += candidateRows.length;
 
-      const searchable = [
-        opportunity.title, opportunity.description ?? "", opportunity.agencyName ?? "",
-        opportunity.procurementType ?? "", opportunity.modality ?? "",
-      ].join(" ");
-      const matchedProfileTerms = profileTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
-      const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
-      const matchingItems = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
-        const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
-        const code = (item.catalogCode ?? "").replace(/\D/g, "");
-        const codeMatch = code && catalogCodes.some(target => code === target);
-        const termMatch = profileTerms.some(term => hasTerm(itemText, term));
-        return Boolean(codeMatch || termMatch);
+      const candidateIds = candidateRows.map(row => row.opportunity.id);
+      const itemRows = candidateIds.length
+        ? await db.select({
+            opportunityId: opportunityItems.opportunityId,
+            catalogCode: opportunityItems.catalogCode,
+            catalogSystem: opportunityItems.catalogSystem,
+            description: opportunityItems.description,
+          }).from(opportunityItems)
+          .where(inArray(opportunityItems.opportunityId, candidateIds))
+        : [];
+      const itemsByOpportunity = new Map<string, typeof itemRows>();
+      for (const item of itemRows) {
+        const list = itemsByOpportunity.get(item.opportunityId) ?? [];
+        list.push(item);
+        itemsByOpportunity.set(item.opportunityId, list);
+      }
+
+      const pageMatches = candidateRows.flatMap(({ opportunity, sourceName, sourceCode }) => {
+        if (servedStates.length && (!opportunity.state || !servedStates.includes(opportunity.state.toUpperCase()))) return [];
+        if (servedMunicipalities.length && (!opportunity.municipality ||
+            !servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city)))) return [];
+        const value = money(opportunity.estimatedValue);
+        if (value !== null && minimumValue !== null && value < minimumValue) return [];
+        if (value !== null && maximumValue !== null && value > maximumValue) return [];
+
+        const searchable = [
+          opportunity.title, opportunity.description ?? "", opportunity.agencyName ?? "",
+          opportunity.procurementType ?? "", opportunity.modality ?? "",
+        ].join(" ");
+        const matchedProfileTerms = profileTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
+        const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
+        const matchingItems = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
+          const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
+          const code = (item.catalogCode ?? "").replace(/\\D/g, "");
+          const codeMatch = code && catalogCodes.some(target => code === target);
+          const termMatch = profileTerms.some(term => hasTerm(itemText, term));
+          return Boolean(codeMatch || termMatch);
+        });
+        const reasons: string[] = [];
+        let score = Math.min(60, matchedProfileTerms.length * 15);
+        if (matchedProfileTerms.length) reasons.push("Perfil empresarial: " + matchedProfileTerms.join(", "));
+        if (matchedInterestTerms.length) {
+          score += Math.min(15, matchedInterestTerms.length * 5);
+          reasons.push("Interesses identificados nos seus favoritos e acompanhamentos: " + matchedInterestTerms.join(", "));
+        }
+        if (matchingItems.length) {
+          score += 25;
+          reasons.push("Item da oportunidade compatível com produtos/serviços ou código de catálogo");
+        }
+        const hasGeographicPreference = servedStates.length > 0 || servedMunicipalities.length > 0;
+        const geographicMatch =
+          (!servedStates.length || Boolean(opportunity.state && servedStates.includes(opportunity.state.toUpperCase()))) &&
+          (!servedMunicipalities.length || Boolean(opportunity.municipality && servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city))));
+        if (hasGeographicPreference && geographicMatch) {
+          score += 10;
+          reasons.push("Localidade dentro da área de atendimento informada");
+        }
+        if (value !== null && (minimumValue !== null || maximumValue !== null)) {
+          score += 5;
+          reasons.push("Valor dentro da faixa definida no perfil");
+        }
+        if (score <= 0) return [];
+        return [{
+          id: opportunity.id,
+          title: opportunity.title,
+          description: opportunity.description,
+          agencyName: opportunity.agencyName,
+          municipality: opportunity.municipality,
+          state: opportunity.state,
+          estimatedValue: opportunity.estimatedValue,
+          proposalDeadline: opportunity.proposalDeadline,
+          sourceName,
+          sourceCode,
+          score: Math.min(100, score),
+          reasons,
+          needsDeadlineCheck: !opportunity.proposalDeadline,
+        }];
       });
-      const reasons: string[] = [];
-      let score = Math.min(60, matchedProfileTerms.length * 15);
-      if (matchedProfileTerms.length) reasons.push("Perfil empresarial: " + matchedProfileTerms.join(", "));
-      if (matchedInterestTerms.length) {
-        score += Math.min(15, matchedInterestTerms.length * 5);
-        reasons.push("Interesses identificados nos seus favoritos e acompanhamentos: " + matchedInterestTerms.join(", "));
-      }
-      if (matchingItems.length) {
-        score += 25;
-        reasons.push("Item da oportunidade compatível com produtos/serviços ou código de catálogo");
-      }
-      const hasGeographicPreference = servedStates.length > 0 || servedMunicipalities.length > 0;
-      const geographicMatch =
-        (!servedStates.length || Boolean(opportunity.state && servedStates.includes(opportunity.state.toUpperCase()))) &&
-        (!servedMunicipalities.length || Boolean(opportunity.municipality && servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city))));
-      if (hasGeographicPreference && geographicMatch) {
-        score += 10;
-        reasons.push("Localidade dentro da área de atendimento informada");
-      }
-      if (value !== null && (minimumValue !== null || maximumValue !== null)) {
-        score += 5;
-        reasons.push("Valor dentro da faixa definida no perfil");
-      }
-      if (score <= 0) return [];
-      return [{
-        id: opportunity.id,
-        title: opportunity.title,
-        description: opportunity.description,
-        agencyName: opportunity.agencyName,
-        municipality: opportunity.municipality,
-        state: opportunity.state,
-        estimatedValue: opportunity.estimatedValue,
-        proposalDeadline: opportunity.proposalDeadline,
-        sourceName,
-        sourceCode,
-        score: Math.min(100, score),
-        reasons,
-        needsDeadlineCheck: !opportunity.proposalDeadline,
-      }];
-    }).sort((a, b) => b.score - a.score).slice(0, 40);
+
+      matches.push(...pageMatches);
+      matches.sort((a, b) => b.score - a.score);
+      if (matches.length > 40) matches.length = 40;
+      if (candidateRows.length < PAGE_SIZE) break;
+    }
 
     await db.insert(auditLogs).values({
       actorUserId: ctx.user.id,
@@ -215,9 +232,9 @@ export const orbeAiRouter = router({
       entityId: membership.companyId,
       details: {
         matchedCount: matches.length,
-        candidateCount: candidates.length,
-        coverageLimited,
-        itemRowsLimited,
+        candidateCount,
+        coverageLimited: false,
+        itemRowsLimited: false,
         learnedInterestTerms: interestTerms.length,
         matchingMode: "profile_and_interest_rules_v2",
         provider: "internal",
@@ -227,10 +244,10 @@ export const orbeAiRouter = router({
 
     return {
       generatedAt: new Date().toISOString(),
-      candidateCount: candidates.length,
+      candidateCount,
       matchedCount: matches.length,
-      coverageLimited,
-      itemRowsLimited,
+      coverageLimited: false,
+      itemRowsLimited: false,
       learnedInterestCount: interestTerms.length,
       profileReady: true,
       items: matches,
