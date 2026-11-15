@@ -12,6 +12,7 @@ export const publicProcedure = t.procedure;
 
 const requireUser = t.middleware(async ({ ctx, next }) => {
   if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  if (ctx.user.suspendedAt) throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está suspensa. Entre em contato com o suporte do OrbeEdital." });
   return next({ ctx: { ...ctx, user: ctx.user } });
 });
 const requireVerifiedEmail = t.middleware(async ({ ctx, next }) => {
@@ -40,6 +41,7 @@ export const protectedProcedure = t.procedure.use(requireUser).use(requireVerifi
 function requireRoles(roles: readonly string[]) {
   return t.middleware(async ({ ctx, next }) => {
     if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    if (ctx.user.suspendedAt) throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está suspensa. Entre em contato com o suporte do OrbeEdital." });
     if (!ctx.user.emailVerifiedAt) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Confirme seu e-mail para acessar os recursos do OrbeEdital." });
     }
