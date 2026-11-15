@@ -88,6 +88,14 @@ function CustomerDirectory() {
     },
     onError: error => toast.error(error.message),
   });
+  const setSuspension = trpc.adminUsers.setSuspension.useMutation({
+    onSuccess: async result => {
+      toast.success(result.suspended ? `Conta suspensa. ${result.revokedCount} sessão(ões) encerrada(s).` : "Conta reativada com sucesso.");
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const deleteAccount = trpc.adminUsers.deleteAccount.useMutation({
     onSuccess: async result => {
       toast.success(`Conta de ${result.email} excluída.`);
@@ -122,7 +130,7 @@ function CustomerDirectory() {
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">Plano do cliente</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança</th><th className="px-4 py-3">Ações</th></tr></thead>
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">Plano do cliente</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança / status</th><th className="px-4 py-3">Ações</th></tr></thead>
                 <tbody>
                   {data?.items.map(user => <tr key={user.id} className="border-t">
                     <td className="px-5 py-3"><p className="font-semibold text-slate-800">{user.name}</p><p className="text-xs text-slate-500">{user.email}</p></td>
@@ -153,7 +161,19 @@ function CustomerDirectory() {
                     </td>
                     <td className="px-4 py-3">{user.emailVerifiedAt ? <span className="text-emerald-700">Verificado</span> : <span className="text-amber-700">Pendente</span>}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">{user.role !== "superadmin" && <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>}</td>
+                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">
+                      {user.role === "user" && <div className="min-w-40 space-y-2">
+                        <div><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${user.suspendedAt ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>{user.suspendedAt ? "Suspenso" : "Ativo"}</span>
+                        {user.suspendedAt && <p className="mt-1 max-w-48 text-[11px] text-slate-500">Motivo: {user.suspensionReason || "Não informado"}</p>}</div>
+                        {user.suspendedAt ? <button disabled={setSuspension.isPending} onClick={() => { if (window.confirm(`Reativar a conta de ${user.email}?`)) setSuspension.mutate({ userId: user.id, suspended: false }); }} className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs font-medium text-emerald-800 disabled:opacity-40">Reativar conta</button> : <button disabled={setSuspension.isPending} onClick={() => {
+                          const reason = window.prompt(`Informe o motivo da suspensão de ${user.email}:`);
+                          if (reason === null) return;
+                          if (!reason.trim()) { toast.error("Informe um motivo para suspender a conta."); return; }
+                          if (window.confirm(`Suspender ${user.email}? Todas as sessões atuais serão encerradas.`)) setSuspension.mutate({ userId: user.id, suspended: true, reason: reason.trim() });
+                        }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-800 disabled:opacity-40">Suspender conta</button>}
+                        <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="block rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>
+                      </div>}
+                    </td>
                     <td className="px-4 py-3">{user.role === "user" && <button disabled={deleteAccount.isPending} onClick={() => {
                       const typedEmail = window.prompt(`EXCLUSÃO PERMANENTE\n\nEsta ação excluirá a conta de ${user.name} (${user.email}). Se a empresa não tiver outros usuários, os dados vinculados à empresa também serão removidos.\n\nPara confirmar, digite exatamente o e-mail do cliente:`);
                       if (typedEmail === null) return;
