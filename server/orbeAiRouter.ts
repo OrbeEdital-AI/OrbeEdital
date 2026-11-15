@@ -1,15 +1,24 @@
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   auditLogs, companyMembers, companyProfiles, companies, connectors,
-  opportunityItems, opportunities, users,
+  favorites, followedOpportunities, opportunityItems, opportunities, users,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { getPlanUsageSummary } from "./services/planLimits";
 import { router, protectedProcedure, superadminProcedure } from "./_core/trpc";
 
-const OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
+const OPEN_STATUSES = ["published", "receiving_proposals", "open", "in_progress"];
+const CANDIDATE_LIMIT = 1200;
+const ITEM_LIMIT = 6000;
+const STOP_WORDS = new Set([
+  "para", "com", "sem", "por", "uma", "uns", "umas", "dos", "das", "que", "de", "da", "do",
+  "em", "no", "na", "nos", "nas", "ao", "aos", "e", "ou", "se", "ser", "ter", "mais", "menos",
+  "sobre", "entre", "como", "pelo", "pela", "seu", "sua", "seus", "suas", "este", "esta",
+  "item", "itens", "servico", "servicos", "material", "materiais", "aquisicao", "contratacao",
+  "fornecimento", "empresa", "publica", "municipal", "estadual", "federal", "unidade",
+]);
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
@@ -21,6 +30,28 @@ function money(value: string | null) {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+function tokens(value: string) {
+  return normalize(value).split(/[^a-z0-9]+/).filter(token => token.length >= 3);
+}
+function hasTerm(haystack: string, term: string) {
+  const words = tokens(haystack);
+  const needle = tokens(term);
+  if (!needle.length) return false;
+  return words.some((_, index) => needle.every((word, offset) => words[index + offset] === word));
+}
+function learnedInterestTerms(rows: Array<{ title: string; description: string | null }>) {
+  const frequencies = new Map<string, number>();
+  for (const row of rows) {
+    const uniqueTokens = new Set(tokens([row.title, row.description ?? ""].join(" "))
+      .filter(token => token.length >= 5 && !STOP_WORDS.has(token)));
+    for (const token of uniqueTokens) frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
+  }
+  return [...frequencies.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([term]) => term);
 }
 
 export const orbeAiRouter = router({
@@ -43,20 +74,31 @@ export const orbeAiRouter = router({
     if (!membership) throw new TRPCError({ code: "NOT_FOUND", message: "Não encontramos uma empresa vinculada à sua conta." });
 
     const profile = membership.profile;
-    const terms = [...new Set([
+    const profileTerms = [...new Set([
       membership.company.primarySegment ?? "",
       ...stringList(profile?.segments),
       ...stringList(profile?.products),
       ...stringList(profile?.services),
       ...stringList(profile?.keywords),
-    ].map(normalize).filter(term => term.length >= 3))].slice(0, 80);
+    ].map(normalize).filter(term => tokens(term).length > 0))].slice(0, 80);
     const catalogCodes = [...new Set([
       ...stringList(profile?.catmatCodes),
       ...stringList(profile?.catserCodes),
     ].map(code => code.replace(/\D/g, "")).filter(Boolean))].slice(0, 200);
-    if (!terms.length && !catalogCodes.length) {
+    if (!profileTerms.length && !catalogCodes.length) {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Complete o perfil da empresa com produtos, serviços, segmentos, palavras-chave ou códigos CATMAT/CATSER para ativar o Radar." });
     }
+
+    // Preferências aprendidas somente a partir dos favoritos e oportunidades acompanhadas pelo próprio usuário.
+    const [favoriteRows, followedRows] = await Promise.all([
+      db.select({ title: opportunities.title, description: opportunities.description })
+        .from(favorites).innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
+        .where(eq(favorites.userId, ctx.user.id)).orderBy(desc(favorites.createdAt)).limit(50),
+      db.select({ title: opportunities.title, description: opportunities.description })
+        .from(followedOpportunities).innerJoin(opportunities, eq(followedOpportunities.opportunityId, opportunities.id))
+        .where(eq(followedOpportunities.userId, ctx.user.id)).orderBy(desc(followedOpportunities.updatedAt)).limit(50),
+    ]);
+    const interestTerms = learnedInterestTerms([...favoriteRows, ...followedRows]);
 
     const servedStates = stringList(profile?.servedStates).map(value => value.toUpperCase());
     const servedMunicipalities = stringList(profile?.servedMunicipalities).map(normalize);
@@ -64,19 +106,23 @@ export const orbeAiRouter = router({
     const maximumValue = money(profile?.maximumValue ?? null);
     const now = new Date();
 
-    const candidates = await db.select({
+    // Oportunidades sem prazo também entram, mas ficam identificadas para conferência.
+    // Status "unknown" foi removido para não tratar registros sem situação confirmada como abertos.
+    const candidateRows = await db.select({
       opportunity: opportunities,
       sourceName: connectors.name,
       sourceCode: connectors.code,
     }).from(opportunities)
       .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
       .where(and(
-        gte(opportunities.proposalDeadline, now),
         inArray(opportunities.status, OPEN_STATUSES),
+        or(gte(opportunities.proposalDeadline, now), isNull(opportunities.proposalDeadline)),
       ))
       .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate))
-      .limit(1200);
+      .limit(CANDIDATE_LIMIT + 1);
 
+    const coverageLimited = candidateRows.length > CANDIDATE_LIMIT;
+    const candidates = candidateRows.slice(0, CANDIDATE_LIMIT);
     const candidateIds = candidates.map(row => row.opportunity.id);
     const itemRows = catalogCodes.length && candidateIds.length
       ? await db.select({
@@ -86,8 +132,9 @@ export const orbeAiRouter = router({
           description: opportunityItems.description,
         }).from(opportunityItems)
         .where(inArray(opportunityItems.opportunityId, candidateIds))
-        .limit(6000)
+        .limit(ITEM_LIMIT)
       : [];
+    const itemRowsLimited = itemRows.length >= ITEM_LIMIT;
     const itemsByOpportunity = new Map<string, typeof itemRows>();
     for (const item of itemRows) {
       const list = itemsByOpportunity.get(item.opportunityId) ?? [];
@@ -96,26 +143,37 @@ export const orbeAiRouter = router({
     }
 
     const matches = candidates.flatMap(({ opportunity, sourceName, sourceCode }) => {
-      if (servedStates.length && opportunity.state && !servedStates.includes(opportunity.state.toUpperCase())) return [];
-      if (servedMunicipalities.length && opportunity.municipality &&
-          !servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city))) return [];
+      if (servedStates.length && (!opportunity.state || !servedStates.includes(opportunity.state.toUpperCase()))) return [];
+      if (servedMunicipalities.length && (!opportunity.municipality ||
+          !servedMunicipalities.some(city => normalize(opportunity.municipality ?? "").includes(city)))) return [];
       const value = money(opportunity.estimatedValue);
       if (value !== null && minimumValue !== null && value < minimumValue) return [];
       if (value !== null && maximumValue !== null && value > maximumValue) return [];
 
-      const searchable = normalize([
+      const searchable = [
         opportunity.title, opportunity.description ?? "", opportunity.agencyName ?? "",
         opportunity.procurementType ?? "", opportunity.modality ?? "",
-      ].join(" "));
-      const matchedTerms = terms.filter(term => searchable.includes(term)).slice(0, 5);
-      const matchingCatalog = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
+      ].join(" ");
+      const matchedProfileTerms = profileTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
+      const matchedInterestTerms = interestTerms.filter(term => hasTerm(searchable, term)).slice(0, 5);
+      const matchingItems = (itemsByOpportunity.get(opportunity.id) ?? []).filter(item => {
+        const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
         const code = (item.catalogCode ?? "").replace(/\D/g, "");
-        return code && catalogCodes.some(target => code === target || code.startsWith(target) || target.startsWith(code));
+        const codeMatch = code && catalogCodes.some(target => code === target);
+        const termMatch = profileTerms.some(term => hasTerm(itemText, term));
+        return Boolean(codeMatch || termMatch);
       });
       const reasons: string[] = [];
-      let score = Math.min(60, matchedTerms.length * 15);
-      if (matchedTerms.length) reasons.push("Termos compatíveis: " + matchedTerms.join(", "));
-      if (matchingCatalog.length) { score += 25; reasons.push("Código CATMAT/CATSER compatível"); }
+      let score = Math.min(60, matchedProfileTerms.length * 15);
+      if (matchedProfileTerms.length) reasons.push("Perfil empresarial: " + matchedProfileTerms.join(", "));
+      if (matchedInterestTerms.length) {
+        score += Math.min(15, matchedInterestTerms.length * 5);
+        reasons.push("Interesses identificados nos seus favoritos e acompanhamentos: " + matchedInterestTerms.join(", "));
+      }
+      if (matchingItems.length) {
+        score += 25;
+        reasons.push("Item da oportunidade compatível com produtos/serviços ou código de catálogo");
+      }
       const hasGeographicPreference = servedStates.length > 0 || servedMunicipalities.length > 0;
       const geographicMatch =
         (!servedStates.length || Boolean(opportunity.state && servedStates.includes(opportunity.state.toUpperCase()))) &&
@@ -142,6 +200,7 @@ export const orbeAiRouter = router({
         sourceCode,
         score: Math.min(100, score),
         reasons,
+        needsDeadlineCheck: !opportunity.proposalDeadline,
       }];
     }).sort((a, b) => b.score - a.score).slice(0, 40);
 
@@ -154,7 +213,10 @@ export const orbeAiRouter = router({
       details: {
         matchedCount: matches.length,
         candidateCount: candidates.length,
-        matchingMode: "profile_rules_v1",
+        coverageLimited,
+        itemRowsLimited,
+        learnedInterestTerms: interestTerms.length,
+        matchingMode: "profile_and_interest_rules_v2",
         provider: "internal",
         planCode: planSummary.plan?.code ?? null,
       },
@@ -164,6 +226,9 @@ export const orbeAiRouter = router({
       generatedAt: new Date().toISOString(),
       candidateCount: candidates.length,
       matchedCount: matches.length,
+      coverageLimited,
+      itemRowsLimited,
+      learnedInterestCount: interestTerms.length,
       profileReady: true,
       items: matches,
     };
