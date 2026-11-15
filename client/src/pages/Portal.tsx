@@ -120,34 +120,32 @@ export default function Portal() {
     me?.role ?? ""
   );
   const hasProfessionalPlan = planUsage.data?.plan?.code === "profissional";
-  const sections = useMemo(
+  const navigationGroups = useMemo(
     () => [
-      { label: "Visão geral", href: "/app", icon: LayoutDashboard },
-      { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
-      { label: "Agenda de licitações", href: "/app/agenda", icon: CalendarRange },
-      { label: "Notificações", href: "/app/notifications", icon: Bell },
-      ...(hasProfessionalPlan ? [{ label: "Orbe IA", href: "/app/orbe-ia", icon: Sparkles }] : []),
-      { label: "Suporte", href: "/app/support", icon: Headphones },
-      { label: "Favoritos", href: "/app/favorites", icon: Heart },
-      { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
-      ...(canViewAdmin
-        ? [{ label: "Administração", href: "/app/admin", icon: Shield }]
-        : []),
-      ...(canManageSources
-        ? [
-            {
-              label: "Fontes de dados",
-              href: "/app/admin/sources",
-              icon: Database,
-            },
-          ]
-        : []),
-      ...(canViewFinance
-        ? [{ label: "Financeiro", href: "/app/admin/finance", icon: Wallet }]
-        : []),
+      { label: "Principal", items: [
+        { label: "Visão geral", href: "/app", icon: LayoutDashboard },
+        { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
+        { label: "Agenda de licitações", href: "/app/agenda", icon: CalendarRange },
+        { label: "Notificações", href: "/app/notifications", icon: Bell },
+      ]},
+      { label: "Inteligência", items: [
+        ...(hasProfessionalPlan ? [{ label: "Orbe IA", href: "/app/orbe-ia", icon: Sparkles }] : []),
+        { label: "Favoritos", href: "/app/favorites", icon: Heart },
+      ]},
+      { label: "Conta e suporte", items: [
+        { label: "Perfil da empresa", href: "/app/profile", icon: Building2 },
+        { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
+        { label: "Suporte", href: "/app/support", icon: Headphones },
+      ]},
+      ...(canViewAdmin ? [{ label: "Administração", items: [
+        { label: "Painel administrativo", href: "/app/admin", icon: Shield },
+        ...(canManageSources ? [{ label: "Fontes de dados", href: "/app/admin/sources", icon: Database }] : []),
+        ...(canViewFinance ? [{ label: "Financeiro", href: "/app/admin/finance", icon: Wallet }] : []),
+      ]}] : []),
     ],
     [canManageSources, canViewFinance, canViewAdmin, hasProfessionalPlan]
   );
+  const sections = navigationGroups.flatMap(group => group.items);
 
   if (auth.loading)
     return (
@@ -311,26 +309,21 @@ export default function Portal() {
           aria-label="Navegação do portal"
           className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 md:space-y-1"
         >
-          {sections.map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}
-            >
-              <Icon size={18} />
-              {label}
-            </Link>
+          {navigationGroups.map(group => group.items.length > 0 && (
+            <section key={group.label} className="mb-3">
+              <p className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-200/70">{group.label}</p>
+              <div className="space-y-1">
+                {group.items.map(({ label, href, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href || (href === "/app/opportunities" && path.startsWith("/app/opportunities/")) ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}>
+                    <Icon size={18} />{label}
+                  </Link>
+                ))}
+              </div>
+            </section>
           ))}
         </nav>
         <div className="mt-auto border-t border-white/15 p-3 sm:p-4">
-          <Link
-            href="/app/profile"
-            className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${path === "/app/profile" ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}
-          >
-            <Building2 size={18} />
-            Perfil da empresa
-          </Link>
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan-500 font-semibold text-white">
               {me?.name?.slice(0, 1).toUpperCase() ?? "C"}
