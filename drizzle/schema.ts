@@ -50,6 +50,8 @@ export const users = pgTable(
     phone: varchar("phone", { length: 40 }),
     role: userRoleEnum("role").default("user").notNull(),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    suspensionReason: text("suspension_reason"),
     lastSignedIn: timestamp("last_signed_in", { withTimezone: true }),
     ...timestamps,
   },
