@@ -26,6 +26,7 @@ import {
 import { getDb } from "./db";
 import { adminUsersRouter } from "./adminUsersRouter";
 import { supportRouter } from "./supportRouter";
+import { orbeAiRouter } from "./orbeAiRouter";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
@@ -115,6 +116,7 @@ function translateAuthError(error: unknown): never {
 export const appRouter = router({
   system: systemRouter,
   support: supportRouter,
+  orbeAi: orbeAiRouter,
   auth: router({
     me: publicProcedure.query(({ ctx }) => ctx.user),
     register: publicProcedure.input(registerSchema).mutation(async ({ input, ctx }) => {
