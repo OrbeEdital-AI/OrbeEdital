@@ -30,7 +30,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
-import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment } from "./services/mercadoPago";
+import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment, reconcileExternallyRefundedPayment } from "./services/mercadoPago";
 import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
@@ -498,6 +498,13 @@ export const appRouter = router({
       }),
     }),
     recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(100)),
+    reconcileRefund: financeProcedure.input(z.object({ paymentId: z.string().trim().min(1).max(100) })).mutation(async ({ input, ctx }) => {
+      try {
+        return await reconcileExternallyRefundedPayment(input.paymentId, ctx.user.id);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível sincronizar o estorno." });
+      }
+    }),
     refundPayment: financeProcedure.input(z.object({ paymentId: z.string().trim().min(1).max(100) })).mutation(async ({ input, ctx }) => {
       try {
         return await refundMercadoPagoPayment(input.paymentId, ctx.user.id);
