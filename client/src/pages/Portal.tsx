@@ -10,6 +10,7 @@ import {
   Database,
   FileSearch,
   Heart,
+  Headphones,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -26,6 +27,7 @@ import { AdminOverview, FinancePage, SourcesPage } from "./portal/AdminPages";
 import { ProfilePage, SavedSearches } from "./portal/AccountPages";
 import { BillingPage } from "./portal/BillingPage";
 import { AgendaPage, NotificationsPage } from "./portal/AgendaNotifications";
+import { SupportPage } from "./SupportPages";
 import {
   Dashboard,
   OpportunityDetailPage,
@@ -121,6 +123,7 @@ export default function Portal() {
       { label: "Oportunidades", href: "/app/opportunities", icon: FileSearch },
       { label: "Agenda de licitações", href: "/app/agenda", icon: CalendarRange },
       { label: "Notificações", href: "/app/notifications", icon: Bell },
+      { label: "Suporte", href: "/app/support", icon: Headphones },
       { label: "Favoritos", href: "/app/favorites", icon: Heart },
       { label: "Planos e assinatura", href: "/app/billing", icon: Wallet },
       ...(canViewAdmin
@@ -415,6 +418,9 @@ export default function Portal() {
             </Route>
             <Route path="/app/notifications">
               <NotificationsPage />
+            </Route>
+            <Route path="/app/support">
+              <SupportPage />
             </Route>
             <Route path="/app/profile">
               <ProfilePage />
