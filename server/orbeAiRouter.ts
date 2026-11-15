@@ -18,6 +18,8 @@ const STOP_WORDS = new Set([
   "sobre", "entre", "como", "pelo", "pela", "seu", "sua", "seus", "suas", "este", "esta",
   "item", "itens", "servico", "servicos", "material", "materiais", "aquisicao", "contratacao",
   "fornecimento", "empresa", "publica", "municipal", "estadual", "federal", "unidade",
+  "pregao", "licitacao", "licitacoes", "edital", "editais", "processo", "registro", "preco",
+  "precos", "compras", "orgao", "publico", "administrativo", "contrato", "contratos", "fornecedor",
 ]);
 
 function normalize(value: string) {
@@ -91,14 +93,15 @@ export const orbeAiRouter = router({
 
     // Preferências aprendidas somente a partir dos favoritos e oportunidades acompanhadas pelo próprio usuário.
     const [favoriteRows, followedRows] = await Promise.all([
-      db.select({ title: opportunities.title, description: opportunities.description })
+      db.select({ id: opportunities.id, title: opportunities.title, description: opportunities.description })
         .from(favorites).innerJoin(opportunities, eq(favorites.opportunityId, opportunities.id))
         .where(eq(favorites.userId, ctx.user.id)).orderBy(desc(favorites.createdAt)).limit(50),
-      db.select({ title: opportunities.title, description: opportunities.description })
+      db.select({ id: opportunities.id, title: opportunities.title, description: opportunities.description })
         .from(followedOpportunities).innerJoin(opportunities, eq(followedOpportunities.opportunityId, opportunities.id))
         .where(eq(followedOpportunities.userId, ctx.user.id)).orderBy(desc(followedOpportunities.updatedAt)).limit(50),
     ]);
-    const interestTerms = learnedInterestTerms([...favoriteRows, ...followedRows]);
+    const uniqueInterestRows = [...new Map([...favoriteRows, ...followedRows].map(row => [row.id, row])).values()];
+    const interestTerms = learnedInterestTerms(uniqueInterestRows);
 
     const servedStates = stringList(profile?.servedStates).map(value => value.toUpperCase());
     const servedMunicipalities = stringList(profile?.servedMunicipalities).map(normalize);
