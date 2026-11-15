@@ -604,6 +604,22 @@ export function OpportunityDetailPage() {
               </span>
               <span className="text-xs text-slate-500">Gerada em {dateTime(editalAnalysis.data.generatedAt)}</span>
             </div>
+            {editalAnalysis.data.analysis.documentsAnalyzed?.length > 0 && (
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                <h4 className="text-sm font-semibold text-emerald-900">Documentos efetivamente analisados</h4>
+                <ul className="mt-1 list-disc pl-5 text-xs text-emerald-900">
+                  {editalAnalysis.data.analysis.documentsAnalyzed.map((name: string, index: number) => <li key={index}>{name}</li>)}
+                </ul>
+              </div>
+            )}
+            {editalAnalysis.data.analysis.documentsNotProcessed?.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <h4 className="text-sm font-semibold text-amber-900">Documentos localizados, mas não analisados</h4>
+                <ul className="mt-1 list-disc pl-5 text-xs text-amber-900">
+                  {editalAnalysis.data.analysis.documentsNotProcessed.map((name: string, index: number) => <li key={index}>{name}</li>)}
+                </ul>
+              </div>
+            )}
             {[
               ["Exigências de habilitação", editalAnalysis.data.analysis.qualificationRequirements],
               ["Checklist documental", editalAnalysis.data.analysis.documentChecklist],
@@ -625,6 +641,7 @@ export function OpportunityDetailPage() {
                   {editalAnalysis.data.analysis.evidence.map((evidence, index) => (
                     <blockquote key={index} className="rounded-lg border-l-2 border-cyan-500 bg-white p-3 text-sm text-slate-700">
                       <p className="font-semibold">{evidence.topic}{evidence.page ? ` · Página ${evidence.page}` : ""}</p>
+                      {evidence.document && <p className="mt-0.5 text-xs text-slate-500">Documento: {evidence.document}</p>}
                       <p className="mt-1">“{evidence.excerpt}”</p>
                     </blockquote>
                   ))}
