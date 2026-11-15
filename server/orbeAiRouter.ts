@@ -182,13 +182,13 @@ export const orbeAiRouter = router({
         const opportunityItemsForMatch = itemsByOpportunity.get(opportunity.id) ?? [];
         const matchingItems = opportunityItemsForMatch.filter(item => {
           const itemText = [item.description, item.catalogCode ?? "", item.catalogSystem ?? ""].join(" ");
-          const code = (item.catalogCode ?? "").replace(/\\D/g, "");
+          const code = (item.catalogCode ?? "").replace(/\D/g, "");
           const codeMatch = code && catalogCodes.some(target => code === target);
           const termMatch = explicitTerms.some(entry => entry.weight >= 20 && hasTerm(itemText, entry.term));
           return Boolean(codeMatch || termMatch);
         });
         const matchedCatalogCodes = opportunityItemsForMatch
-          .filter(item => catalogCodes.includes((item.catalogCode ?? "").replace(/\\D/g, "")))
+          .filter(item => catalogCodes.includes((item.catalogCode ?? "").replace(/\D/g, "")))
           .map(item => item.catalogCode)
           .filter((code): code is string => Boolean(code));
         const reasons: string[] = [];
