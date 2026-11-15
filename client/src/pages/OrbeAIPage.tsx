@@ -7,6 +7,18 @@ import {
   Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle,
 } from "lucide-react";
 
+function extractOpportunityQuery(value: string) {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const cleaned = normalized
+    .replace(/^.*?\b(?:licitacoes?|oportunidades?|pregoes?|editais?)\s+(?:de|para|sobre|com|do|da|dos|das)\s+/, "")
+    .replace(/\b(?:em|no|na|nos|nas)\s+[a-z]{2}\b/g, "")
+    .replace(/\b(?:abertas?|vigentes?|atuais?|abertos?)\b/g, "")
+    .replace(/[.,;!?]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.slice(0, 160);
+}
+
 function dateLabel(value: string | Date | null) {
   if (!value) return "Prazo não informado";
   const parsed = new Date(value);
@@ -41,6 +53,7 @@ export function OrbeAIPage() {
     onError: error => toast.error(error.message),
   });
   const analyzeEdital = trpc.opportunities.analyzeEdital.useMutation();
+  const searchBase = trpc.orbeAi.searchBase.useMutation();
   const persistToolResult = async (content: string, userPrompt: string) => {
     await send.mutateAsync({
       conversationId,
@@ -77,7 +90,7 @@ export function OrbeAIPage() {
   };
   const submitMessage = async (value = draft) => {
     const message = value.trim();
-    if (!message || send.isPending || radar.isPending || analyzeEdital.isPending) return;
+    if (!message || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) return;
     setLocalMessages(current => [...current, { role: "user", content: message }]);
     setDraft("");
 
@@ -86,11 +99,30 @@ export function OrbeAIPage() {
       && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
+    const asksSearch = /\b(busque|buscar|encontre|encontrar|ache|achar|pesquise|pesquisar|liste|listar)\b/.test(normalized)
+      && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const asksAnalysis = /\b(analis(e|ar)|leia|ler|examinar|verificar)\b/.test(normalized)
       && /\b(edital|documento|anexo|retificacao)\w*/.test(normalized);
 
     try {
-      if (asksRadar) {
+      if (asksSearch && !asksRadar) {
+        const query = extractOpportunityQuery(message);
+        if (query.length < 2) {
+          setLocalMessages(current => [...current, { role: "assistant", content: "Diga o produto, serviço ou assunto que deseja localizar. Exemplo: encontre licitações de material hospitalar em PE." }]);
+          return;
+        }
+        const result = await searchBase.mutateAsync({ query, page: 1 });
+        const summary = result.items.map((item, index) =>
+          \`\${index + 1}. \${item.title} — \${item.municipality ?? "Município não informado"}/\${item.state ?? "UF não informada"}; valor: \${currency(item.estimatedValue)}; prazo: \${dateLabel(item.proposalDeadline)}; fonte: \${item.sourceName}; modalidade: \${item.modality ?? "não informada"}; órgão: \${item.agencyName ?? "não informado"}; link: \${item.sourceUrl ?? "não disponível"}\`
+        ).join("\n");
+        const toolResult = result.total
+          ? \`Busca realizada na base sincronizada do OrbeEdital para "\${query}". Foram encontrados \${result.total} registros abertos; exibindo \${result.items.length}.\n\${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.\`
+          : \`Busca realizada na base sincronizada do OrbeEdital para "\${query}". Nenhuma oportunidade aberta correspondente foi encontrada. Tente outros termos ou ajuste os filtros em Oportunidades.\`;
+        await persistToolResult(toolResult, message);
+        setLocalMessages(current => [...current, { role: "assistant", content: result.total
+          ? \`Consultei a base de oportunidades do OrbeEdital e encontrei \${result.total} registros compatíveis. Mostrei até \${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.\`
+          : "Consultei a base sincronizada e não encontrei oportunidades abertas com esses termos. Tente uma expressão mais curta ou amplie a busca." }]);
+      } else if (asksRadar) {
         const result = await radar.mutateAsync();
         const summary = result.items.slice(0, 12).map((item, index) =>
           `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}`
@@ -152,7 +184,7 @@ export function OrbeAIPage() {
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
           <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
         </div>)}
-        {(send.isPending || radar.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending ? "Consultando oportunidades reais…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
+        {(send.isPending || radar.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
       </div>
 
@@ -165,7 +197,7 @@ export function OrbeAIPage() {
         {!hasProfile && <p className="mb-2 text-xs text-amber-700">Complete o perfil da empresa para receber recomendações mais relevantes.</p>}
         <form onSubmit={event => { event.preventDefault(); submitMessage(); }} className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
           <textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessage(); } }} rows={2} maxLength={3000} placeholder="Pergunte sobre licitações, editais ou sua empresa…" className="max-h-36 min-h-[48px] flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"/>
-          <button type="submit" disabled={!draft.trim() || send.isPending || radar.isPending || analyzeEdital.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
+          <button type="submit" disabled={!draft.trim() || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
         </form>
         <p className="mt-2 text-[10px] leading-4 text-slate-400">A Orbe IA pode cometer erros. Confirme exigências, prazos e decisões no edital e nas fontes oficiais. Não substitui análise jurídica ou a conferência do órgão.</p>
       </div>
