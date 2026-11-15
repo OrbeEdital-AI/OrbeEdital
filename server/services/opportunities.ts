@@ -192,7 +192,7 @@ export async function getDashboardSummary(user: SafeUser) {
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(or(gte(opportunities.publicationDate, day), gte(opportunities.lastSourceUpdateAt, day))),
+    db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
     db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count() }).from(favorites).where(eq(favorites.userId, user.id)),
