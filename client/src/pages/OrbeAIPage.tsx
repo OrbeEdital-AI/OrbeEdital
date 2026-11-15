@@ -40,6 +40,14 @@ export function OrbeAIPage() {
     onSuccess: async () => { setLocalMessages([]); await Promise.all([history.refetch(), conversations.refetch()]); },
     onError: error => toast.error(error.message),
   });
+  const analyzeEdital = trpc.opportunities.analyzeEdital.useMutation();
+  const persistToolResult = async (content: string) => {
+    await send.mutateAsync({
+      conversationId,
+      message: "Resultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\\n" + content,
+    });
+    await Promise.all([history.refetch(), conversations.refetch()]);
+  };
   const radar = trpc.orbeAi.radar.useMutation({
     onSuccess: result => {
       const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência`).join("\\n");
@@ -67,14 +75,47 @@ export function OrbeAIPage() {
     setLocalMessages([]);
     setDraft("");
   };
-  const submitMessage = (value = draft) => {
+  const submitMessage = async (value = draft) => {
     const message = value.trim();
-    if (!message || send.isPending) return;
+    if (!message || send.isPending || radar.isPending || analyzeEdital.isPending) return;
     setLocalMessages(current => [...current, { role: "user", content: message }]);
     setDraft("");
-    send.mutate({ conversationId, message }, {
-      onError: () => setLocalMessages(current => current.slice(0, -1)),
-    });
+
+    const normalized = message.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+    const asksRadar = /\\b(radar|encontr(e|ar)|buscar|busque|pesquis(e|ar)|ache|achar)\\b/.test(normalized)
+      && /\\b(licitac|oportunidad|pregao|edital)\\w*/.test(normalized);
+    const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
+      ?? message.match(/\\/app\\/opportunities\\/([0-9a-f-]{36})/i)?.[1];
+    const asksAnalysis = /\\b(analis(e|ar)|leia|ler|examinar|verificar)\\b/.test(normalized)
+      && /\\b(edital|documento|anexo|retificacao)\\w*/.test(normalized);
+
+    try {
+      if (asksRadar) {
+        const result = await radar.mutateAsync();
+        const summary = result.items.slice(0, 12).map((item, index) =>
+          `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}`
+        ).join("\\n");
+        const toolResult = result.matchedCount
+          ? `Radar executado agora. ${result.candidateCount} oportunidades verificadas; ${result.matchedCount} compatibilidades; ${result.displayedCount} exibidas.\\n${summary}\\nAderência não representa chance de vitória nem habilitação.`
+          : `Radar executado agora. ${result.candidateCount} oportunidades verificadas e nenhuma atingiu o critério mínimo de aderência.`;
+        await persistToolResult(toolResult);
+        setLocalMessages(current => [...current, { role: "assistant", content: "Consultei o Radar diretamente na base do OrbeEdital. " + (result.matchedCount ? `Encontrei ${result.matchedCount} compatibilidades entre ${result.candidateCount} oportunidades verificadas. Registrei os resultados na conversa; veja abaixo minha síntese.` : "Não encontrei oportunidades que atingissem o critério mínimo. Podemos revisar o perfil da empresa.") }]);
+      } else if (asksAnalysis && opportunityId) {
+        const result = await analyzeEdital.mutateAsync({ id: opportunityId });
+        const a = result.analysis;
+        const evidence = a.evidence.slice(0, 8).map(item => `- ${item.topic}: “${item.excerpt}” (${item.document ?? "documento não identificado"}${item.page ? ", página " + item.page : ""})`).join("\\n");
+        const toolResult = `Análise oficial concluída para a oportunidade ${opportunityId}.\\nResumo: ${a.executiveSummary}\\nDocumentos efetivamente analisados: ${a.documentsAnalyzed.join("; ") || "nenhum PDF processado"}.\\nDocumentos localizados e não processados: ${a.documentsNotProcessed.join("; ") || "nenhum informado"}.\\nExigências: ${a.qualificationRequirements.join("; ") || "não identificadas"}.\\nChecklist: ${a.documentChecklist.join("; ") || "não identificado"}.\\nRiscos: ${a.risks.join("; ") || "não identificados"}.\\nPontos de atenção: ${a.attentionPoints.join("; ") || "nenhum"}.\\nEvidências:\\n${evidence}\\nInformações ausentes: ${a.missingInformation.join("; ") || "nenhuma informada"}.\\nLeitura de documento PDF: ${a.documentAnalyzed ? "sim" : "não; análise limitada aos metadados"}.`;
+        await persistToolResult(toolResult);
+        setLocalMessages(current => [...current, { role: "assistant", content: `Analisei a oportunidade. ${a.documentAnalyzed ? "Os PDFs listados foram efetivamente enviados para leitura." : "A análise ficou limitada aos metadados, pois nenhum PDF foi processado."} Consulte o resumo, as exigências e as evidências registradas nesta conversa.` }]);
+      } else if (asksAnalysis && !opportunityId) {
+        setLocalMessages(current => [...current, { role: "assistant", content: "Consigo analisar o edital diretamente. Envie o link da oportunidade no OrbeEdital ou o identificador da oportunidade (UUID), que aparece no endereço da página de detalhes." }]);
+      } else {
+        await send.mutateAsync({ conversationId, message });
+        await Promise.all([history.refetch(), conversations.refetch()]);
+      }
+    } catch (error) {
+      setLocalMessages(current => [...current, { role: "assistant", content: error instanceof Error ? error.message : "Não foi possível concluir essa ação. Tente novamente." }]);
+    }
   };
 
   return <div className="mx-auto flex min-h-[calc(100vh-150px)] max-w-5xl flex-col gap-4">
@@ -111,7 +152,7 @@ export function OrbeAIPage() {
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
           <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
         </div>)}
-        {send.isPending && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> Analisando sua pergunta…</span></div></div>}
+        {(send.isPending || radar.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending ? "Consultando oportunidades reais…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
       </div>
 
@@ -124,7 +165,7 @@ export function OrbeAIPage() {
         {!hasProfile && <p className="mb-2 text-xs text-amber-700">Complete o perfil da empresa para receber recomendações mais relevantes.</p>}
         <form onSubmit={event => { event.preventDefault(); submitMessage(); }} className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
           <textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessage(); } }} rows={2} maxLength={3000} placeholder="Pergunte sobre licitações, editais ou sua empresa…" className="max-h-36 min-h-[48px] flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"/>
-          <button type="submit" disabled={!draft.trim() || send.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
+          <button type="submit" disabled={!draft.trim() || send.isPending || radar.isPending || analyzeEdital.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
         </form>
         <p className="mt-2 text-[10px] leading-4 text-slate-400">A Orbe IA pode cometer erros. Confirme exigências, prazos e decisões no edital e nas fontes oficiais. Não substitui análise jurídica ou a conferência do órgão.</p>
       </div>
