@@ -9,7 +9,6 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
   const [mode, setMode] = useState(initialMode);
   const selectedPlanCode = new URLSearchParams(window.location.search).get("plan");
   const plans = trpc.billing.plans.useQuery();
-  const checkout = trpc.billing.checkout.useMutation();
   useEffect(() => { if (initialMode === "register" && !selectedPlanCode) navigate("/plans"); }, [initialMode, selectedPlanCode, navigate]);
   const login = trpc.auth.login.useMutation();
   const register = trpc.auth.register.useMutation();
@@ -37,15 +36,9 @@ export default function AuthRoute({ initialMode }: { initialMode: AuthMode }) {
       });
       verificationRequired = result.emailVerificationRequired;
       deliveryNotice = result.verificationEmailSent ? "sent" : "unavailable";
-      try {
-        const payment = await checkout.mutateAsync({ planId: selectedPlan.id, interval: "monthly" });
-        await utils.auth.me.invalidate();
-        window.location.assign(payment.checkoutUrl);
-      } catch (error) {
-        await utils.auth.me.invalidate();
-        const message = error instanceof Error ? error.message : "Não foi possível iniciar o pagamento.";
-        navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}&checkoutError=${encodeURIComponent(message)}`);
-      }
+      await utils.auth.me.invalidate();
+      await utils.auth.me.refetch();
+      navigate(`/plans?resume=${encodeURIComponent(selectedPlan.code)}`);
       return;
     }
     await utils.auth.me.invalidate();
