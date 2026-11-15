@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  ArrowLeft, Database, LayoutDashboard,
+  ArrowLeft, Database, LayoutDashboard, Sparkles,
   LogOut, Search, MessageCircle, ShieldCheck, Users, Wallet, RefreshCw, LockKeyhole, History, Menu, X,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -11,8 +11,9 @@ import { toast } from "sonner";
 import { AdminOverview, FinancePage, SourcesPage } from "@/pages/portal/AdminPages";
 import AdminAuditPage from "@/pages/AdminAuditPage";
 import { AdminSupportPage } from "@/pages/SupportPages";
+import { AdminOrbeAIPage } from "@/pages/OrbeAIPage";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support";
+type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
 
 const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
   { title: "Operação", items: [
@@ -23,6 +24,9 @@ const navGroups: { title: string; items: { id: Section; label: string; icon: typ
     { id: "customers", label: "Clientes e usuários", icon: Users },
     { id: "support", label: "Suporte ao cliente", icon: MessageCircle },
     { id: "permissions", label: "Papéis e permissões", icon: ShieldCheck },
+  ]},
+  { title: "Inteligência", items: [
+    { id: "ia", label: "Orbe IA", icon: Sparkles },
   ]},
   { title: "Governança", items: [
     { id: "audit", label: "Auditoria e segurança", icon: History },
@@ -41,6 +45,7 @@ const sectionDescriptions: Record<Section, string> = {
   permissions: "Entenda os papéis existentes e os limites de acesso aplicados no servidor.",
   audit: "Rastreie operações administrativas registradas e seus responsáveis.",
   support: "Gerencie a fila, prioridades, responsáveis, mensagens e histórico dos atendimentos.",
+  ia: "Acompanhe o uso do Orbe IA, execuções do Radar e empresas atendidas pelo recurso Profissional.",
   settings: "Veja quais configurações já estão disponíveis e quais aguardam implementação.",
 };
 
@@ -296,6 +301,7 @@ export default function AdminConsole() {
         {section === "permissions" && <PermissionsPage/>}
         {section === "audit" && <AdminAuditPage/>}
         {section === "support" && <AdminSupportPage/>}
+        {section === "ia" && <AdminOrbeAIPage/>}
         {section === "settings" && <SettingsPage/>}
       </div>
     </main>
