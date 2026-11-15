@@ -295,7 +295,7 @@ export default function Portal() {
       <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#173b5b] bg-gradient-to-b from-[#102b4e] to-[#173f60] text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:border-r`}>
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
           <button aria-label="Fechar menu" className="ml-auto rounded-lg p-2 text-blue-100 hover:bg-white/10 md:hidden" onClick={() => setMobileMenuOpen(false)} type="button"><X size={20} /></button>
-          <BrandMark />
+          <BrandMark variant="dark" />
           <span className="rounded-full border border-cyan-300/30 bg-cyan-300/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-100">
             Portal
           </span>
