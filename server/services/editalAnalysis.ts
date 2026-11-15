@@ -148,12 +148,14 @@ async function discoverPncpDocuments(opportunityId: string) {
         console.warn("[edital-analysis] PNCP attachment endpoint returned HTTP", response.status);
         continue;
       }
-      const payload = await response.json() as { documentos?: unknown } | unknown[];
-      const documents = Array.isArray(payload)
-        ? payload
-        : payload && typeof payload === "object" && Array.isArray((payload as { documentos?: unknown }).documentos)
-          ? (payload as { documentos: unknown[] }).documentos
-          : [];
+      const payload = await response.json() as Record<string, unknown> | unknown[];
+      const root = Array.isArray(payload) ? null : payload as Record<string, unknown>;
+      const nestedData = root?.data && typeof root.data === "object" && !Array.isArray(root.data)
+        ? root.data as Record<string, unknown>
+        : null;
+      const documents = Array.isArray(payload) ? payload
+        : [root?.documentos, root?.arquivos, root?.data, root?.content, nestedData?.documentos, nestedData?.arquivos]
+          .find(Array.isArray) ?? [];
       return documents.filter(item => item && typeof item === "object") as Record<string, unknown>[];
     } catch (error) {
       console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
