@@ -249,7 +249,7 @@ export const orbeAiRouter = router({
     }).from(auditLogs)
       .leftJoin(users, eq(auditLogs.actorUserId, users.id))
       .leftJoin(companies, eq(auditLogs.companyId, companies.id))
-      .where(eq(auditLogs.action, "orbe_ai.radar.executed"))
+      .where(inArray(auditLogs.action, ["orbe_ai.radar.executed", "orbe_ai.edital_analysis.completed", "orbe_ai.edital_analysis.failed"]))
       .orderBy(desc(auditLogs.createdAt))
       .limit(100);
   }),
