@@ -61,6 +61,11 @@ export function OrbeAIPage() {
         <div className="rounded-xl border bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Compatíveis encontradas</p><p className="mt-2 text-2xl font-bold text-cyan-800">{result.matchedCount.toLocaleString("pt-BR")}</p></div>
         <div className="rounded-xl border bg-white p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Última execução</p><p className="mt-2 text-sm font-semibold text-[#102B4E]">{dateLabel(result.generatedAt)}</p></div>
       </div>
+      {(result.coverageLimited || result.itemRowsLimited) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">Análise parcial da base</p>
+        <p className="mt-1">Há mais registros abertos do que o limite processado nesta execução. Execute novamente mais tarde e confira também a busca geral de oportunidades; esta lista não representa toda a base.</p>
+      </div>}
+      {result.learnedInterestCount > 0 && <p className="text-xs text-slate-500">O Radar também considerou padrões identificados nos seus favoritos e nas oportunidades que você acompanha.</p>}
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-bold text-[#102B4E]">Oportunidades compatíveis</h3><p className="text-sm text-slate-500">Ordenadas pela pontuação de aderência ao perfil da empresa.</p></div><span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-900">Até 40 resultados</span></div>
         {result.items.map(item => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -68,7 +73,7 @@ export function OrbeAIPage() {
             <div className="min-w-0 flex-1"><p className="text-xs font-semibold uppercase tracking-wide text-cyan-800">{item.sourceName}</p><h4 className="mt-1 font-bold text-[#102B4E]">{item.title}</h4><p className="mt-1 text-sm text-slate-500">{item.agencyName ?? "Órgão não informado"}</p></div>
             <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800"><Gauge size={17}/><span className="text-lg font-bold">{item.score}%</span><span className="text-[10px] font-semibold uppercase">aderência</span></div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600"><span className="inline-flex items-center gap-1"><MapPin size={14}/>{[item.municipality, item.state].filter(Boolean).join(" / ") || "Local não informado"}</span><span className="inline-flex items-center gap-1"><CalendarClock size={14}/>Prazo: {dateLabel(item.proposalDeadline)}</span><span className="inline-flex items-center gap-1"><Building2 size={14}/>{currency(item.estimatedValue)}</span></div>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600"><span className="inline-flex items-center gap-1"><MapPin size={14}/>{[item.municipality, item.state].filter(Boolean).join(" / ") || "Local não informado"}</span><span className="inline-flex items-center gap-1"><CalendarClock size={14}/>Prazo: {dateLabel(item.proposalDeadline)}{item.needsDeadlineCheck ? " · confirmar no edital" : ""}</span><span className="inline-flex items-center gap-1"><Building2 size={14}/>{currency(item.estimatedValue)}</span></div>
           {item.reasons.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{item.reasons.map(reason => <span key={reason} className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-xs text-cyan-900">{reason}</span>)}</div>}
           <div className="mt-4 border-t pt-3"><Link href={`/app/opportunities/${item.id}`} className="text-sm font-semibold text-cyan-800 hover:underline">Ver oportunidade e edital →</Link></div>
         </article>)}
