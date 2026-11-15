@@ -274,7 +274,7 @@ export async function verifyMercadoPagoPayments(userId: string) {
     }
 
     const invoiceSearch = await mpRequest<any>(
-      `/authorized_payments/search?preapproval_id=${encodeURIComponent(local.providerSubscriptionId)}&limit=20&sort=date_created&criteria=desc`
+      `/authorized_payments/search?preapproval_id=${encodeURIComponent(local.providerSubscriptionId)}`
     );
     const invoices = Array.isArray(invoiceSearch.results) ? invoiceSearch.results : [];
     for (const invoice of invoices) {
