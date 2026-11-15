@@ -95,7 +95,7 @@ export function OrbeAIPage() {
     setDraft("");
 
     const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const asksRadar = /\b(radar|encontr(e|ar)|buscar|busque|pesquis(e|ar)|ache|achar)\b/.test(normalized)
+    const asksRadar = /\b(radar|compatibilidades|compatíveis|compativeis)\b/.test(normalized)
       && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
@@ -113,14 +113,14 @@ export function OrbeAIPage() {
         }
         const result = await searchBase.mutateAsync({ query, page: 1 });
         const summary = result.items.map((item, index) =>
-          \`\${index + 1}. \${item.title} — \${item.municipality ?? "Município não informado"}/\${item.state ?? "UF não informada"}; valor: \${currency(item.estimatedValue)}; prazo: \${dateLabel(item.proposalDeadline)}; fonte: \${item.sourceName}; modalidade: \${item.modality ?? "não informada"}; órgão: \${item.agencyName ?? "não informado"}; link: \${item.sourceUrl ?? "não disponível"}\`
+          `${index + 1}. ${item.title} — ${item.municipality ?? "Município não informado"}/${item.state ?? "UF não informada"}; valor: ${currency(item.estimatedValue)}; prazo: ${dateLabel(item.proposalDeadline)}; fonte: ${item.sourceName}; modalidade: ${item.modality ?? "não informada"}; órgão: ${item.agencyName ?? "não informado"}; link: ${item.sourceUrl ?? "não disponível"}`
         ).join("\n");
         const toolResult = result.total
-          ? \`Busca realizada na base sincronizada do OrbeEdital para "\${query}". Foram encontrados \${result.total} registros abertos; exibindo \${result.items.length}.\n\${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.\`
-          : \`Busca realizada na base sincronizada do OrbeEdital para "\${query}". Nenhuma oportunidade aberta correspondente foi encontrada. Tente outros termos ou ajuste os filtros em Oportunidades.\`;
+          ? `Busca realizada na base sincronizada do OrbeEdital para "${query}". Foram encontrados ${result.total} registros abertos; exibindo ${result.items.length}.\n${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.`
+          : `Busca realizada na base sincronizada do OrbeEdital para "${query}". Nenhuma oportunidade aberta correspondente foi encontrada. Tente outros termos ou ajuste os filtros em Oportunidades.`;
         await persistToolResult(toolResult, message);
         setLocalMessages(current => [...current, { role: "assistant", content: result.total
-          ? \`Consultei a base de oportunidades do OrbeEdital e encontrei \${result.total} registros compatíveis. Mostrei até \${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.\`
+          ? `Consultei a base de oportunidades do OrbeEdital e encontrei ${result.total} registros compatíveis. Mostrei até ${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.`
           : "Consultei a base sincronizada e não encontrei oportunidades abertas com esses termos. Tente uma expressão mais curta ou amplie a busca." }]);
       } else if (asksRadar) {
         const result = await radar.mutateAsync();
