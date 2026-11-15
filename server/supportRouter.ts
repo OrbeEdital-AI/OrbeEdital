@@ -89,7 +89,6 @@ export const supportRouter = router({
       ticket: supportTickets,
       customerName: users.name,
       customerEmail: users.email,
-      assignedName: z.any(),
     }).from(supportTickets).innerJoin(users, eq(supportTickets.userId, users.id))
       .where(filters.length ? and(...filters) : undefined)
       .orderBy(desc(supportTickets.priority), desc(supportTickets.lastMessageAt)).limit(200);
