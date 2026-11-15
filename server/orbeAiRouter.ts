@@ -12,7 +12,7 @@ import { router, protectedProcedure, superadminProcedure } from "./_core/trpc";
 const OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
 
 function normalize(value: string) {
-  return value.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
 }
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
