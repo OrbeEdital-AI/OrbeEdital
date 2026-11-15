@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -25,10 +25,16 @@ const suggestions = [
 ];
 
 export function OrbeAIPage() {
-  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [conversationId, setConversationId] = useState("");
+  const conversations = trpc.orbeAi.chatConversations.useQuery();
+  useEffect(() => {
+    if (conversationId) return;
+    const latest = conversations.data?.[0]?.conversationId;
+    setConversationId(latest || crypto.randomUUID());
+  }, [conversationId, conversations.data]);
   const [draft, setDraft] = useState("");
   const [localMessages, setLocalMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
-  const history = trpc.orbeAi.chatHistory.useQuery({ conversationId });
+  const history = trpc.orbeAi.chatHistory.useQuery({ conversationId }, { enabled: Boolean(conversationId) });
   const profile = trpc.account.profile.useQuery();
   const send = trpc.orbeAi.chatSend.useMutation({
     onSuccess: async () => { setLocalMessages([]); await history.refetch(); },
@@ -89,6 +95,9 @@ export function OrbeAIPage() {
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Assistente ativo</span>
       </div>
 
+      {conversations.data && conversations.data.length > 0 && <div className="flex gap-2 overflow-x-auto border-b px-4 py-2">
+        {conversations.data.map(item => <button key={item.conversationId} type="button" onClick={() => { setConversationId(item.conversationId); setLocalMessages([]); }} className={`max-w-[190px] shrink-0 rounded-lg border px-3 py-2 text-left text-[11px] transition ${conversationId === item.conversationId ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}><span className="block truncate font-semibold">{item.preview || "Conversa anterior"}</span><span className="mt-0.5 block">{new Date(item.updatedAt).toLocaleDateString("pt-BR")}</span></button>)}
+      </div>}
       <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
         {!messages.length && <div className="mx-auto max-w-2xl py-6 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#17496b] to-[#087eaa] text-white"><Sparkles size={28}/></div>
@@ -115,7 +124,7 @@ export function OrbeAIPage() {
         {!hasProfile && <p className="mb-2 text-xs text-amber-700">Complete o perfil da empresa para receber recomendações mais relevantes.</p>}
         <form onSubmit={event => { event.preventDefault(); submitMessage(); }} className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
           <textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessage(); } }} rows={2} maxLength={3000} placeholder="Pergunte sobre licitações, editais ou sua empresa…" className="max-h-36 min-h-[48px] flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"/>
-          <button type="submit" disabled={!draft.trim() || send.isPending} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
+          <button type="submit" disabled={!draft.trim() || send.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
         </form>
         <p className="mt-2 text-[10px] leading-4 text-slate-400">A Orbe IA pode cometer erros. Confirme exigências, prazos e decisões no edital e nas fontes oficiais. Não substitui análise jurídica ou a conferência do órgão.</p>
       </div>
