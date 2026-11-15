@@ -91,7 +91,7 @@ export const supportRouter = router({
       customerEmail: users.email,
     }).from(supportTickets).innerJoin(users, eq(supportTickets.userId, users.id))
       .where(filters.length ? and(...filters) : undefined)
-      .orderBy(desc(supportTickets.priority), desc(supportTickets.lastMessageAt)).limit(200);
+      .orderBy(desc(supportTickets.lastMessageAt)).limit(200);
     const assignedIds = [...new Set(rows.map(row => row.ticket.assignedToUserId).filter((id): id is string => Boolean(id)))];
     const assignees = assignedIds.length
       ? await getDb().select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, assignedIds))
@@ -99,7 +99,8 @@ export const supportRouter = router({
     const names = new Map(assignees.map(item => [item.id, item.name]));
     const query = input?.query?.toLowerCase();
     return rows.filter(row => !query || row.customerName.toLowerCase().includes(query) || row.customerEmail.toLowerCase().includes(query) || row.ticket.subject.toLowerCase().includes(query))
-      .map(row => ({ ...row.ticket, customerName: row.customerName, customerEmail: row.customerEmail, assignedName: row.ticket.assignedToUserId ? names.get(row.ticket.assignedToUserId) ?? null : null }));
+      .map(row => ({ ...row.ticket, customerName: row.customerName, customerEmail: row.customerEmail, assignedName: row.ticket.assignedToUserId ? names.get(row.ticket.assignedToUserId) ?? null : null }))
+      .sort((a, b) => (a.priority === b.priority ? 0 : a.priority === "high" ? -1 : 1));
   }),
 
   adminMessages: superadminProcedure.input(z.object({ ticketId: z.string().uuid() })).query(async ({ input }) => {
@@ -150,7 +151,7 @@ export const supportRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Responsável deve ser um usuário da equipe administrativa ou de suporte." });
       }
     }
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    const patch: Partial<typeof supportTickets.$inferInsert> = { updatedAt: new Date() };
     if (input.status) {
       patch.status = input.status;
       patch.closedAt = ["resolved", "closed"].includes(input.status) ? new Date() : null;
