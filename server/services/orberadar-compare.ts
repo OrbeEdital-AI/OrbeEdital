@@ -8,7 +8,7 @@ const tokens = (s: string | null) => new Set(normalize(s).split(" ").filter(w=>w
 function similarity(a: string | null,b: string | null) { const x=tokens(a),y=tokens(b); if(x.size<4||y.size<4)return 0; return [...x].filter(w=>y.has(w)).length/new Set([...x,...y]).size; }
 export async function compareRadarNotices(notices: RadarNotice[]) {
  if (!notices.length) return [];
- const rows=await getDb().select({id:opportunities.id,title:opportunities.title,municipality:opportunities.municipality,procurementNumber:opportunities.procurementNumber,processNumber:opportunities.processNumber,sourceUrl:opportunities.sourceUrl}).from(opportunities).where(eq(opportunities.state,"MT"));
+ const rows=await getDb().select({id:opportunities.id,title:opportunities.title,municipality:opportunities.municipality,procurementNumber:opportunities.procurementNumber,processNumber:opportunities.processNumber,sourceUrl:opportunities.sourceUrl}).from(opportunities).where(eq(opportunities.state,notices[0].source==="amm-mg"?"MG":"MT"));
  return notices.map(n=>{
  const context=normalize(n.title+" "+(n.object??""));
  const matches=rows.flatMap(row=>{
