@@ -1,3 +1,4 @@
+import { compareRadarNotices } from "./services/orberadar-compare";
 import { runAmmMtPilot } from "./connectors/orberadar-fetch";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
@@ -411,7 +412,7 @@ export const appRouter = router({
   admin: router({
     radarPilot: superadminProcedure.mutation(async () => {
       const result = await runAmmMtPilot();
-      return { ...result, mode: "review" as const };
+      return { ...result, notices: await compareRadarNotices(result.notices), mode: "review" as const };
     }),
     settings: router({
       get: superadminProcedure.query(async () => {
