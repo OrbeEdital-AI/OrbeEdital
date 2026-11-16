@@ -210,12 +210,35 @@ function CustomerDirectory() {
                         if (municipality === null) return;
                         const primarySegment = window.prompt("Segmento principal:", user.companySegment ?? "");
                         if (primarySegment === null) return;
+                        const csv = (label: string, initial: unknown) => window.prompt(`${label} (itens separados por vírgula):`, Array.isArray(initial) ? initial.join(", ") : "");
+                        const segments = csv("Outros segmentos", user.profile_segments); if (segments === null) return;
+                        const products = csv("Produtos comercializados", user.profile_products); if (products === null) return;
+                        const services = csv("Serviços prestados", user.profile_services); if (services === null) return;
+                        const keywords = csv("Palavras-chave", user.profile_keywords); if (keywords === null) return;
+                        const servedStates = csv("Estados atendidos", user.profile_served_states); if (servedStates === null) return;
+                        const servedMunicipalities = csv("Municípios atendidos", user.profile_served_municipalities); if (servedMunicipalities === null) return;
+                        const catmatCodes = csv("Códigos CATMAT", user.profile_catmat_codes); if (catmatCodes === null) return;
+                        const catserCodes = csv("Códigos CATSER", user.profile_catser_codes); if (catserCodes === null) return;
+                        const minimumValue = window.prompt("Valor mínimo de interesse (R$):", user.profile_minimum_value ?? ""); if (minimumValue === null) return;
+                        const maximumValue = window.prompt("Valor máximo de interesse (R$):", user.profile_maximum_value ?? ""); if (maximumValue === null) return;
+                        const preferencesText = window.prompt("Preferências de notificação (JSON):", JSON.stringify(user.profile_notification_preferences ?? {}, null, 2)); if (preferencesText === null) return;
+                        let notificationPreferences: Record<string, unknown>;
+                        try { notificationPreferences = JSON.parse(preferencesText || "{}"); if (!notificationPreferences || Array.isArray(notificationPreferences) || typeof notificationPreferences !== "object") throw new Error(); }
+                        catch { toast.error("Preferências de notificação: informe um JSON válido."); return; }
                         if (!name.trim() || !email.trim()) { toast.error("Nome e e-mail são obrigatórios."); return; }
-                        if (!window.confirm(`Salvar os dados cadastrais de ${user.name}?`)) return;
+                        const parseMoney = (value: string) => value.trim() ? Number(value.replace(",", ".")) : null;
+                        const minValue = parseMoney(minimumValue), maxValue = parseMoney(maximumValue);
+                        if ((minValue !== null && (!Number.isFinite(minValue) || minValue < 0)) || (maxValue !== null && (!Number.isFinite(maxValue) || maxValue < 0))) { toast.error("Informe valores mínimos e máximos válidos."); return; }
+                        if (!window.confirm(`Salvar todos os dados do perfil de ${user.name}?`)) return;
+                        const list = (value: string, upper = false) => value.split(",").map(item => item.trim()).filter(Boolean).map(item => upper ? item.toUpperCase() : item);
                         updateCustomer.mutate({
                           userId: user.id, name: name.trim(), email: email.trim(), phone: phone.trim(),
                           companyName: companyName.trim() || undefined, cnpj: cnpj.trim(), state: state.trim().toUpperCase(),
                           municipality: municipality.trim(), primarySegment: primarySegment.trim(),
+                          segments: list(segments), products: list(products), services: list(services), keywords: list(keywords),
+                          servedStates: list(servedStates, true), servedMunicipalities: list(servedMunicipalities),
+                          catmatCodes: list(catmatCodes), catserCodes: list(catserCodes),
+                          minimumValue: minValue, maximumValue: maxValue, notificationPreferences,
                         });
                       }} className="rounded-md border border-cyan-300 px-2.5 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
                       <button disabled={deleteAccount.isPending} onClick={() => {
