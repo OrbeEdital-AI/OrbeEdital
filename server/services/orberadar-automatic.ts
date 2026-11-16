@@ -1,3 +1,4 @@
+import { assessRadarNotice } from "./orberadar-validation";
 import { getPool } from "../db";
 import { runAmmMtPilot } from "../connectors/orberadar-fetch";
 import { compareRadarNotices } from "./orberadar-compare";
@@ -12,7 +13,8 @@ export async function runRadarAutomatic() {
   try {
    const extracted=await runAmmMtPilot(startedAt);
    const notices=await compareRadarNotices(extracted.notices);
-   const saved=await persistRadarRun("amm-mt",startedAt,notices,extracted.failures);
+   const assessed=notices.map(n=>({...n,automaticAssessment:assessRadarNotice(n,false,startedAt)}));
+   const saved=await persistRadarRun("amm-mt",startedAt,assessed,extracted.failures);
    return {status:"collected" as const,...saved};
   } catch(error) {
    await persistRadarRun("amm-mt",startedAt,[],["Falha na extração ou comparação automática"]);
