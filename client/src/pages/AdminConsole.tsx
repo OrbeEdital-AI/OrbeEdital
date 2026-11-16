@@ -255,7 +255,7 @@ function CustomerDirectory() {
                 if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error();
                 notificationPreferences = parsed;
               } catch { toast.error("Preferências de notificação: informe um JSON válido."); return; }
-              const parseMoney = (value: string) => value.trim() ? Number(value.replace(/\\./g, "").replace(",", ".")) : null;
+              const parseMoney = (value: string) => value.trim() ? Number(value.replace(/\./g, "").replace(",", ".")) : null;
               const minimumValue = parseMoney(editForm.minimumValue ?? "");
               const maximumValue = parseMoney(editForm.maximumValue ?? "");
               if ((minimumValue !== null && (!Number.isFinite(minimumValue) || minimumValue < 0)) || (maximumValue !== null && (!Number.isFinite(maximumValue) || maximumValue < 0))) { toast.error("Informe valores mínimos e máximos válidos."); return; }
