@@ -433,14 +433,16 @@ function RadarPilotPage() {
  const run = trpc.admin.radarPilot.useMutation();
  const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
  const [ids,setIds]=useState("");
+ const [saveReview,setSaveReview]=useState(false);
  return <section className="space-y-4 rounded-xl border bg-white p-5">
  <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
  <select className="rounded border p-2" value={source} onChange={e=>{setSource(e.target.value as "amm-mt"|"amm-mg");run.reset();}} disabled={run.isPending}><option value="amm-mt">AMM-MT — descoberta</option><option value="amm-mg">AMM-MG — matérias por identificador</option></select>
  {source==="amm-mg" && <input className="block w-full rounded border p-2" value={ids} onChange={e=>setIds(e.target.value)} placeholder="Até 5 códigos de matéria separados por vírgula"/>}
- <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será gravada ou publicada.</p>
- <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate({source,ids:source==="amm-mg"?ids.split(/[,\s]+/).filter(Boolean):undefined})}>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
+ <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será publicada na base dos clientes.</p>
+ <label className="flex gap-2 items-center"><input type="checkbox" checked={saveReview} disabled={run.isPending} onChange={e=>setSaveReview(e.target.checked)}/> Salvar extração na área privada de revisão</label>
+ <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate({source,saveReview,ids:source==="amm-mg"?ids.split(/[,\s]+/).filter(Boolean):undefined})}>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
  {run.error && <p role="alert" className="text-red-700">{run.error.message}</p>}
- {run.data && <div className="space-y-3"><p>{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
+ {run.data && <div className="space-y-3"><p>{run.data.saved && <span>Extração armazenada para revisão · </span>}{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
  <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base estadual correspondente; ausência de coincidência não garante registro inédito.</p>
  {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>{n.modality ?? "Licitação"}: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo de propostas não identificado"}</p><p className="text-sm text-slate-600">Sessão: {n.sessionEvidence ?? "Não identificada"}</p><p className="text-amber-700 text-sm">Vigência não confirmada — não publicar sem validação.</p>{n.reviewReasons.map(reason=><p key={reason} className="text-sm text-slate-500">{reason}</p>)}<p className="font-semibold">{n.matches.length ? "Possível duplicidade" : "Sem coincidência encontrada"}</p>{n.matches.map(m=><p key={m.id} className="text-sm text-slate-600">{m.reason} — {m.title}</p>)}<a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
  {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
