@@ -29,6 +29,7 @@ export const adminUsersRouter = router({
           id: users.id,
           name: users.name,
           email: users.email,
+          phone: users.phone,
           role: users.role,
           emailVerifiedAt: users.emailVerifiedAt,
           suspendedAt: users.suspendedAt,
@@ -36,6 +37,10 @@ export const adminUsersRouter = router({
           createdAt: users.createdAt,
           lastSignedIn: users.lastSignedIn,
           companyName: sql<string | null>`(select c.legal_name from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
+          companyCnpj: sql<string | null>`(select c.cnpj from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
+          companyState: sql<string | null>`(select c.state from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
+          companyMunicipality: sql<string | null>`(select c.municipality from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
+          companySegment: sql<string | null>`(select c.primary_segment from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
           companyId: sql<string | null>`(select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
           planName: sql<string | null>`(select p.name from subscriptions s inner join plans p on p.id = s.plan_id where s.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) order by s.created_at desc limit 1)`,
           subscriptionStatus: sql<string | null>`(select s.status from subscriptions s where s.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) order by s.created_at desc limit 1)`,
@@ -57,6 +62,79 @@ export const adminUsersRouter = router({
       };
     }),
 
+
+  updateCustomer: superadminProcedure
+    .input(z.object({
+      userId: z.string().uuid(),
+      name: z.string().trim().min(2).max(160),
+      email: z.string().trim().email().max(320).transform(value => value.toLowerCase()),
+      phone: z.string().trim().max(40).optional().or(z.literal("")),
+      companyName: z.string().trim().min(2).max(240).optional(),
+      cnpj: z.string().trim().max(18).optional().or(z.literal("")),
+      state: z.string().trim().length(2).optional().or(z.literal("")),
+      municipality: z.string().trim().max(160).optional().or(z.literal("")),
+      primarySegment: z.string().trim().max(200).optional().or(z.literal("")),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = getDb();
+      return db.transaction(async tx => {
+        const [target] = await tx.select({
+          id: users.id, role: users.role, name: users.name, email: users.email, phone: users.phone,
+        }).from(users).where(eq(users.id, input.userId)).limit(1);
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente não encontrado." });
+        if (target.role !== "user") throw new TRPCError({ code: "FORBIDDEN", message: "Somente contas de clientes podem ser editadas por esta função." });
+
+        const [duplicateEmail] = await tx.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
+        if (duplicateEmail && duplicateEmail.id !== target.id) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este e-mail já está cadastrado em outra conta." });
+        }
+
+        const [membership] = await tx.select({ companyId: companyMembers.companyId })
+          .from(companyMembers).where(eq(companyMembers.userId, target.id))
+          .orderBy(companyMembers.createdAt).limit(1);
+        if (input.cnpj && membership) {
+          const [duplicateCnpj] = await tx.select({ id: companies.id }).from(companies)
+            .where(eq(companies.cnpj, input.cnpj)).limit(1);
+          if (duplicateCnpj && duplicateCnpj.id !== membership.companyId) {
+            throw new TRPCError({ code: "CONFLICT", message: "Este CNPJ já está vinculado a outra empresa." });
+          }
+        }
+
+        await tx.update(users).set({
+          name: input.name,
+          email: input.email,
+          phone: input.phone || null,
+          emailVerifiedAt: target.email.toLowerCase() === input.email ? undefined : null,
+          updatedAt: new Date(),
+        }).where(eq(users.id, target.id));
+
+        if (membership) {
+          await tx.update(companies).set({
+            ...(input.companyName !== undefined ? { legalName: input.companyName } : {}),
+            ...(input.cnpj !== undefined ? { cnpj: input.cnpj || null } : {}),
+            ...(input.state !== undefined ? { state: input.state || null } : {}),
+            ...(input.municipality !== undefined ? { municipality: input.municipality || null } : {}),
+            ...(input.primarySegment !== undefined ? { primarySegment: input.primarySegment || null } : {}),
+            updatedAt: new Date(),
+          }).where(eq(companies.id, membership.companyId));
+        }
+
+        await tx.insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          companyId: membership?.companyId ?? null,
+          action: "user.customer_data.admin_updated",
+          entityType: "user",
+          entityId: target.id,
+          details: {
+            targetEmailBefore: target.email,
+            targetEmailAfter: input.email,
+            changedFields: ["name", "email", "phone", "companyName", "cnpj", "state", "municipality", "primarySegment"],
+            emailVerificationReset: target.email.toLowerCase() !== input.email,
+          },
+        });
+        return { updated: true, email: input.email, emailVerificationReset: target.email.toLowerCase() !== input.email };
+      });
+    }),
 
   plans: superadminProcedure.query(async () => {
     return getDb().select({
