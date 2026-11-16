@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { date, Loading, ErrorState } from "./common";
 export function SavedSearches() {
   const query = trpc.savedSearches.list.useQuery();
   const utils = trpc.useUtils();
-  const [, navigate] = useLocation();
   const remove = trpc.savedSearches.delete.useMutation({
     onSuccess: () => utils.savedSearches.list.invalidate(),
     onError: e => toast.error(e.message),
@@ -36,10 +34,11 @@ export function SavedSearches() {
                     const criteria = (s.criteria ?? {}) as Record<string, unknown>;
                     const params = new URLSearchParams();
                     if (typeof criteria.query === "string" && criteria.query.trim()) params.set("query", criteria.query);
-                    if (typeof criteria.state === "string" && criteria.state) params.set("state", criteria.state);
+                    const state = typeof criteria.state === "string" ? criteria.state : Array.isArray(criteria.states) ? criteria.states[0] : undefined;
+                    if (typeof state === "string" && state) params.set("state", state);
                     if (criteria.source === "pncp" || criteria.source === "compras.gov.br") params.set("source", criteria.source);
                     params.set("savedSearch", "1");
-                    navigate(`/app/opportunities?${params.toString()}`);
+                    window.location.assign(`/app/opportunities?${params.toString()}`);
                   }}
                 >
                   Abrir pesquisa
