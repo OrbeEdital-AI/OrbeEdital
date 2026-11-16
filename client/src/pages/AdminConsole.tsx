@@ -95,6 +95,7 @@ function CustomerDirectory() {
       toast.success(result.emailVerificationReset
         ? "Dados atualizados. O cliente deverá confirmar novamente o novo e-mail."
         : "Dados cadastrais do cliente atualizados.");
+      setEditingCustomer(null);
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
@@ -272,7 +273,6 @@ function CustomerDirectory() {
                 catmatCodes: list("catmatCodes"), catserCodes: list("catserCodes"),
                 minimumValue, maximumValue, notificationPreferences,
               });
-              setEditingCustomer(null);
             }}>
               <div>
                 <h3 className="text-sm font-bold text-[#102B4E]">Dados de acesso e contato</h3>
