@@ -1,5 +1,5 @@
 import { compareRadarNotices } from "./services/orberadar-compare";
-import { runAmmMtPilot } from "./connectors/orberadar-fetch";
+import { runAmmMgPilot, runAmmMtPilot } from "./connectors/orberadar-fetch";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
@@ -410,8 +410,8 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
-    radarPilot: superadminProcedure.mutation(async () => {
-      const result = await runAmmMtPilot();
+    radarPilot: superadminProcedure.input(z.object({ source: z.enum(["amm-mt","amm-mg"]), ids: z.array(z.string().regex(/^[a-f0-9]{8}$/i)).max(5).optional() }).optional()).mutation(async ({input}) => {
+      const result = input?.source === "amm-mg" ? await runAmmMgPilot(input.ids ?? []) : await runAmmMtPilot();
       return { ...result, notices: await compareRadarNotices(result.notices), mode: "review" as const };
     }),
     settings: router({
