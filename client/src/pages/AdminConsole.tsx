@@ -215,7 +215,7 @@ function CustomerDirectory() {
                           notificationPreferences: JSON.stringify(user.profile_notification_preferences ?? {}, null, 2),
                         });
                       }} className="w-full min-h-9 rounded-md border border-cyan-300 px-3 py-2 text-center text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
-                      <button disabled={deleteAccount.isPending} <button disabled={deleteAccount.isPending} onClick={() => {
+                      <button disabled={deleteAccount.isPending} onClick={() => {
                       const typedEmail = window.prompt(`EXCLUSÃO PERMANENTE\n\nEsta ação excluirá a conta de ${user.name} (${user.email}). Se a empresa não tiver outros usuários, os dados vinculados à empresa também serão removidos.\n\nPara confirmar, digite exatamente o e-mail do cliente:`);
                       if (typedEmail === null) return;
                       if (typedEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
