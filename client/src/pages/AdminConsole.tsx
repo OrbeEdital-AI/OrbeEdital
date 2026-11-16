@@ -148,7 +148,7 @@ function CustomerDirectory() {
         {query.isLoading ? <p className="p-8 text-center text-sm text-slate-500">Carregando usuários…</p> :
           query.error ? <div className="p-8 text-center"><p className="text-sm text-rose-700">{query.error.message}</p><button onClick={() => query.refetch()} className="mt-3 text-sm font-semibold text-cyan-800">Tentar novamente</button></div> :
           <>
-            <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button onClick={() => query.refetch()} className="inline-flex items-center gap-2 font-medium text-cyan-800"><RefreshCw size={14}/> Atualizar</button></div>
+            <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button type="button" disabled={query.isFetching} onClick={async () => { const result = await query.refetch(); if (result.isError) toast.error("Não foi possível atualizar a lista de clientes."); else toast.success("Lista de clientes atualizada."); }} className="inline-flex items-center gap-2 font-medium text-cyan-800 disabled:cursor-wait disabled:opacity-50"><RefreshCw size={14} className={query.isFetching ? "animate-spin" : ""}/> {query.isFetching ? "Atualizando…" : "Atualizar"}</button></div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[780px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Usuário</th><th className="px-4 py-3">Empresa</th><th className="px-4 py-3">Perfil / gestão</th><th className="px-4 py-3">Plano do cliente</th><th className="px-4 py-3">E-mail</th><th className="px-4 py-3">Cadastro</th><th className="px-4 py-3">Último acesso</th><th className="px-4 py-3">Segurança / status</th><th className="px-4 py-3">Ações</th></tr></thead>
@@ -238,8 +238,6 @@ function CustomerDirectory() {
             </div>
           </>}
       </div>
-    </section>
-  );
       {editingCustomer && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !updateCustomer.isPending) setEditingCustomer(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="edit-customer-title" className="my-auto max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -316,7 +314,8 @@ function CustomerDirectory() {
           </section>
         </div>
       )}
-
+    </section>
+  );
 }
 
 function PermissionsPage() {
@@ -387,7 +386,7 @@ export default function AdminConsole() {
     {mobileMenuOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] lg:hidden"/>}
     <button type="button" aria-label="Abrir menu de navegação" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)} className="fixed left-4 top-4 z-30 grid h-12 w-12 place-items-center rounded-full bg-[#102B4E] text-white shadow-lg ring-1 ring-white/20 transition hover:bg-[#17416f] active:scale-95 lg:hidden"><Menu size={21}/></button>
     <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#0b2542] bg-gradient-to-b from-[#0b2542] via-[#102f50] to-[#164666] text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-r-0 lg:shadow-none`}>
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5"><BrandMark variant="dark"/><div className="flex items-center gap-2"><span className="rounded-full border border-cyan-300/30 bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin</span><button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"><X size={19}/></button></div></div>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5"><BrandMark variant="dark"/><div className="flex items-center gap-2"><button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"><X size={19}/></button></div></div>
       <div className="px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-200">Administração</p></div>
       <nav aria-label="Administração" className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
         {navGroups.map(group => <div key={group.title} className="mb-2 min-w-0 lg:min-w-0">
