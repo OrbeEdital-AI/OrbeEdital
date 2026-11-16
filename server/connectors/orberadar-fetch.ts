@@ -48,3 +48,20 @@ export async function runAmmMtPilot(now = new Date(), request: typeof fetch = fe
   }
   return {notices,failures};
 }
+
+/** Manual public matter validation; not an automated MG discovery feed. */
+export async function runAmmMgPilot(ids: string[], request: typeof fetch = fetch): Promise<{notices: RadarNotice[]; failures: string[]}> {
+ const unique = [...new Set(ids.map(id=>id.toUpperCase()))];
+ if (!unique.length || unique.length>5 || unique.some(id=>!/^[A-F0-9]{8}$/.test(id))) throw new Error("Informe até cinco identificadores AMM-MG válidos.");
+ const notices: RadarNotice[] = [], failures: string[] = [];
+ for (const id of unique) {
+  const url = new URL("/amm-mg/materia/"+id,"https://www.diariomunicipal.com.br");
+  try {
+   const plain = radarPlainText(await fetchRadarHtml(url,request));
+   if (!/\b(?:licita[çc][ãa]o|preg[ãa]o|concorr[êe]ncia|dispensa)\b/iu.test(plain)) throw new Error("Matéria sem evidência de licitação");
+   notices.push(parseRadarNotice({source:"amm-mg",url:url.href,title:"Matéria AMM-MG "+id,publicationId:id,state:"review"},plain));
+  } catch(error) { failures.push(id+": "+(error instanceof Error?error.message:"unknown")); }
+  finally { await new Promise<void>(resolve=>setTimeout(resolve,1100)); }
+ }
+ return {notices,failures};
+}
