@@ -73,6 +73,8 @@ function AccessDenied() {
 function CustomerDirectory() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
   const query = trpc.adminUsers.list.useQuery(
     { query: search.trim() || undefined, page, pageSize: 25 },
     { retry: false, placeholderData: previous => previous }
@@ -93,6 +95,7 @@ function CustomerDirectory() {
       toast.success(result.emailVerificationReset
         ? "Dados atualizados. O cliente deverá confirmar novamente o novo e-mail."
         : "Dados cadastrais do cliente atualizados.");
+      setEditingCustomer(null);
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
@@ -179,68 +182,40 @@ function CustomerDirectory() {
                     </td>
                     <td className="px-4 py-3">{user.emailVerifiedAt ? <span className="text-emerald-700">Verificado</span> : <span className="text-amber-700">Pendente</span>}</td>
                     <td className="px-4 py-3 text-slate-600">{date(user.createdAt)}</td>
-                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3">
-                      {user.role === "user" && <div className="min-w-40 space-y-2">
+                    <td className="px-4 py-3 text-slate-600">{date(user.lastSignedIn)}</td><td className="px-4 py-3 align-top">
+                      {user.role === "user" && <div className="w-36 space-y-2">
                         <div><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${user.suspendedAt ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>{user.suspendedAt ? "Suspenso" : "Ativo"}</span>
                         {user.suspendedAt && <p className="mt-1 max-w-48 text-[11px] text-slate-500">Motivo: {user.suspensionReason || "Não informado"}</p>}</div>
-                        {user.suspendedAt ? <button disabled={setSuspension.isPending} onClick={() => { if (window.confirm(`Reativar a conta de ${user.email}?`)) setSuspension.mutate({ userId: user.id, suspended: false }); }} className="rounded-md border border-emerald-300 px-2.5 py-1.5 text-xs font-medium text-emerald-800 disabled:opacity-40">Reativar conta</button> : <button disabled={setSuspension.isPending} onClick={() => {
+                        {user.suspendedAt ? <button disabled={setSuspension.isPending} onClick={() => { if (window.confirm(`Reativar a conta de ${user.email}?`)) setSuspension.mutate({ userId: user.id, suspended: false }); }} className="w-full min-h-9 rounded-md border border-emerald-300 px-3 py-2 text-center text-xs font-semibold text-emerald-800 disabled:opacity-40">Reativar conta</button> : <button disabled={setSuspension.isPending} onClick={() => {
                           const reason = window.prompt(`Informe o motivo da suspensão de ${user.email}:`);
                           if (reason === null) return;
                           if (!reason.trim()) { toast.error("Informe um motivo para suspender a conta."); return; }
                           if (window.confirm(`Suspender ${user.email}? Todas as sessões atuais serão encerradas.`)) setSuspension.mutate({ userId: user.id, suspended: true, reason: reason.trim() });
-                        }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-800 disabled:opacity-40">Suspender conta</button>}
-                        <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="block rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>
+                        }} className="w-full min-h-9 rounded-md border border-rose-300 px-3 py-2 text-center text-xs font-semibold text-rose-800 disabled:opacity-40">Suspender conta</button>}
+                        <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="block w-full min-h-9 rounded-md border border-amber-300 px-3 py-2 text-center text-xs font-semibold text-amber-800 disabled:opacity-40">Encerrar sessões</button>
                       </div>}
                     </td>
-                    <td className="px-4 py-3">{user.role === "user" && <div className="flex min-w-28 flex-col gap-2">
-                      <button disabled={updateCustomer.isPending} onClick={() => {
-                        const name = window.prompt("Nome do responsável:", user.name);
-                        if (name === null) return;
-                        const email = window.prompt("E-mail de acesso:", user.email);
-                        if (email === null) return;
-                        const phone = window.prompt("Telefone:", user.phone ?? "");
-                        if (phone === null) return;
-                        const companyName = window.prompt("Razão social:", user.companyName ?? "");
-                        if (companyName === null) return;
-                        const cnpj = window.prompt("CNPJ:", user.companyCnpj ?? "");
-                        if (cnpj === null) return;
-                        const state = window.prompt("UF:", user.companyState ?? "");
-                        if (state === null) return;
-                        const municipality = window.prompt("Município:", user.companyMunicipality ?? "");
-                        if (municipality === null) return;
-                        const primarySegment = window.prompt("Segmento principal:", user.companySegment ?? "");
-                        if (primarySegment === null) return;
-                        const csv = (label: string, initial: unknown) => window.prompt(`${label} (itens separados por vírgula):`, Array.isArray(initial) ? initial.join(", ") : "");
-                        const segments = csv("Outros segmentos", user.profile_segments); if (segments === null) return;
-                        const products = csv("Produtos comercializados", user.profile_products); if (products === null) return;
-                        const services = csv("Serviços prestados", user.profile_services); if (services === null) return;
-                        const keywords = csv("Palavras-chave", user.profile_keywords); if (keywords === null) return;
-                        const servedStates = csv("Estados atendidos", user.profile_served_states); if (servedStates === null) return;
-                        const servedMunicipalities = csv("Municípios atendidos", user.profile_served_municipalities); if (servedMunicipalities === null) return;
-                        const catmatCodes = csv("Códigos CATMAT", user.profile_catmat_codes); if (catmatCodes === null) return;
-                        const catserCodes = csv("Códigos CATSER", user.profile_catser_codes); if (catserCodes === null) return;
-                        const minimumValue = window.prompt("Valor mínimo de interesse (R$):", user.profile_minimum_value ?? ""); if (minimumValue === null) return;
-                        const maximumValue = window.prompt("Valor máximo de interesse (R$):", user.profile_maximum_value ?? ""); if (maximumValue === null) return;
-                        const preferencesText = window.prompt("Preferências de notificação (JSON):", JSON.stringify(user.profile_notification_preferences ?? {}, null, 2)); if (preferencesText === null) return;
-                        let notificationPreferences: Record<string, unknown>;
-                        try { notificationPreferences = JSON.parse(preferencesText || "{}"); if (!notificationPreferences || Array.isArray(notificationPreferences) || typeof notificationPreferences !== "object") throw new Error(); }
-                        catch { toast.error("Preferências de notificação: informe um JSON válido."); return; }
-                        if (!name.trim() || !email.trim()) { toast.error("Nome e e-mail são obrigatórios."); return; }
-                        const parseMoney = (value: string) => value.trim() ? Number(value.replace(",", ".")) : null;
-                        const minValue = parseMoney(minimumValue), maxValue = parseMoney(maximumValue);
-                        if ((minValue !== null && (!Number.isFinite(minValue) || minValue < 0)) || (maxValue !== null && (!Number.isFinite(maxValue) || maxValue < 0))) { toast.error("Informe valores mínimos e máximos válidos."); return; }
-                        if (!window.confirm(`Salvar todos os dados do perfil de ${user.name}?`)) return;
-                        const list = (value: string, upper = false) => value.split(",").map(item => item.trim()).filter(Boolean).map(item => upper ? item.toUpperCase() : item);
-                        updateCustomer.mutate({
-                          userId: user.id, name: name.trim(), email: email.trim(), phone: phone.trim(),
-                          companyName: companyName.trim() || undefined, cnpj: cnpj.trim(), state: state.trim().toUpperCase(),
-                          municipality: municipality.trim(), primarySegment: primarySegment.trim(),
-                          segments: list(segments), products: list(products), services: list(services), keywords: list(keywords),
-                          servedStates: list(servedStates, true), servedMunicipalities: list(servedMunicipalities),
-                          catmatCodes: list(catmatCodes), catserCodes: list(catserCodes),
-                          minimumValue: minValue, maximumValue: maxValue, notificationPreferences,
+                    <td className="px-4 py-3 align-top">{user.role === "user" && <div className="w-36 flex flex-col gap-2">
+                      <button type="button" disabled={updateCustomer.isPending} onClick={() => {
+                        setEditingCustomer(user);
+                        setEditForm({
+                          name: user.name ?? "", email: user.email ?? "", phone: user.phone ?? "",
+                          companyName: user.companyName ?? "", cnpj: user.companyCnpj ?? "",
+                          state: user.companyState ?? "", municipality: user.companyMunicipality ?? "",
+                          primarySegment: user.companySegment ?? "",
+                          segments: Array.isArray(user.profile_segments) ? user.profile_segments.join(", ") : "",
+                          products: Array.isArray(user.profile_products) ? user.profile_products.join(", ") : "",
+                          services: Array.isArray(user.profile_services) ? user.profile_services.join(", ") : "",
+                          keywords: Array.isArray(user.profile_keywords) ? user.profile_keywords.join(", ") : "",
+                          servedStates: Array.isArray(user.profile_served_states) ? user.profile_served_states.join(", ") : "",
+                          servedMunicipalities: Array.isArray(user.profile_served_municipalities) ? user.profile_served_municipalities.join(", ") : "",
+                          catmatCodes: Array.isArray(user.profile_catmat_codes) ? user.profile_catmat_codes.join(", ") : "",
+                          catserCodes: Array.isArray(user.profile_catser_codes) ? user.profile_catser_codes.join(", ") : "",
+                          minimumValue: user.profile_minimum_value == null ? "" : String(user.profile_minimum_value),
+                          maximumValue: user.profile_maximum_value == null ? "" : String(user.profile_maximum_value),
+                          notificationPreferences: JSON.stringify(user.profile_notification_preferences ?? {}, null, 2),
                         });
-                      }} className="rounded-md border border-cyan-300 px-2.5 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
+                      }} className="w-full min-h-9 rounded-md border border-cyan-300 px-3 py-2 text-center text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
                       <button disabled={deleteAccount.isPending} onClick={() => {
                       const typedEmail = window.prompt(`EXCLUSÃO PERMANENTE\n\nEsta ação excluirá a conta de ${user.name} (${user.email}). Se a empresa não tiver outros usuários, os dados vinculados à empresa também serão removidos.\n\nPara confirmar, digite exatamente o e-mail do cliente:`);
                       if (typedEmail === null) return;
@@ -251,7 +226,7 @@ function CustomerDirectory() {
                       if (window.confirm(`Confirma a exclusão permanente da conta ${user.email}? Esta ação não pode ser desfeita.`)) {
                         deleteAccount.mutate({ userId: user.id, confirmationEmail: typedEmail.trim() });
                       }
-                    }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40">Excluir conta</button></div>}</td>
+                    }} className="w-full min-h-9 rounded-md border border-rose-300 px-3 py-2 text-center text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40">Excluir conta</button></div>}</td>
                   </tr>)}
                   {!data?.items.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
@@ -265,6 +240,83 @@ function CustomerDirectory() {
       </div>
     </section>
   );
+      {editingCustomer && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !updateCustomer.isPending) setEditingCustomer(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="edit-customer-title" className="my-auto max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-7">
+              <div><p className="text-xs font-bold uppercase tracking-[.16em] text-cyan-800">Gestão de clientes</p><h2 id="edit-customer-title" className="mt-1 text-xl font-bold text-[#102B4E]">Editar dados do cliente</h2><p className="mt-1 text-sm text-slate-500">{editingCustomer.name} · {editingCustomer.email}</p></div>
+              <button type="button" disabled={updateCustomer.isPending} onClick={() => setEditingCustomer(null)} aria-label="Fechar edição" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border text-slate-500 hover:bg-slate-50 disabled:opacity-40"><X size={18}/></button>
+            </div>
+            <form className="space-y-6 p-5 sm:p-7" onSubmit={event => {
+              event.preventDefault();
+              const required = ["name", "email"];
+              if (required.some(key => !editForm[key]?.trim())) { toast.error("Nome e e-mail são obrigatórios."); return; }
+              let notificationPreferences: Record<string, unknown>;
+              try {
+                const parsed = JSON.parse(editForm.notificationPreferences || "{}");
+                if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error();
+                notificationPreferences = parsed;
+              } catch { toast.error("Preferências de notificação: informe um JSON válido."); return; }
+              const parseMoney = (value: string) => value.trim() ? Number(value.replace(/\\./g, "").replace(",", ".")) : null;
+              const minimumValue = parseMoney(editForm.minimumValue ?? "");
+              const maximumValue = parseMoney(editForm.maximumValue ?? "");
+              if ((minimumValue !== null && (!Number.isFinite(minimumValue) || minimumValue < 0)) || (maximumValue !== null && (!Number.isFinite(maximumValue) || maximumValue < 0))) { toast.error("Informe valores mínimos e máximos válidos."); return; }
+              const list = (key: string, upper = false) => (editForm[key] ?? "").split(",").map(item => item.trim()).filter(Boolean).map(item => upper ? item.toUpperCase() : item);
+              updateCustomer.mutate({
+                userId: editingCustomer.id,
+                name: editForm.name.trim(), email: editForm.email.trim(), phone: editForm.phone.trim(),
+                companyName: editForm.companyName.trim() || undefined, cnpj: editForm.cnpj.trim(),
+                state: editForm.state.trim().toUpperCase(), municipality: editForm.municipality.trim(),
+                primarySegment: editForm.primarySegment.trim(),
+                segments: list("segments"), products: list("products"), services: list("services"), keywords: list("keywords"),
+                servedStates: list("servedStates", true), servedMunicipalities: list("servedMunicipalities"),
+                catmatCodes: list("catmatCodes"), catserCodes: list("catserCodes"),
+                minimumValue, maximumValue, notificationPreferences,
+              });
+            }}>
+              <div>
+                <h3 className="text-sm font-bold text-[#102B4E]">Dados de acesso e contato</h3>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  
+                  {[
+                    ["name", "Nome do responsável"], ["email", "E-mail de acesso"], ["phone", "Telefone"],
+                    ["companyName", "Razão social"], ["cnpj", "CNPJ"], ["state", "UF"],
+                    ["municipality", "Município"], ["primarySegment", "Segmento principal"],
+                  ].map(([key, label]) => <label key={key} className="block text-xs font-semibold text-slate-600">{label}<input value={editForm[key] ?? ""} onChange={event => setEditForm(current => ({ ...current, [key]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100" /></label>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#102B4E]">Perfil comercial e cobertura</h3>
+                <p className="mt-1 text-xs text-slate-500">Separe vários itens por vírgula.</p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["segments", "Outros segmentos"], ["products", "Produtos comercializados"], ["services", "Serviços prestados"],
+                    ["keywords", "Palavras-chave"], ["servedStates", "Estados atendidos"], ["servedMunicipalities", "Municípios atendidos"],
+                    ["catmatCodes", "Códigos CATMAT"], ["catserCodes", "Códigos CATSER"],
+                  ].map(([key, label]) => <label key={key} className="block text-xs font-semibold text-slate-600">{label}<textarea rows={2} value={editForm[key] ?? ""} onChange={event => setEditForm(current => ({ ...current, [key]: event.target.value }))} className="mt-1.5 w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100" /></label>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#102B4E]">Faixa de valores de interesse</h3>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["minimumValue", "Valor mínimo (R$)"], ["maximumValue", "Valor máximo (R$)"],
+                  ].map(([key, label]) => <label key={key} className="block text-xs font-semibold text-slate-600">{label}<input inputMode="decimal" value={editForm[key] ?? ""} onChange={event => setEditForm(current => ({ ...current, [key]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100" /></label>)}
+                </div>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#102B4E]">Preferências de notificação</h3>
+                <label className="mt-3 block text-xs font-semibold text-slate-600">Configuração em JSON<textarea rows={5} spellCheck={false} value={editForm.notificationPreferences ?? "{}"} onChange={event => setEditForm(current => ({ ...current, notificationPreferences: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs font-normal text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100" /></label>
+              </div>
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:-mx-7 sm:-mb-7 sm:flex-row sm:justify-end sm:px-7">
+                <button type="button" disabled={updateCustomer.isPending} onClick={() => setEditingCustomer(null)} className="min-h-10 rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40">Cancelar</button>
+                <button type="submit" disabled={updateCustomer.isPending} className="min-h-10 rounded-lg bg-[#087eaa] px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#066b92] disabled:cursor-wait disabled:opacity-60">{updateCustomer.isPending ? "Salvando alterações…" : "Salvar todos os dados"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
 }
 
 function PermissionsPage() {
@@ -334,16 +386,16 @@ export default function AdminConsole() {
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-800 lg:flex">
     {mobileMenuOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] lg:hidden"/>}
     <button type="button" aria-label="Abrir menu de navegação" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)} className="fixed left-4 top-4 z-30 grid h-12 w-12 place-items-center rounded-full bg-[#102B4E] text-white shadow-lg ring-1 ring-white/20 transition hover:bg-[#17416f] active:scale-95 lg:hidden"><Menu size={21}/></button>
-    <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-slate-200 bg-[#102B4E] text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-r-0 lg:shadow-none`}>
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-3"><div className="flex min-w-0 items-center gap-2"><BrandMark showWordmark={false} className="shrink-0"/><span className="whitespace-nowrap text-[13px] font-extrabold tracking-[.12em] text-white">ORBE<span className="text-cyan-300">EDITAL</span></span></div><div className="flex items-center gap-2"><span className="rounded-full bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin Geral</span><button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"><X size={19}/></button></div></div>
+    <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#0b2542] bg-gradient-to-b from-[#0b2542] via-[#102f50] to-[#164666] text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[216px] lg:shrink-0 lg:border-r-0 lg:shadow-none`}>
+      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5"><BrandMark variant="dark"/><div className="flex items-center gap-2"><span className="rounded-full border border-cyan-300/30 bg-cyan-300/15 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-100">Admin</span><button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"><X size={19}/></button></div></div>
       <div className="px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-200">Administração</p></div>
       <nav aria-label="Administração" className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
         {navGroups.map(group => <div key={group.title} className="mb-2 min-w-0 lg:min-w-0">
-          <p className="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-[.14em] text-blue-300/70">{group.title}</p>
-          <div className="space-y-px">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium transition ${section === item.id ? "bg-white font-semibold text-[#102B4E] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}><ItemIcon size={15}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
+          <p className="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-[.14em] text-[#55c4e6]">{group.title}</p>
+          <div className="space-y-px">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium transition ${section === item.id ? "bg-[#087eaa] font-semibold text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] ring-1 ring-cyan-200/30" : "text-[#d8e8f5] hover:bg-[#1d496b] hover:text-white"}`}><ItemIcon size={15}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
         </div>)}
       </nav>
-      <div className="border-t border-white/10 p-2.5"><div className="rounded-md bg-white/5 p-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-blue-300">Sessão administrativa</p><p className="mt-1.5 truncate text-xs font-semibold">{me.name}</p><p className="truncate text-[11px] text-blue-200">{me.email}</p><span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Superadmin verificado</span></div><button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-blue-100 hover:bg-white/10"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
+      <div className="border-t border-white/15 p-3 sm:p-4"><div className="rounded-md bg-white/5 p-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-[#55c4e6]">Sessão administrativa</p><p className="mt-1.5 truncate text-xs font-semibold">{me.name}</p><p className="truncate text-[11px] text-[#a9c6dc]">{me.email}</p><span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Superadmin verificado</span></div><button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-blue-100 hover:bg-white/10 hover:text-white"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
     </aside>
     <main className="min-w-0 flex-1">
       <header className="relative z-10 border-b border-slate-200/90 bg-white/95 px-4 pb-4 pt-20 sm:px-7 sm:pt-20 lg:sticky lg:top-0 lg:py-4">
