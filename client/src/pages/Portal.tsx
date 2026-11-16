@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Route, Switch, useLocation } from "wouter";
+import { Link, Route, Switch, useLocation, useSearch } from "wouter";
 import {
   Activity,
   Bell,
@@ -50,13 +50,13 @@ export default function Portal() {
   const resendVerification = trpc.auth.requestEmailVerification.useMutation();
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
   const recordSearch = trpc.opportunities.recordSearch.useMutation();
-  const locationSearch = window.location.search;
+  const locationSearch = useSearch();
   const savedSearchRequested =
     path === "/app/opportunities" &&
     new URLSearchParams(locationSearch).get("savedSearch") === "1";
 
   useEffect(() => {
-    if (path !== "/app/opportunities") {
+    if (path !== "/app/opportunities" || !auth.user || !emailVerified) {
       setRestoredSearchUrl("");
       return;
     }
@@ -82,7 +82,7 @@ export default function Portal() {
     recordSearch.mutateAsync().catch(error => {
       toast.error(error instanceof Error ? error.message : "Não foi possível registrar a pesquisa.");
     });
-  }, [path, locationSearch]);
+  }, [path, locationSearch, auth.user?.id, emailVerified]);
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
@@ -465,6 +465,7 @@ export default function Portal() {
             <Route path="/app/opportunities">
               <>
                 <SearchPanel
+                  key={savedSearchRequested ? restoredSearchUrl : "manual"}
                   query={query}
                   setQuery={setQuery}
                   state={state}
@@ -475,7 +476,7 @@ export default function Portal() {
                 />
                 <OpportunityList
                   items={(searchQuery.data?.items ?? []) as AnyOpportunity[]}
-                  loading={searchQuery.isLoading}
+                  loading={searchQuery.isLoading || (savedSearchRequested && restoredSearchUrl !== locationSearch)}
                   error={searchQuery.error?.message}
                   empty="Nenhuma oportunidade encontrada com estes filtros."
                 onRetry={() => searchQuery.refetch()}
