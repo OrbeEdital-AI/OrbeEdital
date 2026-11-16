@@ -232,3 +232,6 @@
 .orbe-client-pages .border-cyan-300 {
   border-color: #9bcfe0;
 }
+
+/* Welcome banner must not inherit the dark heading palette. */
+.orbe-client-pages h2.orbe-welcome-heading { color: #ffffff !important; }
