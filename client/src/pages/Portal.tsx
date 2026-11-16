@@ -49,23 +49,26 @@ export default function Portal() {
   const resendVerification = trpc.auth.requestEmailVerification.useMutation();
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
   useEffect(() => {
-    const restore = (event: Event) => {
-      const criteria =
-        (event as CustomEvent<{ criteria: Record<string, unknown> }>).detail
-          ?.criteria ?? {};
-      setQueryState(typeof criteria.query === "string" ? criteria.query : "");
-      setState(typeof criteria.state === "string" ? criteria.state : "");
-      setSource(
-        criteria.source === "pncp" || criteria.source === "compras.gov.br"
-          ? criteria.source
-          : ""
-      );
-      setPage(1);
-    };
-    window.addEventListener("orbeedital:restore-search", restore);
-    return () =>
-      window.removeEventListener("orbeedital:restore-search", restore);
-  }, []);
+    if (path !== "/app/opportunities") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("savedSearch") !== "1") return;
+
+    // Critérios na URL evitam a corrida entre disparar um evento e trocar de rota.
+    setQueryState(params.get("query") ?? "");
+    setState(params.get("state") ?? "");
+    const savedSource = params.get("source");
+    setSource(
+      savedSource === "pncp" || savedSource === "compras.gov.br"
+        ? savedSource
+        : ""
+    );
+    setPage(1);
+
+    // A abertura de uma pesquisa salva é uma consulta efetiva e entra no uso mensal.
+    recordSearch.mutateAsync().catch(error => {
+      toast.error(error instanceof Error ? error.message : "Não foi possível registrar a pesquisa.");
+    });
+  }, [path]);
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };

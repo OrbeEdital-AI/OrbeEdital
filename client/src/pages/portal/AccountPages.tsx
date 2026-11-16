@@ -33,12 +33,13 @@ export function SavedSearches() {
                 <button
                   className="text-sm font-semibold text-cyan-800"
                   onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent("orbeedital:restore-search", {
-                        detail: { criteria: s.criteria },
-                      })
-                    );
-                    navigate("/app/opportunities");
+                    const criteria = (s.criteria ?? {}) as Record<string, unknown>;
+                    const params = new URLSearchParams();
+                    if (typeof criteria.query === "string" && criteria.query.trim()) params.set("query", criteria.query);
+                    if (typeof criteria.state === "string" && criteria.state) params.set("state", criteria.state);
+                    if (criteria.source === "pncp" || criteria.source === "compras.gov.br") params.set("source", criteria.source);
+                    params.set("savedSearch", "1");
+                    navigate(`/app/opportunities?${params.toString()}`);
                   }}
                 >
                   Abrir pesquisa
