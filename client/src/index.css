@@ -232,13 +232,3 @@
 .orbe-client-pages .border-cyan-300 {
   border-color: #9bcfe0;
 }
-.orbe-client-pages .bg-\\[\\#102B4E\\],
-.orbe-client-pages .bg-\\[\\#0c3153\\] {
-  background-color: var(--orbe-navy);
-}
-.orbe-client-pages .bg-\\[\\#087eaa\\] {
-  background-color: var(--orbe-cyan);
-}
-.orbe-client-pages .hover\\:bg-\\[\\#066b92\\]:hover {
-  background-color: #066b92;
-}
