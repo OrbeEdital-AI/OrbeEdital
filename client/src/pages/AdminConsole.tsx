@@ -88,6 +88,16 @@ function CustomerDirectory() {
     },
     onError: error => toast.error(error.message),
   });
+  const updateCustomer = trpc.adminUsers.updateCustomer.useMutation({
+    onSuccess: async result => {
+      toast.success(result.emailVerificationReset
+        ? "Dados atualizados. O cliente deverá confirmar novamente o novo e-mail."
+        : "Dados cadastrais do cliente atualizados.");
+      await utils.adminUsers.list.invalidate();
+      await utils.adminUsers.audit.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const updatePlan = trpc.adminUsers.updatePlan.useMutation({
     onSuccess: async result => {
       toast.success(`Plano do cliente atualizado para ${result.planName}.`);
@@ -182,7 +192,33 @@ function CustomerDirectory() {
                         <button disabled={revokeSessions.isPending} onClick={() => { if (window.confirm("Encerrar todas as sessões deste usuário? Ele precisará entrar novamente.")) revokeSessions.mutate({ userId: user.id }); }} className="block rounded-md border border-amber-300 px-2.5 py-1.5 text-xs font-medium text-amber-800 disabled:opacity-40">Encerrar sessões</button>
                       </div>}
                     </td>
-                    <td className="px-4 py-3">{user.role === "user" && <button disabled={deleteAccount.isPending} onClick={() => {
+                    <td className="px-4 py-3">{user.role === "user" && <div className="flex min-w-28 flex-col gap-2">
+                      <button disabled={updateCustomer.isPending} onClick={() => {
+                        const name = window.prompt("Nome do responsável:", user.name);
+                        if (name === null) return;
+                        const email = window.prompt("E-mail de acesso:", user.email);
+                        if (email === null) return;
+                        const phone = window.prompt("Telefone:", user.phone ?? "");
+                        if (phone === null) return;
+                        const companyName = window.prompt("Razão social:", user.companyName ?? "");
+                        if (companyName === null) return;
+                        const cnpj = window.prompt("CNPJ:", user.companyCnpj ?? "");
+                        if (cnpj === null) return;
+                        const state = window.prompt("UF:", user.companyState ?? "");
+                        if (state === null) return;
+                        const municipality = window.prompt("Município:", user.companyMunicipality ?? "");
+                        if (municipality === null) return;
+                        const primarySegment = window.prompt("Segmento principal:", user.companySegment ?? "");
+                        if (primarySegment === null) return;
+                        if (!name.trim() || !email.trim()) { toast.error("Nome e e-mail são obrigatórios."); return; }
+                        if (!window.confirm(`Salvar os dados cadastrais de ${user.name}?`)) return;
+                        updateCustomer.mutate({
+                          userId: user.id, name: name.trim(), email: email.trim(), phone: phone.trim(),
+                          companyName: companyName.trim(), cnpj: cnpj.trim(), state: state.trim().toUpperCase(),
+                          municipality: municipality.trim(), primarySegment: primarySegment.trim(),
+                        });
+                      }} className="rounded-md border border-cyan-300 px-2.5 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
+                      <button disabled={deleteAccount.isPending} onClick={() => {
                       const typedEmail = window.prompt(`EXCLUSÃO PERMANENTE\n\nEsta ação excluirá a conta de ${user.name} (${user.email}). Se a empresa não tiver outros usuários, os dados vinculados à empresa também serão removidos.\n\nPara confirmar, digite exatamente o e-mail do cliente:`);
                       if (typedEmail === null) return;
                       if (typedEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
@@ -192,7 +228,7 @@ function CustomerDirectory() {
                       if (window.confirm(`Confirma a exclusão permanente da conta ${user.email}? Esta ação não pode ser desfeita.`)) {
                         deleteAccount.mutate({ userId: user.id, confirmationEmail: typedEmail.trim() });
                       }
-                    }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40">Excluir conta</button>}</td>
+                    }} className="rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40">Excluir conta</button></div>}</td>
                   </tr>)}
                   {!data?.items.length && <tr><td colSpan={9} className="px-5 py-12 text-center text-slate-500">Nenhum usuário encontrado.</td></tr>}
                 </tbody>
