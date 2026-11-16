@@ -1,3 +1,4 @@
+import { persistRadarRun } from "./services/orberadar-staging";
 import { compareRadarNotices } from "./services/orberadar-compare";
 import { runAmmMgPilot, runAmmMtPilot } from "./connectors/orberadar-fetch";
 import { parse as parseCookieHeader } from "cookie";
@@ -410,9 +411,13 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
-    radarPilot: superadminProcedure.input(z.object({ source: z.enum(["amm-mt","amm-mg"]), ids: z.array(z.string().regex(/^[a-f0-9]{8}$/i)).max(5).optional() }).optional()).mutation(async ({input}) => {
-      const result = input?.source === "amm-mg" ? await runAmmMgPilot(input.ids ?? []) : await runAmmMtPilot();
-      return { ...result, notices: await compareRadarNotices(result.notices), mode: "review" as const };
+    radarPilot: superadminProcedure.input(z.object({ source: z.enum(["amm-mt","amm-mg"]), ids: z.array(z.string().regex(/^[a-f0-9]{8}$/i)).max(5).optional(), saveReview: z.boolean().optional() }).optional()).mutation(async ({input}) => {
+      const startedAt = new Date();
+      const source = input?.source ?? "amm-mt";
+      const result = source === "amm-mg" ? await runAmmMgPilot(input?.ids ?? []) : await runAmmMtPilot();
+      const notices = await compareRadarNotices(result.notices);
+      const saved = input?.saveReview ? await persistRadarRun(source, startedAt, notices, result.failures) : null;
+      return { ...result, notices, saved, mode: "review" as const };
     }),
     settings: router({
       get: superadminProcedure.query(async () => {
