@@ -192,8 +192,17 @@ function getOfficialPdfs(
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate as Record<string, unknown>;
-    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo]
-      .find(value => typeof value === "string" && value.trim());
+    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo, record._downloadUrl]
+      .find(value => {
+        if (typeof value !== "string" || !value.trim()) return false;
+        try {
+          const candidate = new URL(value);
+          const host = candidate.hostname.toLowerCase();
+          return candidate.protocol === "https:" && (host === "gov.br" || host.endsWith(".gov.br"));
+        } catch {
+          return false;
+        }
+      });
     if (typeof rawUrl !== "string") continue;
     try {
       const parsed = new URL(rawUrl);
