@@ -186,8 +186,7 @@
   background-color: #ffffff;
 }
 .orbe-client-pages .border-slate-200,
-.orbe-client-pages .border-slate-300,
-.orbe-client-pages .border {
+.orbe-client-pages .border-slate-300 {
   border-color: var(--orbe-client-border);
 }
 .orbe-client-pages h2,
