@@ -1,6 +1,6 @@
 import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { auditLogs, authSessions, users, companies, companyMembers, subscriptions, plans } from "../drizzle/schema";
+import { auditLogs, authSessions, users, companies, companyMembers, subscriptions, plans, companyProfiles } from "../drizzle/schema";
 import { getDb } from "./db";
 import { router, superadminProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -41,6 +41,17 @@ export const adminUsersRouter = router({
           companyState: sql<string | null>`(select c.state from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
           companyMunicipality: sql<string | null>`(select c.municipality from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
           companySegment: sql<string | null>`(select c.primary_segment from companies c inner join company_members cm on cm.company_id = c.id where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
+          profile_segments: sql<any>`(select cp.segments from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_products: sql<any>`(select cp.products from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_services: sql<any>`(select cp.services from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_keywords: sql<any>`(select cp.keywords from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_served_states: sql<any>`(select cp.served_states from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_served_municipalities: sql<any>`(select cp.served_municipalities from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_minimum_value: sql<any>`(select cp.minimum_value from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_maximum_value: sql<any>`(select cp.maximum_value from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_catmat_codes: sql<any>`(select cp.catmat_codes from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_catser_codes: sql<any>`(select cp.catser_codes from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
+          profile_notification_preferences: sql<any>`(select cp.notification_preferences from company_profiles cp where cp.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) limit 1)`,
           companyId: sql<string | null>`(select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1)`,
           planName: sql<string | null>`(select p.name from subscriptions s inner join plans p on p.id = s.plan_id where s.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) order by s.created_at desc limit 1)`,
           subscriptionStatus: sql<string | null>`(select s.status from subscriptions s where s.company_id = (select cm.company_id from company_members cm where cm.user_id = "users"."id" order by cm.created_at asc limit 1) order by s.created_at desc limit 1)`,
@@ -74,6 +85,17 @@ export const adminUsersRouter = router({
       state: z.string().trim().length(2).optional().or(z.literal("")),
       municipality: z.string().trim().max(160).optional().or(z.literal("")),
       primarySegment: z.string().trim().max(200).optional().or(z.literal("")),
+      segments: z.array(z.string().trim().max(160)).max(100).optional(),
+      products: z.array(z.string().trim().max(200)).max(200).optional(),
+      services: z.array(z.string().trim().max(200)).max(200).optional(),
+      keywords: z.array(z.string().trim().max(120)).max(200).optional(),
+      servedStates: z.array(z.string().trim().length(2)).max(27).optional(),
+      servedMunicipalities: z.array(z.string().trim().max(160)).max(500).optional(),
+      catmatCodes: z.array(z.string().trim().max(40)).max(500).optional(),
+      catserCodes: z.array(z.string().trim().max(40)).max(500).optional(),
+      minimumValue: z.number().nonnegative().nullable().optional(),
+      maximumValue: z.number().nonnegative().nullable().optional(),
+      notificationPreferences: z.record(z.string(), z.unknown()).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
@@ -119,6 +141,32 @@ export const adminUsersRouter = router({
           }).where(eq(companies.id, membership.companyId));
         }
 
+        if (membership && (input.segments !== undefined || input.products !== undefined || input.services !== undefined || input.keywords !== undefined || input.servedStates !== undefined || input.servedMunicipalities !== undefined || input.catmatCodes !== undefined || input.catserCodes !== undefined || input.minimumValue !== undefined || input.maximumValue !== undefined || input.notificationPreferences !== undefined)) {
+          await tx.insert(companyProfiles).values({
+            companyId: membership.companyId, segments: input.segments ?? [], products: input.products ?? [],
+            services: input.services ?? [], keywords: input.keywords ?? [], servedStates: input.servedStates ?? [],
+            servedMunicipalities: input.servedMunicipalities ?? [], catmatCodes: input.catmatCodes ?? [],
+            catserCodes: input.catserCodes ?? [], minimumValue: input.minimumValue == null ? null : String(input.minimumValue),
+            maximumValue: input.maximumValue == null ? null : String(input.maximumValue),
+            notificationPreferences: input.notificationPreferences ?? {}, updatedAt: new Date(),
+          }).onConflictDoUpdate({
+            target: companyProfiles.companyId,
+            set: {
+              ...(input.segments !== undefined ? { segments: input.segments } : {}),
+              ...(input.products !== undefined ? { products: input.products } : {}),
+              ...(input.services !== undefined ? { services: input.services } : {}),
+              ...(input.keywords !== undefined ? { keywords: input.keywords } : {}),
+              ...(input.servedStates !== undefined ? { servedStates: input.servedStates } : {}),
+              ...(input.servedMunicipalities !== undefined ? { servedMunicipalities: input.servedMunicipalities } : {}),
+              ...(input.catmatCodes !== undefined ? { catmatCodes: input.catmatCodes } : {}),
+              ...(input.catserCodes !== undefined ? { catserCodes: input.catserCodes } : {}),
+              ...(input.minimumValue !== undefined ? { minimumValue: input.minimumValue == null ? null : String(input.minimumValue) } : {}),
+              ...(input.maximumValue !== undefined ? { maximumValue: input.maximumValue == null ? null : String(input.maximumValue) } : {}),
+              ...(input.notificationPreferences !== undefined ? { notificationPreferences: input.notificationPreferences } : {}),
+              updatedAt: new Date(),
+            },
+          });
+        }
         await tx.insert(auditLogs).values({
           actorUserId: ctx.user.id,
           companyId: membership?.companyId ?? null,
@@ -128,7 +176,7 @@ export const adminUsersRouter = router({
           details: {
             targetEmailBefore: target.email,
             targetEmailAfter: input.email,
-            changedFields: ["name", "email", "phone", "companyName", "cnpj", "state", "municipality", "primarySegment"],
+            changedFields: Object.keys(input).filter(key => key !== "userId"),
             emailVerificationReset: target.email.toLowerCase() !== input.email,
           },
         });
