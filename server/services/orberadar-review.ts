@@ -11,3 +11,18 @@ export async function setRadarReview(id:string,status:"pending"|"rejected") {
  if(!result.rowCount) throw new Error("Candidato indisponível para revisão");
  return {id,status};
 }
+
+export async function verifyRadarCandidate(id:string, deadline:string, evidence:string) {
+ const date=new Date(deadline);
+ if(!Number.isFinite(date.getTime())||date.getTime()<=Date.now()) throw new Error("Informe um prazo futuro confirmado na origem");
+ if(evidence.trim().length<15) throw new Error("Informe a evidência da validação");
+ const client=await getPool().connect();
+ try {
+ await client.query("BEGIN");
+ const result=await client.query("update orberadar_private.candidates set review_status='verified' where id=$1 and review_status='pending' returning id",[id]);
+ if(!result.rowCount) throw new Error("Candidato não está pendente");
+ await client.query("insert into orberadar_private.review_events(candidate_id,deadline,evidence) values($1,$2,$3)",[id,date,evidence.trim()]);
+ await client.query("COMMIT");
+ return {id,status:"verified" as const};
+ }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
+}
