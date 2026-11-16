@@ -292,12 +292,12 @@ export default function Portal() {
     : [];
 
   return (
-    <div className="min-h-screen bg-[#e5edf4] text-slate-800 md:flex">
+    <div className="min-h-screen bg-[#edf3f8] text-[#18344d] md:flex">
       {mobileMenuOpen && <button aria-label="Fechar menu" className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] md:hidden" onClick={() => setMobileMenuOpen(false)} type="button" />}
       <button aria-label="Abrir menu" className="fixed left-4 top-4 z-30 grid h-12 w-12 place-items-center rounded-full border border-white/15 bg-[#102b4e] text-white shadow-lg md:hidden" onClick={() => setMobileMenuOpen(true)} type="button">
         <Menu size={21} />
       </button>
-      <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#173b5b] bg-gradient-to-b from-[#102b4e] to-[#173f60] text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:border-r`}>
+      <aside className={`${mobileMenuOpen ? "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,85vw)] shadow-2xl" : "hidden"} flex-col border-r border-[#0b2542] bg-gradient-to-b from-[#0b2542] via-[#102f50] to-[#164666] text-white md:sticky md:top-0 md:flex md:h-screen md:w-64 md:shrink-0 md:border-r`}>
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
           <button aria-label="Fechar menu" className="ml-auto rounded-lg p-2 text-blue-100 hover:bg-white/10 md:hidden" onClick={() => setMobileMenuOpen(false)} type="button"><X size={20} /></button>
           <BrandMark variant="dark" />
@@ -311,11 +311,11 @@ export default function Portal() {
         >
           {navigationGroups.map(group => group.items.length > 0 && (
             <section key={group.label} className="mb-3">
-              <p className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-200/70">{group.label}</p>
+              <p className="mb-2 px-3 pt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#55c4e6]">{group.label}</p>
               <div className="space-y-1">
                 {group.items.map(({ label, href, icon: Icon }) => (
                   <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href || (href === "/app/opportunities" && path.startsWith("/app/opportunities/")) ? "bg-[#1d6685] text-white shadow-inner" : "text-blue-100 hover:bg-white/10 hover:text-white"}`}>
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href || (href === "/app/opportunities" && path.startsWith("/app/opportunities/")) ? "bg-[#087eaa] text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] ring-1 ring-cyan-200/30" : "text-[#d8e8f5] hover:bg-[#1d496b] hover:text-white"}`}>
                     <Icon size={18} />{label}
                   </Link>
                 ))}
@@ -325,12 +325,12 @@ export default function Portal() {
         </nav>
         <div className="mt-auto border-t border-white/15 p-3 sm:p-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan-500 font-semibold text-white">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#00a6cf] font-semibold text-[#062a46]">
               {me?.name?.slice(0, 1).toUpperCase() ?? "C"}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">{me?.name}</p>
-              <p className="truncate text-xs text-blue-200">{me?.email}</p>
+              <p className="truncate text-xs text-[#a9c6dc]">{me?.email}</p>
             </div>
           </div>
           <button
@@ -344,7 +344,7 @@ export default function Portal() {
         </div>
       </aside>
       <main className="min-w-0 flex-1">
-        <header className="relative z-10 flex items-center justify-between border-b border-[#c4d5e2] bg-[#d9e7f0]/95 px-5 pb-4 pt-20 shadow-sm backdrop-blur sm:px-8 sm:pt-20 md:sticky md:top-0 md:py-4">
+        <header className="relative z-10 flex items-center justify-between border-b border-[#c4d5e2] bg-[#e4edf5]/95 px-5 pb-4 pt-20 shadow-sm backdrop-blur sm:px-8 sm:pt-20 md:sticky md:top-0 md:py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-cyan-800">
               OrbeEdital / Portal

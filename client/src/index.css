@@ -207,3 +207,28 @@
 .orbe-client-pages .rounded-xl {
   border-radius: 0.9rem;
 }
+
+/* OrbeEdital brand palette: shared treatment for client billing and plan cards */
+:root {
+  --orbe-navy: #102b4e;
+  --orbe-blue: #16466f;
+  --orbe-cyan: #087eaa;
+  --orbe-cyan-bright: #00a6cf;
+  --orbe-surface: #edf3f8;
+}
+.orbe-client-pages .bg-cyan-50,
+.orbe-client-pages .bg-cyan-50\/70 {
+  background-color: #e7f4fa;
+}
+.orbe-client-pages .text-cyan-950,
+.orbe-client-pages .text-cyan-900 {
+  color: #123b5b;
+}
+.orbe-client-pages .text-cyan-800,
+.orbe-client-pages .text-cyan-700 {
+  color: #087eaa;
+}
+.orbe-client-pages .border-cyan-200,
+.orbe-client-pages .border-cyan-300 {
+  border-color: #9bcfe0;
+}
