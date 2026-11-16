@@ -60,6 +60,7 @@ export function BillingPage() {
   if (usage.error) return <ErrorState message={usage.error.message} onRetry={() => usage.refetch()} />;
 
   const current = usage.data?.plan;
+  const comparisonFeatures = Array.from(new Set((plans.data ?? []).flatMap(plan => plan.features ?? [])));
   const counters = usage.data?.usage;
   const limits = usage.data?.limits;
   const meters = current && counters && limits ? [
@@ -110,12 +111,25 @@ export function BillingPage() {
               </div>
               {plan.description && <p className="mt-2 text-sm text-slate-500">{plan.description}</p>}
               <p className="mt-5 text-3xl font-bold text-[#102B4E]">{money(plan.monthlyPriceCents / 100)}<span className="text-sm font-normal text-slate-500">/mês</span></p>
-              <ul className="mt-4 flex-1 space-y-2 text-sm text-slate-600">
-                <li>• Até {Number(planLimits.maxSearchesPerMonth ?? 0).toLocaleString("pt-BR")} pesquisas por mês</li>
-                <li>• Até {Number(planLimits.maxFavorites ?? 0).toLocaleString("pt-BR")} oportunidades favoritas</li>
-                <li>• Até {Number(planLimits.maxSavedSearches ?? 0).toLocaleString("pt-BR")} pesquisas salvas</li>
-                {(plan.features ?? []).map(feature => <li key={feature}>• {feature}</li>)}
-              </ul>
+              <div className="mt-4 flex-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-[#087eaa]">Recursos e limites do plano</p>
+                <ul className="mt-3 space-y-2.5 text-sm">
+                  {[
+                    { label: "Pesquisas por mês", value: Number(planLimits.maxSearchesPerMonth ?? 0) },
+                    { label: "Oportunidades favoritas", value: Number(planLimits.maxFavorites ?? 0) },
+                    { label: "Pesquisas salvas", value: Number(planLimits.maxSavedSearches ?? 0) },
+                  ].map(item => <li key={item.label} className={item.value > 0 ? "flex items-start gap-2 text-slate-700" : "flex items-start gap-2 text-slate-400 line-through"}>
+                    <span className={item.value > 0 ? "font-bold text-emerald-600" : "text-slate-400"}>{item.value > 0 ? "✓" : "—"}</span>
+                    <span>{item.value > 0 ? "Até " + item.value.toLocaleString("pt-BR") + " " + item.label.toLowerCase() : item.label + " não incluídas"}</span>
+                  </li>)}
+                  {comparisonFeatures.map(feature => {
+                    const included = (plan.features ?? []).includes(feature);
+                    return <li key={feature} className={included ? "flex items-start gap-2 text-slate-700" : "flex items-start gap-2 text-slate-400 line-through"}>
+                      <span className={included ? "font-bold text-emerald-600" : "text-slate-400"}>{included ? "✓" : "—"}</span><span>{feature}</span>
+                    </li>;
+                  })}
+                </ul>
+              </div>
               <div className="mt-6 rounded-lg border border-slate-200 p-3">
                 <p className="text-sm font-semibold text-slate-700">Forma de pagamento</p>
                 <div className="mt-2 grid grid-cols-2 gap-2">
