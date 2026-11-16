@@ -29,7 +29,7 @@ import { supportRouter } from "./supportRouter";
 import { orbeAiRouter } from "./orbeAiRouter";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
+import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure, superadminProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
 import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment, reconcileExternallyRefundedPayment, verifyMercadoPagoPayments } from "./services/mercadoPago";
@@ -408,11 +408,11 @@ export const appRouter = router({
   adminUsers: adminUsersRouter,
   admin: router({
     settings: router({
-      get: adminProcedure.query(async () => {
+      get: superadminProcedure.query(async () => {
         const rows = await getDb().select().from(globalSettings);
         return Object.fromEntries(rows.map(row => [row.key, row.value]));
       }),
-      save: adminProcedure.input(z.object({
+      save: superadminProcedure.input(z.object({
         key: z.enum(["branding", "experience"]),
         value: z.record(z.string(), z.unknown()),
       })).mutation(async ({ input, ctx }) => {
@@ -420,7 +420,7 @@ export const appRouter = router({
         await getDb().insert(auditLogs).values({ actorUserId: ctx.user.id, action: "global_settings.updated", entityType: "global_setting", entityId: input.key, details: { keys: Object.keys(input.value) } });
         return saved;
       }),
-      announce: adminProcedure.input(z.object({ title: z.string().trim().min(3).max(120), message: z.string().trim().min(5).max(1000), audience: z.enum(["all", "active"]) })).mutation(async ({ input, ctx }) => {
+      announce: superadminProcedure.input(z.object({ title: z.string().trim().min(3).max(120), message: z.string().trim().min(5).max(1000), audience: z.enum(["all", "active"]) })).mutation(async ({ input, ctx }) => {
         const db = getDb();
         const recipients = input.audience === "active"
           ? await db.selectDistinct({ userId: companyMembers.userId }).from(companyMembers).innerJoin(subscriptions, eq(subscriptions.companyId, companyMembers.companyId)).where(eq(subscriptions.status, "active"))
