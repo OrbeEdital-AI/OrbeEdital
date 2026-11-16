@@ -5,9 +5,9 @@ import { date, Loading, ErrorState } from "./common";
 import { OpportunityList } from "./OpportunityPages";
 import type { AnyOpportunity } from "./common";
 
-function savedFilters(criteria: Record<string, unknown>) {
+function savedFilters(criteria: Record<string, unknown>, name: string) {
   const state = typeof criteria.state === "string" ? criteria.state : Array.isArray(criteria.states) ? criteria.states[0] : undefined;
-  return { query: typeof criteria.query === "string" ? criteria.query.trim() : "", state: typeof state === "string" ? state : "", source: criteria.source === "pncp" ? "pncp" as const : criteria.source === "compras.gov.br" ? "compras.gov.br" as const : undefined };
+  return { query: typeof criteria.query === "string" && criteria.query.trim() ? criteria.query.trim() : name.trim(), state: typeof state === "string" ? state : "", source: criteria.source === "pncp" ? "pncp" as const : criteria.source === "compras.gov.br" ? "compras.gov.br" as const : undefined };
 }
 
 export function SavedSearches() {
@@ -36,7 +36,7 @@ export function SavedSearches() {
               <div>
                 <p className="font-medium">{s.name}</p>
                 <p className="text-xs text-slate-500">
-                  Palavra-chave: {savedFilters((s.criteria ?? {}) as Record<string, unknown>).query || "Todas"} · Atualizada em {date(s.updatedAt)}
+                  Palavra-chave: {savedFilters((s.criteria ?? {}) as Record<string, unknown>, s.name).query || "Todas"} · Atualizada em {date(s.updatedAt)}
                 </p>
               </div>
               <div className="flex gap-3">
@@ -44,7 +44,7 @@ export function SavedSearches() {
                   className="text-sm font-semibold text-cyan-800"
                   disabled={record.isPending}
                   onClick={async () => {
-                    const filters = savedFilters((s.criteria ?? {}) as Record<string, unknown>);
+                    const filters = savedFilters((s.criteria ?? {}) as Record<string, unknown>, s.name);
                     try {
                       await record.mutateAsync();
                       setPage(1);
