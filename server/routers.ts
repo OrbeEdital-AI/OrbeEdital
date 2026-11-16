@@ -1,3 +1,4 @@
+import { runAmmMtPilot } from "./connectors/orberadar-fetch";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
@@ -408,6 +409,10 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    radarPilot: superadminProcedure.mutation(async () => {
+      const result = await runAmmMtPilot();
+      return { ...result, mode: "review" as const };
+    }),
     settings: router({
       get: superadminProcedure.query(async () => {
         const rows = await getDb().select().from(globalSettings);
