@@ -24,7 +24,8 @@ export async function fetchRadarHtml(url: URL, request: typeof fetch = fetch): P
 }
 export function radarPlainText(html: string): string {
   const region = /<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(html)?.[1] ?? /<article\b[^>]*>([\s\S]*?)<\/article>/i.exec(html)?.[1] ?? html;
-  return region.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi," ").replace(/<[^>]*>/g," ").replace(/&nbsp;|&#160;/gi," ").replace(/&amp;/gi,"&").replace(/\s+/g," ").trim();
+  const entities: Record<string,string> = {nbsp:" ",amp:"&",lt:"<",gt:">",quot:'"',apos:"'",ordm:"º",ordf:"ª",ccedil:"ç",atilde:"ã",otilde:"õ",aacute:"á",eacute:"é",iacute:"í",oacute:"ó",uacute:"ú",acirc:"â",ecirc:"ê",ocirc:"ô",agrave:"à"};
+  return region.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi," ").replace(/<[^>]*>/g," ").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,(entity,key:string)=>{ if(key.startsWith("#")) { const value=key[1]?.toLowerCase()==="x"?parseInt(key.slice(2),16):Number(key.slice(1)); return value>0&&value<=0x10ffff&&!(value>=0xd800&&value<=0xdfff)?String.fromCodePoint(value):entity; } const decoded=entities[key.toLowerCase()]; return decoded ? (key[0]===key[0].toUpperCase()?decoded.toUpperCase():decoded) : entity; }).replace(/\s+/g," ").trim();
 }
 // Explicit dry run only; no database writes or automatic publication.
 export async function runAmmMtPilot(now = new Date(), request: typeof fetch = fetch): Promise<{ notices: RadarNotice[]; failures: string[] }> {
