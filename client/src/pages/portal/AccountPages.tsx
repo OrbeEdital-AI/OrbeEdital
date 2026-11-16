@@ -2,7 +2,19 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { date, Loading, ErrorState } from "./common";
+import { OpportunityList } from "./OpportunityPages";
+import type { AnyOpportunity } from "./common";
+
+function savedFilters(criteria: Record<string, unknown>) {
+  const state = typeof criteria.state === "string" ? criteria.state : Array.isArray(criteria.states) ? criteria.states[0] : undefined;
+  return { query: typeof criteria.query === "string" ? criteria.query.trim() : "", state: typeof state === "string" ? state : "", source: criteria.source === "pncp" ? "pncp" as const : criteria.source === "compras.gov.br" ? "compras.gov.br" as const : undefined };
+}
+
 export function SavedSearches() {
+  const [active, setActive] = useState<{ name: string; filters: ReturnType<typeof savedFilters> } | null>(null);
+  const [page, setPage] = useState(1);
+  const record = trpc.opportunities.recordSearch.useMutation();
+  const results = trpc.opportunities.search.useQuery({ query: active?.filters.query || undefined, states: active?.filters.state ? [active.filters.state] : undefined, source: active?.filters.source, onlyOpen: true, page, pageSize: 25 }, { enabled: active !== null, staleTime: 0, refetchOnMount: "always" });
   const query = trpc.savedSearches.list.useQuery();
   const utils = trpc.useUtils();
   const remove = trpc.savedSearches.delete.useMutation({
@@ -24,21 +36,21 @@ export function SavedSearches() {
               <div>
                 <p className="font-medium">{s.name}</p>
                 <p className="text-xs text-slate-500">
-                  Atualizada em {date(s.updatedAt)}
+                  Palavra-chave: {savedFilters((s.criteria ?? {}) as Record<string, unknown>).query || "Todas"} · Atualizada em {date(s.updatedAt)}
                 </p>
               </div>
               <div className="flex gap-3">
                 <button
                   className="text-sm font-semibold text-cyan-800"
-                  onClick={() => {
-                    const criteria = (s.criteria ?? {}) as Record<string, unknown>;
-                    const params = new URLSearchParams();
-                    if (typeof criteria.query === "string" && criteria.query.trim()) params.set("query", criteria.query);
-                    const state = typeof criteria.state === "string" ? criteria.state : Array.isArray(criteria.states) ? criteria.states[0] : undefined;
-                    if (typeof state === "string" && state) params.set("state", state);
-                    if (criteria.source === "pncp" || criteria.source === "compras.gov.br") params.set("source", criteria.source);
-                    params.set("savedSearch", "1");
-                    window.location.assign(`/app/opportunities?${params.toString()}`);
+                  disabled={record.isPending}
+                  onClick={async () => {
+                    const filters = savedFilters((s.criteria ?? {}) as Record<string, unknown>);
+                    try {
+                      await record.mutateAsync();
+                      setPage(1);
+                      setActive({ name: s.name, filters });
+                      if (active && JSON.stringify(active.filters) === JSON.stringify(filters) && page === 1) void results.refetch();
+                    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível abrir a pesquisa."); }
                   }}
                 >
                   Abrir pesquisa
@@ -58,6 +70,11 @@ export function SavedSearches() {
           Você ainda não salvou pesquisas.
         </p>
       )}
+      {active && <div className="mt-6 space-y-4 border-t pt-5">
+        <h2 className="font-bold">Resultados: {active.name}</h2>
+        <p className="text-sm text-slate-600">Palavra-chave: {active.filters.query || "Todas"} · Estado: {active.filters.state || "Todos"} · Fonte: {active.filters.source || "Todas"} {results.data ? `· ${results.data.total} resultados` : ""}</p>
+        <OpportunityList items={(results.data?.items ?? []) as AnyOpportunity[]} loading={results.isFetching} error={results.error?.message} empty="Nenhuma oportunidade aberta encontrada com estes filtros." onRetry={() => results.refetch()} pagination={results.data ? { page: results.data.page, totalPages: results.data.totalPages, total: results.data.total, onPageChange: setPage } : undefined} />
+      </div>}
     </section>
   );
 }
