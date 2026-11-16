@@ -311,7 +311,7 @@ export function SearchPanel({
             save.mutate({
               name: searchName.trim(),
               criteria: {
-                query: draft || undefined,
+                query: draft.trim() || query.trim() || searchName.trim(),
                 state: state || undefined,
                 source: source || undefined,
                 onlyOpen: true,
