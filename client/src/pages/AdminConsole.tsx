@@ -13,12 +13,13 @@ import AdminAuditPage from "@/pages/AdminAuditPage";
 import { AdminSupportPage } from "@/pages/SupportPages";
 import { AdminOrbeAIPage } from "@/pages/OrbeAIPage";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
+type Section = "radar" | "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
 
 const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
   { title: "Operação", items: [
     { id: "overview", label: "Visão geral", icon: LayoutDashboard },
     { id: "sources", label: "Fontes e sincronizações", icon: Database },
+    { id: "radar", label: "OrbeRadar", icon: Database },
   ]},
   { title: "Pessoas e acesso", items: [
     { id: "customers", label: "Clientes e usuários", icon: Users },
@@ -40,6 +41,7 @@ const nav = navGroups.flatMap(group => group.items);
 const sectionDescriptions: Record<Section, string> = {
   overview: "Resumo operacional, indicadores e situação dos módulos da plataforma.",
   customers: "Consulte contas, verificação de e-mail, papéis e sessões dos usuários.",
+  radar: "Piloto de descoberta de avisos oficiais, sem importação automática.",
   sources: "Acompanhe integrações ativas, fontes desativadas, agendamentos e execuções.",
   finance: "Consulte os registros financeiros disponíveis e identifique integrações pendentes.",
   permissions: "Entenda os papéis existentes e os limites de acesso aplicados no servidor.",
@@ -415,6 +417,7 @@ export default function AdminConsole() {
         {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => selectSection("sources")}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
+        {section === "radar" && <RadarPilotPage/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
         {section === "permissions" && <PermissionsPage/>}
         {section === "audit" && <AdminAuditPage/>}
@@ -424,4 +427,31 @@ export default function AdminConsole() {
       </div>
     </main>
   </div>;
+}
+
+function RadarPilotPage() {
+ const review = trpc.admin.radarReview.useQuery();
+ const [verification,setVerification]=useState<string|null>(null);
+ const [deadline,setDeadline]=useState("");
+ const [evidence,setEvidence]=useState("");
+ const verify=trpc.admin.radarVerify.useMutation({onSuccess:()=>{setVerification(null);setDeadline("");setEvidence("");void review.refetch();}});
+ const change = trpc.admin.radarReviewStatus.useMutation({onSuccess:()=>{void review.refetch();}});
+ const run = trpc.admin.radarPilot.useMutation({onSuccess:()=>{void review.refetch();}});
+ const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
+ const [ids,setIds]=useState("");
+ const [saveReview,setSaveReview]=useState(false);
+ return <section className="space-y-4 rounded-xl border bg-white p-5">
+ <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
+ <select className="rounded border p-2" value={source} onChange={e=>{setSource(e.target.value as "amm-mt"|"amm-mg");run.reset();}} disabled={run.isPending}><option value="amm-mt">AMM-MT — descoberta</option><option value="amm-mg">AMM-MG — matérias por identificador</option></select>
+ {source==="amm-mg" && <input className="block w-full rounded border p-2" value={ids} onChange={e=>setIds(e.target.value)} placeholder="Até 5 códigos de matéria separados por vírgula"/>}
+ <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será publicada na base dos clientes.</p>
+ <label className="flex gap-2 items-center"><input type="checkbox" checked={saveReview} disabled={run.isPending} onChange={e=>setSaveReview(e.target.checked)}/> Salvar extração na área privada de revisão</label>
+ <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate({source,saveReview,ids:source==="amm-mg"?ids.split(/[,\s]+/).filter(Boolean):undefined})}>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
+ {run.error && <p role="alert" className="text-red-700">{run.error.message}</p>}
+ {run.data && <div className="space-y-3"><p>{run.data.saved && <span>Extração armazenada para revisão · </span>}{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
+ <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base estadual correspondente; ausência de coincidência não garante registro inédito.</p>
+ {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>{n.modality ?? "Licitação"}: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo de propostas não identificado"}</p><p className="text-sm text-slate-600">Sessão: {n.sessionEvidence ?? "Não identificada"}</p><p className="text-amber-700 text-sm">Vigência não confirmada — não publicar sem validação.</p>{n.reviewReasons.map(reason=><p key={reason} className="text-sm text-slate-500">{reason}</p>)}<p className="font-semibold">{n.matches.length ? "Possível duplicidade" : "Sem coincidência encontrada"}</p>{n.matches.map(m=><p key={m.id} className="text-sm text-slate-600">{m.reason} — {m.title}</p>)}<a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
+ {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
+ <div className="space-y-3 border-t pt-4"><h2 className="text-lg font-bold">Central de revisão</h2><button className="rounded border px-3 py-2" onClick={()=>void review.refetch()} disabled={review.isFetching}>Atualizar histórico</button>{review.error && <p role="alert">{review.error.message}</p>}{change.error && <p role="alert">{change.error.message}</p>}<h3 className="font-semibold">Últimas extrações</h3>{review.data?.runs.map(r=><p key={r.id}>{r.source} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {r.candidate_count} candidatos</p>)}<h3 className="font-semibold">Candidatos armazenados</h3>{review.data?.candidates.length===0 && <p>Nenhum candidato armazenado.</p>}{review.data?.candidates.map(c=><article key={c.id} className="rounded border p-3 space-y-2"><p className="font-semibold">{c.payload?.object ?? c.payload?.title ?? c.publication_id}</p><p>{c.source} · {c.review_status==="rejected"?"Descartado":c.review_status==="verified"?"Verificado":"Aguardando revisão"}</p><p>{c.payload?.deadlineEvidence ?? "Prazo não identificado"}</p><a href={c.source_url} target="_blank" rel="noreferrer" className="underline">Publicação oficial</a>{c.review_status==="pending" && <button className="ml-3 rounded border px-3 py-1" onClick={()=>{setVerification(c.id);setDeadline("");setEvidence("");verify.reset();}}>Validar</button>}{verification===c.id && <div className="space-y-2"><label className="block">Prazo confirmado (horário de Brasília)<input className="block rounded border p-2" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)}/></label><textarea className="block w-full rounded border p-2" placeholder="Evidência na fonte oficial, prazo e conferência de duplicidade" value={evidence} onChange={e=>setEvidence(e.target.value)} maxLength={2000}/><button className="rounded border px-3 py-1" disabled={verify.isPending||!deadline||evidence.trim().length<15} onClick={()=>verify.mutate({id:c.id,deadline:new Date(deadline+":00-03:00").toISOString(),evidence})}>Confirmar validação sem publicar</button><button className="ml-2" onClick={()=>setVerification(null)}>Cancelar</button>{verify.error && <p role="alert">{verify.error.message}</p>}</div>}{c.review_status!=="verified" && <button className="ml-3 rounded border px-3 py-1" disabled={change.isPending} onClick={()=>change.mutate({id:c.id,status:c.review_status==="rejected"?"pending":"rejected"})}>{c.review_status==="rejected"?"Reabrir revisão":"Descartar"}</button>}</article>)}</div>
+ </section>;
 }

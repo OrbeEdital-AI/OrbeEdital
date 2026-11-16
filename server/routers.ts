@@ -1,3 +1,7 @@
+import { listRadarReview, setRadarReview, verifyRadarCandidate } from "./services/orberadar-review";
+import { persistRadarRun } from "./services/orberadar-staging";
+import { compareRadarNotices } from "./services/orberadar-compare";
+import { runAmmMgPilot, runAmmMtPilot } from "./connectors/orberadar-fetch";
 import { parse as parseCookieHeader } from "cookie";
 import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
@@ -408,6 +412,17 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    radarVerify: superadminProcedure.input(z.object({id:z.string().uuid(),deadline:z.string().datetime({offset:true}),evidence:z.string().trim().min(15).max(2000)})).mutation(({input})=>verifyRadarCandidate(input.id,input.deadline,input.evidence)),
+    radarReview: superadminProcedure.query(()=>listRadarReview()),
+    radarReviewStatus: superadminProcedure.input(z.object({id:z.string().uuid(),status:z.enum(["pending","rejected"])})).mutation(({input})=>setRadarReview(input.id,input.status)),
+    radarPilot: superadminProcedure.input(z.object({ source: z.enum(["amm-mt","amm-mg"]), ids: z.array(z.string().regex(/^[a-f0-9]{8}$/i)).max(5).optional(), saveReview: z.boolean().optional() }).optional()).mutation(async ({input}) => {
+      const startedAt = new Date();
+      const source = input?.source ?? "amm-mt";
+      const result = source === "amm-mg" ? await runAmmMgPilot(input?.ids ?? []) : await runAmmMtPilot();
+      const notices = await compareRadarNotices(result.notices);
+      const saved = input?.saveReview ? await persistRadarRun(source, startedAt, notices, result.failures) : null;
+      return { ...result, notices, saved, mode: "review" as const };
+    }),
     settings: router({
       get: superadminProcedure.query(async () => {
         const rows = await getDb().select().from(globalSettings);
