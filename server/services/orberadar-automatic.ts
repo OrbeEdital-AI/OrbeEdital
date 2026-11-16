@@ -7,7 +7,8 @@ import { persistRadarRun } from "./orberadar-staging";
 export async function runRadarAutomatic() {
  const lock=await getPool().connect();
  try {
-  const result=await lock.query<{locked:boolean}>("select pg_try_advisory_lock(481229,6) as locked");
+  await lock.query("BEGIN");
+  const result=await lock.query<{locked:boolean}>("select pg_try_advisory_xact_lock(481229,6) as locked");
   if(!result.rows[0].locked) return {status:"busy" as const};
   const startedAt=new Date();
   try {
@@ -19,6 +20,9 @@ export async function runRadarAutomatic() {
   } catch(error) {
    await persistRadarRun("amm-mt",startedAt,[],["Falha na extração ou comparação automática"]);
    throw error;
-  } finally {await lock.query("select pg_advisory_unlock(481229,6)");}
- } finally {lock.release();}
+  }
+ } finally {
+  try { await lock.query("ROLLBACK"); lock.release(); }
+  catch { lock.release(true); }
+ }
 }
