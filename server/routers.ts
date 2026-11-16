@@ -1,4 +1,4 @@
-import { listRadarReview, setRadarReview } from "./services/orberadar-review";
+import { listRadarReview, setRadarReview, verifyRadarCandidate } from "./services/orberadar-review";
 import { persistRadarRun } from "./services/orberadar-staging";
 import { compareRadarNotices } from "./services/orberadar-compare";
 import { runAmmMgPilot, runAmmMtPilot } from "./connectors/orberadar-fetch";
@@ -412,6 +412,7 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    radarVerify: superadminProcedure.input(z.object({id:z.string().uuid(),deadline:z.string().datetime({offset:true}),evidence:z.string().trim().min(15).max(2000)})).mutation(({input})=>verifyRadarCandidate(input.id,input.deadline,input.evidence)),
     radarReview: superadminProcedure.query(()=>listRadarReview()),
     radarReviewStatus: superadminProcedure.input(z.object({id:z.string().uuid(),status:z.enum(["pending","rejected"])})).mutation(({input})=>setRadarReview(input.id,input.status)),
     radarPilot: superadminProcedure.input(z.object({ source: z.enum(["amm-mt","amm-mg"]), ids: z.array(z.string().regex(/^[a-f0-9]{8}$/i)).max(5).optional(), saveReview: z.boolean().optional() }).optional()).mutation(async ({input}) => {
