@@ -13,12 +13,13 @@ import AdminAuditPage from "@/pages/AdminAuditPage";
 import { AdminSupportPage } from "@/pages/SupportPages";
 import { AdminOrbeAIPage } from "@/pages/OrbeAIPage";
 
-type Section = "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
+type Section = "radar" | "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
 
 const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
   { title: "Operação", items: [
     { id: "overview", label: "Visão geral", icon: LayoutDashboard },
     { id: "sources", label: "Fontes e sincronizações", icon: Database },
+    { id: "radar", label: "OrbeRadar", icon: Database },
   ]},
   { title: "Pessoas e acesso", items: [
     { id: "customers", label: "Clientes e usuários", icon: Users },
@@ -40,6 +41,7 @@ const nav = navGroups.flatMap(group => group.items);
 const sectionDescriptions: Record<Section, string> = {
   overview: "Resumo operacional, indicadores e situação dos módulos da plataforma.",
   customers: "Consulte contas, verificação de e-mail, papéis e sessões dos usuários.",
+  radar: "Piloto de descoberta de avisos oficiais, sem importação automática.",
   sources: "Acompanhe integrações ativas, fontes desativadas, agendamentos e execuções.",
   finance: "Consulte os registros financeiros disponíveis e identifique integrações pendentes.",
   permissions: "Entenda os papéis existentes e os limites de acesso aplicados no servidor.",
@@ -415,6 +417,7 @@ export default function AdminConsole() {
         {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => selectSection("sources")}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
+        {section === "radar" && <RadarPilotPage/>}
         {section === "finance" && <FinancePage isAdmin={true}/>}
         {section === "permissions" && <PermissionsPage/>}
         {section === "audit" && <AdminAuditPage/>}
@@ -424,4 +427,18 @@ export default function AdminConsole() {
       </div>
     </main>
   </div>;
+}
+
+function RadarPilotPage() {
+ const run = trpc.admin.radarPilot.useMutation();
+ return <section className="space-y-4 rounded-xl border bg-white p-5">
+ <h2 className="text-lg font-bold">OrbeRadar · AMM-MT</h2>
+ <p className="text-sm text-slate-600">Teste experimental dos últimos sete dias. Até 12 publicações. Nenhuma oportunidade será gravada ou publicada.</p>
+ <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate() }>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
+ {run.error && <p role="alert" className="text-red-700">{run.error.message}</p>}
+ {run.data && <div className="space-y-3"><p>{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
+ <p className="text-sm text-slate-500">Todos aguardam revisão. Duplicidade na base ainda não verificada.</p>
+ {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>Pregão: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo não identificado"}</p><a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
+ {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
+ </section>;
 }
