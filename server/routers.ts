@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { Request, Response } from "express";
 import { and, count, desc, eq, gte, inArray, isNotNull, lt, or, sql, sum } from "drizzle-orm";
 import { z } from "zod";
-import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites, notifications } from "../drizzle/schema";
+import { auditLogs, connectors, syncRuns, users, opportunities, subscriptions, payments, plans, companies, companyMembers, companyProfiles, favorites, notifications, globalSettings } from "../drizzle/schema";
 import {
   AUTH_COOKIE_NAME,
   CSRF_COOKIE_NAME,
@@ -29,7 +29,7 @@ import { supportRouter } from "./supportRouter";
 import { orbeAiRouter } from "./orbeAiRouter";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure } from "./_core/trpc";
+import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedure, router, sourceOperatorProcedure, protectedProcedure, superadminProcedure } from "./_core/trpc";
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
 import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment, reconcileExternallyRefundedPayment, verifyMercadoPagoPayments } from "./services/mercadoPago";
@@ -407,6 +407,31 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    settings: router({
+      get: superadminProcedure.query(async () => {
+        const rows = await getDb().select().from(globalSettings);
+        return Object.fromEntries(rows.map(row => [row.key, row.value]));
+      }),
+      save: superadminProcedure.input(z.object({
+        key: z.enum(["branding", "experience"]),
+        value: z.record(z.string(), z.unknown()),
+      })).mutation(async ({ input, ctx }) => {
+        const [saved] = await getDb().insert(globalSettings).values({ key: input.key, value: input.value, updatedBy: ctx.user.id, updatedAt: new Date() }).onConflictDoUpdate({ target: globalSettings.key, set: { value: input.value, updatedBy: ctx.user.id, updatedAt: new Date() } }).returning();
+        await getDb().insert(auditLogs).values({ actorUserId: ctx.user.id, action: "global_settings.updated", entityType: "global_setting", entityId: input.key, details: { keys: Object.keys(input.value) } });
+        return saved;
+      }),
+      announce: superadminProcedure.input(z.object({ title: z.string().trim().min(3).max(120), message: z.string().trim().min(5).max(1000), audience: z.enum(["all", "active"]) })).mutation(async ({ input, ctx }) => {
+        const db = getDb();
+        const recipients = input.audience === "active"
+          ? await db.selectDistinct({ userId: companyMembers.userId }).from(companyMembers).innerJoin(subscriptions, eq(subscriptions.companyId, companyMembers.companyId)).where(eq(subscriptions.status, "active"))
+          : await db.select({ userId: users.id }).from(users).where(eq(users.role, "user"));
+        if (!recipients.length) return { sent: 0 };
+        const rows = recipients.map(recipient => ({ userId: recipient.userId, type: "announcement", title: input.title, message: input.message, href: "/app" }));
+        for (let offset = 0; offset < rows.length; offset += 500) await db.insert(notifications).values(rows.slice(offset, offset + 500));
+        await db.insert(auditLogs).values({ actorUserId: ctx.user.id, action: "announcement.sent", entityType: "notification", details: { title: input.title, audience: input.audience, recipientCount: rows.length } });
+        return { sent: rows.length };
+      }),
+    }),
     overview: sourceOperatorProcedure.query(async () => {
       await ensureBuiltInConnectors();
       const db = getDb();
