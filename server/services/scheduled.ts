@@ -1,3 +1,4 @@
+import { runRadarAutomatic } from "./orberadar-automatic";
 import { jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
 import { eq, inArray } from "drizzle-orm";
@@ -133,6 +134,11 @@ export async function handleScheduledSync(req: Request) {
 
   if (taskUid === "supabase-cron:all-sources") {
     const runs: Array<Record<string, unknown>> = [];
+    // Explicit opt-in; keep the existing source schedule unaffected by default.
+    if (process.env.ORBERADAR_AUTOCOLLECT === "true") {
+      try { runs.push({ source: "amm-mt", ...await runRadarAutomatic() }); }
+      catch { runs.push({ source: "amm-mt", status: "failed" }); }
+    }
     for (const source of enabledSources.filter(item => item.enabled)) {
       try {
         const result = await syncScheduledSource(source);
