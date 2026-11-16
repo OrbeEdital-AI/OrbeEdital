@@ -431,13 +431,17 @@ export default function AdminConsole() {
 
 function RadarPilotPage() {
  const run = trpc.admin.radarPilot.useMutation();
+ const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
+ const [ids,setIds]=useState("");
  return <section className="space-y-4 rounded-xl border bg-white p-5">
- <h2 className="text-lg font-bold">OrbeRadar · AMM-MT</h2>
- <p className="text-sm text-slate-600">Teste experimental dos últimos sete dias. Até 12 publicações. Nenhuma oportunidade será gravada ou publicada.</p>
- <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate() }>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
+ <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
+ <select className="rounded border p-2" value={source} onChange={e=>{setSource(e.target.value as "amm-mt"|"amm-mg");run.reset();}} disabled={run.isPending}><option value="amm-mt">AMM-MT — descoberta</option><option value="amm-mg">AMM-MG — matérias por identificador</option></select>
+ {source==="amm-mg" && <input className="block w-full rounded border p-2" value={ids} onChange={e=>setIds(e.target.value)} placeholder="Até 5 códigos de matéria separados por vírgula"/>}
+ <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será gravada ou publicada.</p>
+ <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate({source,ids:source==="amm-mg"?ids.split(/[,\s]+/).filter(Boolean):undefined})}>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
  {run.error && <p role="alert" className="text-red-700">{run.error.message}</p>}
  {run.data && <div className="space-y-3"><p>{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
- <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base de MT; ausência de coincidência não garante registro inédito.</p>
+ <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base estadual correspondente; ausência de coincidência não garante registro inédito.</p>
  {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>{n.modality ?? "Licitação"}: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo não identificado"}</p><p className="font-semibold">{n.matches.length ? "Possível duplicidade" : "Sem coincidência encontrada"}</p>{n.matches.map(m=><p key={m.id} className="text-sm text-slate-600">{m.reason} — {m.title}</p>)}<a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
  {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
  </section>;
