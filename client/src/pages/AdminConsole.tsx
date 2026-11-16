@@ -430,7 +430,9 @@ export default function AdminConsole() {
 }
 
 function RadarPilotPage() {
- const run = trpc.admin.radarPilot.useMutation();
+ const review = trpc.admin.radarReview.useQuery();
+ const change = trpc.admin.radarReviewStatus.useMutation({onSuccess:()=>{void review.refetch();}});
+ const run = trpc.admin.radarPilot.useMutation({onSuccess:()=>{void review.refetch();}});
  const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
  const [ids,setIds]=useState("");
  const [saveReview,setSaveReview]=useState(false);
@@ -446,5 +448,6 @@ function RadarPilotPage() {
  <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base estadual correspondente; ausência de coincidência não garante registro inédito.</p>
  {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>{n.modality ?? "Licitação"}: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo de propostas não identificado"}</p><p className="text-sm text-slate-600">Sessão: {n.sessionEvidence ?? "Não identificada"}</p><p className="text-amber-700 text-sm">Vigência não confirmada — não publicar sem validação.</p>{n.reviewReasons.map(reason=><p key={reason} className="text-sm text-slate-500">{reason}</p>)}<p className="font-semibold">{n.matches.length ? "Possível duplicidade" : "Sem coincidência encontrada"}</p>{n.matches.map(m=><p key={m.id} className="text-sm text-slate-600">{m.reason} — {m.title}</p>)}<a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
  {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
+ <div className="space-y-3 border-t pt-4"><h2 className="text-lg font-bold">Central de revisão</h2><button className="rounded border px-3 py-2" onClick={()=>void review.refetch()} disabled={review.isFetching}>Atualizar histórico</button>{review.error && <p role="alert">{review.error.message}</p>}{change.error && <p role="alert">{change.error.message}</p>}<h3 className="font-semibold">Últimas extrações</h3>{review.data?.runs.map(r=><p key={r.id}>{r.source} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {r.candidate_count} candidatos</p>)}<h3 className="font-semibold">Candidatos armazenados</h3>{review.data?.candidates.length===0 && <p>Nenhum candidato armazenado.</p>}{review.data?.candidates.map(c=><article key={c.id} className="rounded border p-3 space-y-2"><p className="font-semibold">{c.payload?.object ?? c.payload?.title ?? c.publication_id}</p><p>{c.source} · {c.review_status==="rejected"?"Descartado":c.review_status==="verified"?"Verificado":"Aguardando revisão"}</p><p>{c.payload?.deadlineEvidence ?? "Prazo não identificado"}</p><a href={c.source_url} target="_blank" rel="noreferrer" className="underline">Publicação oficial</a>{c.review_status!=="verified" && <button className="ml-3 rounded border px-3 py-1" disabled={change.isPending} onClick={()=>change.mutate({id:c.id,status:c.review_status==="rejected"?"pending":"rejected"})}>{c.review_status==="rejected"?"Reabrir revisão":"Descartar"}</button>}</article>)}</div>
  </section>;
 }
