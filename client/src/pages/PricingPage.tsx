@@ -24,6 +24,7 @@ export default function PricingPage() {
   const resumeCode = new URLSearchParams(window.location.search).get("resume");
   const selectedCode = new URLSearchParams(window.location.search).get("plan");
   const checkoutError = new URLSearchParams(window.location.search).get("checkoutError");
+  const comparisonFeatures = Array.from(new Set((plans.data ?? []).flatMap(plan => plan.features ?? [])));
 
   return (
     <main className="min-h-screen bg-[#f4f8fb] text-slate-800">
@@ -42,11 +43,11 @@ export default function PricingPage() {
         {resumeCode && <p className="mt-8 rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-center text-sm text-cyan-950">Sua conta já está criada. Continue a contratação abaixo; não é necessário refazer o cadastro nem escolher outro plano.</p>}
         {checkoutError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{checkoutError}</p>}
         {plans.isLoading ? <p className="mt-12 text-center text-slate-500">Carregando planos…</p> : plans.error ? <p className="mt-12 text-center text-rose-700">{plans.error.message}</p> : (
-          <div className="mt-12 grid grid-cols-1 justify-items-center gap-6">
+          <div className="mt-12 grid grid-cols-1 items-stretch gap-6 md:grid-cols-2">
             {(plans.data ?? []).filter(plan => !resumeCode || plan.code === resumeCode).map(plan => {
               const limits = plan.limits ?? {};
               const isSelected = selectedCode === plan.code || resumeCode === plan.code;
-              return <article key={plan.id} className={`flex w-full max-w-xl flex-col rounded-2xl border bg-white p-7 shadow-sm ${plan.code === "profissional" ? "border-cyan-400 ring-2 ring-cyan-100" : "border-slate-200"}`}>
+              return <article key={plan.id} className={`flex h-full w-full flex-col rounded-2xl border bg-white p-6 shadow-sm sm:p-7 ${plan.code === "profissional" ? "border-cyan-400 ring-2 ring-cyan-100" : "border-slate-200"}`}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-2xl font-bold text-[#102B4E]">{plan.name}</h2>
                   {plan.code === "profissional" && <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold text-cyan-900">Mais completo</span>}
@@ -58,10 +59,21 @@ export default function PricingPage() {
                   <div className="my-6 border-t border-slate-100"/>
                   <h3 className="text-sm font-bold text-[#153454]">Limites incluídos</h3>
                   <ul className="mt-3 space-y-3 text-sm text-slate-600">
-                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSearchesPerMonth ?? 0).toLocaleString("pt-BR")} pesquisas por mês</li>
-                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxFavorites ?? 0).toLocaleString("pt-BR")} oportunidades favoritas</li>
-                    <li className="flex gap-2"><Check className="shrink-0 text-emerald-600" size={17}/> {Number(limits.maxSavedSearches ?? 0).toLocaleString("pt-BR")} pesquisas salvas</li>
-                    {(plan.features ?? []).map(feature => <li className="flex gap-2" key={feature}><Check className="shrink-0 text-emerald-600" size={17}/>{feature}</li>)}
+                    {[
+                      { label: "Pesquisas por mês", value: Number(limits.maxSearchesPerMonth ?? 0) },
+                      { label: "Oportunidades favoritas", value: Number(limits.maxFavorites ?? 0) },
+                      { label: "Pesquisas salvas", value: Number(limits.maxSavedSearches ?? 0) },
+                    ].map(item => <li key={item.label} className={`flex items-start gap-2 ${item.value > 0 ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                      {item.value > 0 ? <Check className="mt-0.5 shrink-0 text-emerald-600" size={17}/> : <span className="mt-0.5 inline-block w-[17px] shrink-0"/>}
+                      <span>{item.value.toLocaleString("pt-BR")} {item.label.toLowerCase()}</span>
+                    </li>)}
+                    {comparisonFeatures.map(feature => {
+                      const included = (plan.features ?? []).includes(feature);
+                      return <li key={feature} className={`flex items-start gap-2 ${included ? "text-slate-700" : "text-slate-400 line-through"}`}>
+                        {included ? <Check className="mt-0.5 shrink-0 text-emerald-600" size={17}/> : <span className="mt-0.5 inline-block w-[17px] shrink-0"/>}
+                        <span>{feature}</span>
+                      </li>;
+                    })}
                   </ul>
                 </>}
                 {(auth.data || resumeCode) && <div className="mt-8 rounded-xl border border-slate-200 p-3">
