@@ -46,14 +46,27 @@ export default function Portal() {
   const [source, setSource] = useState<"" | "pncp" | "compras.gov.br">("");
   const [page, setPage] = useState(1);
   const [verificationFeedback, setVerificationFeedback] = useState("");
+  const [restoredSearchUrl, setRestoredSearchUrl] = useState("");
   const resendVerification = trpc.auth.requestEmailVerification.useMutation();
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
-  useEffect(() => {
-    if (path !== "/app/opportunities") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("savedSearch") !== "1") return;
+  const recordSearch = trpc.opportunities.recordSearch.useMutation();
+  const locationSearch = window.location.search;
+  const savedSearchRequested =
+    path === "/app/opportunities" &&
+    new URLSearchParams(locationSearch).get("savedSearch") === "1";
 
-    // Critérios na URL evitam a corrida entre disparar um evento e trocar de rota.
+  useEffect(() => {
+    if (path !== "/app/opportunities") {
+      setRestoredSearchUrl("");
+      return;
+    }
+    const params = new URLSearchParams(locationSearch);
+    if (params.get("savedSearch") !== "1") {
+      setRestoredSearchUrl(locationSearch);
+      return;
+    }
+
+    // Primeiro restaura todos os filtros; a consulta fica bloqueada até este estado ser aplicado.
     setQueryState(params.get("query") ?? "");
     setState(params.get("state") ?? "");
     const savedSource = params.get("source");
@@ -63,12 +76,13 @@ export default function Portal() {
         : ""
     );
     setPage(1);
+    setRestoredSearchUrl(locationSearch);
 
     // A abertura de uma pesquisa salva é uma consulta efetiva e entra no uso mensal.
     recordSearch.mutateAsync().catch(error => {
       toast.error(error instanceof Error ? error.message : "Não foi possível registrar a pesquisa.");
     });
-  }, [path]);
+  }, [path, locationSearch]);
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
@@ -87,7 +101,6 @@ export default function Portal() {
     enabled: !!auth.user && emailVerified,
     retry: false,
   });
-  const recordSearch = trpc.opportunities.recordSearch.useMutation();
   const handleExplicitSearch = async () => { await recordSearch.mutateAsync(); };
   const searchQuery = trpc.opportunities.search.useQuery(
     {
@@ -100,7 +113,10 @@ export default function Portal() {
     },
     {
       enabled:
-        !!auth.user && emailVerified && path === "/app/opportunities",
+        !!auth.user &&
+        emailVerified &&
+        path === "/app/opportunities" &&
+        (!savedSearchRequested || restoredSearchUrl === locationSearch),
     }
   );
   const favorites = trpc.favorites.list.useQuery(undefined, {
