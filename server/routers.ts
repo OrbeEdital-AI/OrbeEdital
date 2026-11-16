@@ -401,7 +401,8 @@ export const appRouter = router({
         try { await ensureCanSaveSearch(ctx.user.id); }
         catch (error) { throw new TRPCError({ code: "FORBIDDEN", message: error instanceof Error ? error.message : "Limite de pesquisas salvas atingido." }); }
       }
-      return saveSearch(ctx.user.id, input.name, input.criteria);
+      const query = typeof input.criteria.query === "string" ? input.criteria.query.trim() : "";
+      return saveSearch(ctx.user.id, input.name, { ...input.criteria, query: query || input.name });
     }),
     delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => deleteSavedSearch(ctx.user.id, input.id)),
   }),
