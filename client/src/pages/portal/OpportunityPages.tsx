@@ -63,7 +63,7 @@ export function Dashboard({
         <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
           <div className="max-w-2xl">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">Seu painel de oportunidades</p>
-            <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <h2 className="orbe-welcome-heading text-2xl font-bold tracking-tight text-white sm:text-3xl">
               {brazilGreeting(now)}! Vamos encontrar novos negócios?
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">
