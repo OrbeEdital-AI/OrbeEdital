@@ -214,7 +214,7 @@ function CustomerDirectory() {
                         if (!window.confirm(`Salvar os dados cadastrais de ${user.name}?`)) return;
                         updateCustomer.mutate({
                           userId: user.id, name: name.trim(), email: email.trim(), phone: phone.trim(),
-                          companyName: companyName.trim(), cnpj: cnpj.trim(), state: state.trim().toUpperCase(),
+                          companyName: companyName.trim() || undefined, cnpj: cnpj.trim(), state: state.trim().toUpperCase(),
                           municipality: municipality.trim(), primarySegment: primarySegment.trim(),
                         });
                       }} className="rounded-md border border-cyan-300 px-2.5 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-40">Editar dados</button>
