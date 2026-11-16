@@ -108,8 +108,6 @@ async function discoverPncpDocuments(opportunityId: string) {
   const controlNumber = String(
     row.controlNumber || raw.numeroControlePNCP || raw.numeroControlePncp || raw.codigoControlePNCP || ""
   ).trim();
-  // PNCP control number format: CNPJ-1-000050/2027. The last number is the
-  // PNCP sequence, not necessarily the public notice/procurement number (e.g. 55/2027).
   const controlMatch = controlNumber.match(/^([A-Za-z0-9]{14})-\d+-(\d{1,})\/(\d{4})$/);
   const cnpj = String(
     controlMatch?.[1] || row.agencyCnpj || raw.orgaoEntidadeCnpj || organization.cnpj ||
@@ -119,6 +117,8 @@ async function discoverPncpDocuments(opportunityId: string) {
     controlMatch?.[3] || raw.anoCompraPncp || raw.anoCompra || row.year ||
     (sourceParts.length >= 3 ? sourceParts[1] : "")
   );
+  // Prefer the official PNCP sequence in the control number or raw metadata.
+  // Never substitute procurementNumber: it can be the public notice number.
   const sequential = String(
     controlMatch?.[2] || raw.sequencialCompraPncp || raw.sequencialCompra ||
     (sourceParts.length >= 3 ? sourceParts[2] : "")
@@ -131,37 +131,51 @@ async function discoverPncpDocuments(opportunityId: string) {
     return [];
   }
 
-  // The public attachment service is hosted under /api/pncp. Keep the
-  // consultation path as a compatibility fallback for PNCP deployments.
-  const path = "/v1/orgaos/" + encodeURIComponent(cnpj) + "/compras/" + year + "/" + sequential + "/arquivos";
-  const endpoints = [
-    "https://pncp.gov.br/api/pncp" + path,
-    "https://pncp.gov.br/api/consulta" + path,
-  ];
-  for (const url of endpoints) {
-    try {
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(12_000),
-      });
-      if (!response.ok) {
-        console.warn("[edital-analysis] PNCP attachment endpoint returned HTTP", response.status);
-        continue;
-      }
-      const payload = await response.json() as Record<string, unknown> | unknown[];
-      const root = Array.isArray(payload) ? null : payload as Record<string, unknown>;
-      const nestedData = root?.data && typeof root.data === "object" && !Array.isArray(root.data)
-        ? root.data as Record<string, unknown>
-        : null;
-      const documents = Array.isArray(payload) ? payload
-        : [root?.documentos, root?.arquivos, root?.data, root?.content, nestedData?.documentos, nestedData?.arquivos]
-          .find(Array.isArray) ?? [];
-      return documents.filter(item => item && typeof item === "object") as Record<string, unknown>[];
-    } catch (error) {
-      console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
+  const procurementPath = "/v1/orgaos/" + encodeURIComponent(cnpj) + "/compras/" + year + "/" + sequential;
+  const listUrl = "https://pncp.gov.br/api/pncp" + procurementPath + "/arquivos";
+  const downloadBase = "https://pncp.gov.br/api/pncp" + procurementPath + "/arquivos/";
+  try {
+    const response = await fetch(listUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      console.warn("[edital-analysis] PNCP attachment list returned HTTP", response.status);
+      return [];
     }
+    const payload = await response.json() as unknown;
+    const found: Record<string, unknown>[] = [];
+    const visited = new Set<unknown>();
+    const walk = (node: unknown, depth = 0) => {
+      if (!node || typeof node !== "object" || visited.has(node) || depth > 7) return;
+      visited.add(node);
+      if (Array.isArray(node)) {
+        for (const item of node) walk(item, depth + 1);
+        return;
+      }
+      const record = node as Record<string, unknown>;
+      const documentId = record.sequencialDocumento ?? record.sequencialDocumentoPncp ?? record.idDocumento;
+      const hasDocumentUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo, record._downloadUrl]
+        .some(value => typeof value === "string" && value.trim());
+      const looksLikeDocument = documentId !== undefined || hasDocumentUrl ||
+        (typeof record.tipoDocumentoNome === "string" && Boolean(record.titulo || record.nomeArquivo));
+      if (looksLikeDocument) {
+        const normalizedId = String(documentId ?? "").replace(/\D/g, "");
+        found.push({
+          ...record,
+          ...(normalizedId ? { _downloadUrl: downloadBase + encodeURIComponent(normalizedId) } : {}),
+        });
+      }
+      for (const key of ["documentos", "arquivos", "data", "content", "resultado", "result", "items", "results", "dados"]) {
+        if (record[key] && typeof record[key] === "object") walk(record[key], depth + 1);
+      }
+    };
+    walk(payload);
+    return found;
+  } catch (error) {
+    console.warn("[edital-analysis] PNCP document lookup unavailable", error instanceof Error ? error.message : "unknown");
+    return [];
   }
-  return [];
 }
 
 function getOfficialPdfs(
@@ -188,7 +202,7 @@ function getOfficialPdfs(
       const name = [record.tipoDocumentoNome, record.titulo, record.name, record.title, record.nomeArquivo]
         .find(value => typeof value === "string" && value.trim())?.toString() ?? "Documento oficial";
       const documentType = [
-        record.tipoDocumentoNome, record.titulo, record.name, record.title, record.nomeArquivo,
+        record.tipoDocumentoNome, record.titulo, record.name, record.title, record.nomeArquivo, record.extensao, record.tipoArquivo,
       ].filter(value => typeof value === "string").join(" ").toLocaleLowerCase("pt-BR");
       const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? "").toLowerCase();
       const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
