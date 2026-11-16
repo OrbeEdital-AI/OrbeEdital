@@ -397,6 +397,7 @@ export default function Portal() {
               )}
             </section>
           )}
+          <div className="orbe-client-pages">
           <Switch>
             <Route path="/app/billing">
               <BillingPage />
@@ -482,6 +483,7 @@ export default function Portal() {
               </div>
             </Route>
           </Switch>
+          </div>
         </div>
       </main>
     </div>

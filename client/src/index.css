@@ -176,3 +176,34 @@
     }
   }
 }
+/* OrbeEdital client portal visual consistency layer */
+.orbe-client-pages {
+  color: var(--foreground);
+  --orbe-client-border: #c8d8e5;
+  --orbe-client-heading: #102b4e;
+}
+.orbe-client-pages .bg-white {
+  background-color: #ffffff;
+}
+.orbe-client-pages .border-slate-200,
+.orbe-client-pages .border-slate-300 {
+  border-color: var(--orbe-client-border);
+}
+.orbe-client-pages h2,
+.orbe-client-pages h3 {
+  color: var(--orbe-client-heading);
+}
+.orbe-client-pages input:not([type="checkbox"]):not([type="radio"]),
+.orbe-client-pages select,
+.orbe-client-pages textarea {
+  border-color: #bdcfdd;
+  border-radius: 0.65rem;
+}
+.orbe-client-pages input:focus,
+.orbe-client-pages select:focus,
+.orbe-client-pages textarea:focus {
+  outline-color: #0e7490;
+}
+.orbe-client-pages .rounded-xl {
+  border-radius: 0.9rem;
+}

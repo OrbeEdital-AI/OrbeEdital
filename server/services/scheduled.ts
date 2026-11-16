@@ -1,6 +1,6 @@
 import { jwtVerify } from "jose";
 import { parse as parseCookieHeader } from "cookie";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Request } from "express";
 import { auditLogs, connectors } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -93,6 +93,37 @@ async function resolveScheduledTask(req: Request): Promise<string> {
   return identity.taskUid;
 }
 
+async function syncScheduledSource(source: typeof connectors.$inferSelect) {
+  if (source.code === "pncp") {
+    const configuration = source.configuration && typeof source.configuration === "object"
+      ? source.configuration
+      : {};
+    const configuredPage = Number(configuration.nextPncpPage ?? 1);
+    const startPage = Number.isInteger(configuredPage) && configuredPage > 0 ? configuredPage : 1;
+    // The public PNCP API can expose thousands of open opportunities. Process a
+    // bounded window per 6-hour execution to stay below Vercel's 300s limit.
+    const result = await syncConnector("pncp", {
+      mode: "open",
+      startPage,
+      maxPages: 15,
+      pageSize: 50,
+    });
+    const totalPages = result.reportedTotalPages ?? result.lastPage;
+    const nextPncpPage = result.lastPage >= totalPages ? 1 : result.lastPage + 1;
+    await getDb().update(connectors).set({
+      configuration: { ...configuration, nextPncpPage },
+      updatedAt: new Date(),
+    }).where(eq(connectors.id, source.id));
+    return { ...result, pageWindow: { startPage, endPage: result.lastPage, totalPages, nextPncpPage } };
+  }
+  return syncConnector("compras.gov.br", {
+    daysBack: 7,
+    modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
+    allPages: true,
+    pageSize: 500,
+  });
+}
+
 export async function handleScheduledSync(req: Request) {
   const taskUid = await resolveScheduledTask(req);
   const enabledSources = await getDb()
@@ -104,14 +135,7 @@ export async function handleScheduledSync(req: Request) {
     const runs: Array<Record<string, unknown>> = [];
     for (const source of enabledSources.filter(item => item.enabled)) {
       try {
-        const result = source.code === "pncp"
-          ? await syncConnector("pncp", { mode: "open", allPages: true, pageSize: 50 })
-          : await syncConnector("compras.gov.br", {
-              daysBack: 7,
-              modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
-              allPages: true,
-              pageSize: 500,
-            });
+        const result = await syncScheduledSource(source);
         runs.push({ source: source.code, status: "completed", ...result });
         await getDb().insert(auditLogs).values({
           action: "source.schedule.completed",
@@ -153,14 +177,7 @@ export async function handleScheduledSync(req: Request) {
     return { status: "no_source_registered_for_task" as const };
   }
   try {
-    const result = matched.code === "pncp"
-      ? await syncConnector("pncp", { mode: "open", allPages: true, pageSize: 50 })
-      : await syncConnector("compras.gov.br", {
-          daysBack: 7,
-          modalityCodes: [3, 5, 8, 9, 11, 12, 14, 15, 20],
-          allPages: true,
-          pageSize: 500,
-        });
+    const result = await syncScheduledSource(matched);
     const notificationSummary = await dispatchDeadlineNotifications().catch(async error => {
       await getDb().insert(auditLogs).values({
         action: "notification.schedule.failed",
