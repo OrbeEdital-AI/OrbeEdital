@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildAmmMgSearch, runAmmMgDiscovery } from "./orberadar-fetch";
 const html = (body: string) => new Response(body, {headers: {"content-type":"text/html"}});
-describe("AMM-MG automatic discovery", () => {\n it("uses public search fields with bounded pagination", () => { const url = buildAmmMgSearch(new Date("2026-11-10T00:00:00Z"), new Date("2026-11-17T00:00:00Z"), "pregão"); expect(url.searchParams.get("busca_avancada[titulo]")).toBe("pregão"); expect(url.searchParams.get("busca_avancada[dataInicio]")).toBe("2026-11-10"); expect(url.searchParams.get("busca_avancada[pagina]")).toBe("1"); });
+describe("AMM-MG automatic discovery", () => {
+ it("uses public search fields with bounded pagination", () => { const url = buildAmmMgSearch(new Date("2026-11-10T00:00:00Z"), new Date("2026-11-17T00:00:00Z"), "pregão"); expect(url.searchParams.get("busca_avancada[titulo]")).toBe("pregão"); expect(url.searchParams.get("busca_avancada[dataInicio]")).toBe("2026-11-10"); expect(url.searchParams.get("busca_avancada[pagina]")).toBe("1"); });
  it("discovers real-format matter links without manual IDs", async () => {
    const request = (async (url: URL | RequestInfo) => {
      const path = new URL(String(url)).pathname;
