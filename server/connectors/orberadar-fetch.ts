@@ -66,3 +66,24 @@ export async function runAmmMgPilot(ids: string[], request: typeof fetch = fetch
  }
  return {notices,failures};
 }
+
+/** Discover AMM-MG matter links from the public daily index. Fail closed if the
+ * index exposes no matter links; do not fabricate identifiers or guess APIs. */
+export async function runAmmMgDiscovery(now = new Date(), request: typeof fetch = fetch): Promise<{notices: RadarNotice[]; failures: string[]}> {
+  const html = await fetchRadarHtml(new URL("/amm-mg/", "https://www.diariomunicipal.com.br"), request);
+  const links = discoverRadarLinks(html, "amm-mg").slice(0, 12);
+  if (!links.length) throw new Error("AMM-MG: índice público não expôs links de matérias; descoberta automática indisponível");
+  const notices: RadarNotice[] = [], failures: string[] = [];
+  for (const link of links) {
+    try {
+      const plain = radarPlainText(await fetchRadarHtml(new URL(link.url), request));
+      if (/\\b(?:aviso de licita[çc][ãa]o|preg[ãa]o eletr[ôo]nico|concorr[êe]ncia eletr[ôo]nica|aviso de dispensa|credenciamento)\\b/iu.test(plain)) {
+        notices.push(parseRadarNotice(link, plain));
+      }
+    } catch (error) {
+      failures.push(link.publicationId + ": " + (error instanceof Error ? error.message : "unknown"));
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 1100));
+  }
+  return { notices, failures };
+}
