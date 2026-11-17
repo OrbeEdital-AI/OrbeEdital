@@ -1,3 +1,4 @@
+import { runRadarAutomatic } from "./services/orberadar-automatic";
 import { listRadarReview, setRadarReview, verifyRadarCandidate } from "./services/orberadar-review";
 import { persistRadarRun } from "./services/orberadar-staging";
 import { compareRadarNotices } from "./services/orberadar-compare";
@@ -412,6 +413,7 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    radarMgDiscovery: superadminProcedure.mutation(async () => runRadarAutomatic("amm-mg")),
     radarVerify: superadminProcedure.input(z.object({id:z.string().uuid(),deadline:z.string().datetime({offset:true}),evidence:z.string().trim().min(15).max(2000)})).mutation(({input})=>verifyRadarCandidate(input.id,input.deadline,input.evidence)),
     radarReview: superadminProcedure.query(()=>listRadarReview()),
     radarReviewStatus: superadminProcedure.input(z.object({id:z.string().uuid(),status:z.enum(["pending","rejected"])})).mutation(({input})=>setRadarReview(input.id,input.status)),
