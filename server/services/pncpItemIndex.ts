@@ -3,7 +3,7 @@ import { connectors, opportunities, opportunityItems } from "../../drizzle/schem
 import { getDb } from "../db";
 
 /** Incremental, bounded PNCP item indexing. Never infers items from the procurement title. */
-export async function indexPncpItems(limit = 80) {
+export async function indexPncpItems(limit = 160) {
   const db = getDb();
   const [connector] = await db.select().from(connectors).where(eq(connectors.code, "pncp")).limit(1);
   if (!connector) return { scanned: 0, indexed: 0, failures: 0 };
@@ -12,10 +12,10 @@ export async function indexPncpItems(limit = 80) {
   const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData })
     .from(opportunities)
     .where(and(inArray(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray(connectors.code, ["pncp", "compras.gov.br"]))), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), sql`${opportunities.proposalDeadline} >= now()`, sql`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`))
-    .orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 100));
+    .orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 180));
   let indexed = 0, failures = 0;
-  for (let offset = 0; offset < rows.length; offset += 8) {
-   await Promise.all(rows.slice(offset, offset + 8).map(async row => {
+  for (let offset = 0; offset < rows.length; offset += 12) {
+   await Promise.all(rows.slice(offset, offset + 12).map(async row => {
     try {
       const raw = (row.rawData?.raw ?? {}) as Record<string, unknown>;
       const control = row.controlNumber;
@@ -52,7 +52,7 @@ export async function indexPncpItems(limit = 80) {
    }));
   }
   // Advance even after an individual source failure; next full sweep retries it.
-  const itemsCursor = rows.length < Math.min(Math.max(limit, 1), 100) ? "" : rows.at(-1)!.id;
+  const itemsCursor = rows.length < Math.min(Math.max(limit, 1), 180) ? "" : rows.at(-1)!.id;
   await db.update(connectors).set({ configuration: { ...config, itemsCursor }, updatedAt: new Date() }).where(eq(connectors.id, connector.id));
   return { scanned: rows.length, indexed, failures };
 }
