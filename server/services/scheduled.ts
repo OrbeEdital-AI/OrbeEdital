@@ -128,6 +128,11 @@ async function syncScheduledSource(source: typeof connectors.$inferSelect) {
 
 export async function handleScheduledSync(req: Request) {
   const taskUid = await resolveScheduledTask(req);
+  if (taskUid === "supabase-cron:all-sources" && req.query?.task === "items") {
+    const result = await indexPncpItems(80);
+    await getDb().insert(auditLogs).values({ action: "source.items.indexed", entityType: "connector", entityId: "pncp", details: result }).catch(() => undefined);
+    return { status: "indexed" as const, ...result };
+  }
   const enabledSources = await getDb()
     .select()
     .from(connectors)
