@@ -93,6 +93,7 @@ function buildFilters(filters: OpportunityFilters) {
       ilike(opportunities.processNumber, like),
       ilike(opportunities.procurementNumber, like),
       ilike(opportunities.agencyCnpj, like),
+      sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
     ];
     clauses.push(or(...matches)!);
   }
