@@ -417,7 +417,7 @@ export const appRouter = router({
       list: superadminProcedure.query(async () => getDb().select({
         id: plans.id, code: plans.code, name: plans.name, monthlyPriceCents: plans.monthlyPriceCents,
         annualPriceCents: plans.annualPriceCents, active: plans.active, updatedAt: plans.updatedAt,
-      }).from(plans)),
+      }).from(plans).where(eq(plans.active, true))),
       update: superadminProcedure.input(z.object({
         id: z.string().uuid(),
         monthlyPriceCents: z.number().int().min(0).max(100000000),
