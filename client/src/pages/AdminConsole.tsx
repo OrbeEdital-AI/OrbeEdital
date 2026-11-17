@@ -437,11 +437,19 @@ function RadarPilotPage() {
  const verify=trpc.admin.radarVerify.useMutation({onSuccess:()=>{setVerification(null);setDeadline("");setEvidence("");void review.refetch();}});
  const change = trpc.admin.radarReviewStatus.useMutation({onSuccess:()=>{void review.refetch();}});
  const run = trpc.admin.radarPilot.useMutation({onSuccess:()=>{void review.refetch();}});
+ const mgDiscovery = trpc.admin.radarMgDiscovery.useMutation({onSuccess:()=>{void review.refetch();}});
  const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
  const [ids,setIds]=useState("");
  const [saveReview,setSaveReview]=useState(false);
  return <section className="space-y-4 rounded-xl border bg-white p-5">
  <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
+ <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+  <h3 className="font-bold text-cyan-950">AMM-MG · Descoberta automática</h3>
+  <p className="text-sm text-slate-700">Pesquisa real de pregões, licitações e dispensas dos últimos sete dias, sem códigos. Resultados apenas na revisão privada; nenhuma oportunidade é publicada aos clientes.</p>
+  <button type="button" className="rounded-lg bg-cyan-800 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={mgDiscovery.isPending||run.isPending} onClick={()=>mgDiscovery.mutate()}>{mgDiscovery.isPending?"Testando coleta AMM-MG…":"Testar coleta automática AMM-MG"}</button>
+  {mgDiscovery.error && <p role="alert" className="text-sm text-red-700">Falha na coleta: {mgDiscovery.error.message}</p>}
+  {mgDiscovery.data && <p role="status" className="text-sm text-cyan-950">{mgDiscovery.data.status==="busy"?"Outra coleta AMM-MG está em andamento.":"Coleta registrada na revisão privada. Confira candidatos e falhas no histórico abaixo."}</p>}
+ </div>
  <select className="rounded border p-2" value={source} onChange={e=>{setSource(e.target.value as "amm-mt"|"amm-mg");run.reset();}} disabled={run.isPending}><option value="amm-mt">AMM-MT — descoberta</option><option value="amm-mg">AMM-MG — matérias por identificador</option></select>
  {source==="amm-mg" && <input className="block w-full rounded border p-2" value={ids} onChange={e=>setIds(e.target.value)} placeholder="Até 5 códigos de matéria separados por vírgula"/>}
  <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será publicada na base dos clientes.</p>
