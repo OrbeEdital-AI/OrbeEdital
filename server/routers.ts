@@ -413,6 +413,41 @@ export const appRouter = router({
   }),
   adminUsers: adminUsersRouter,
   admin: router({
+    planPricing: router({
+      list: superadminProcedure.query(async () => getDb().select({
+        id: plans.id, code: plans.code, name: plans.name, monthlyPriceCents: plans.monthlyPriceCents,
+        annualPriceCents: plans.annualPriceCents, active: plans.active, updatedAt: plans.updatedAt,
+      }).from(plans)),
+      update: superadminProcedure.input(z.object({
+        id: z.string().uuid(),
+        monthlyPriceCents: z.number().int().min(0).max(100000000),
+        annualPriceCents: z.number().int().min(0).max(100000000),
+      })).mutation(async ({ input, ctx }) => {
+        const db = getDb();
+        return db.transaction(async tx => {
+          const [previous] = await tx.select().from(plans).where(eq(plans.id, input.id)).limit(1);
+          if (!previous) throw new Error("Plano não encontrado");
+          const [updated] = await tx.update(plans).set({
+            monthlyPriceCents: input.monthlyPriceCents,
+            annualPriceCents: input.annualPriceCents,
+            updatedAt: new Date(),
+          }).where(eq(plans.id, input.id)).returning();
+          await tx.insert(auditLogs).values({
+            actorUserId: ctx.user.id,
+            action: "plan.price.updated",
+            entityType: "plan",
+            entityId: input.id,
+            details: {
+              code: previous.code,
+              before: { monthlyPriceCents: previous.monthlyPriceCents, annualPriceCents: previous.annualPriceCents },
+              after: { monthlyPriceCents: updated.monthlyPriceCents, annualPriceCents: updated.annualPriceCents },
+            },
+          });
+          return { id: updated.id, code: updated.code, monthlyPriceCents: updated.monthlyPriceCents, annualPriceCents: updated.annualPriceCents };
+        });
+      }),
+    }),
+
     radarMgDiscovery: superadminProcedure.mutation(async () => runRadarAutomatic("amm-mg")),
     radarVerify: superadminProcedure.input(z.object({id:z.string().uuid(),deadline:z.string().datetime({offset:true}),evidence:z.string().trim().min(15).max(2000)})).mutation(({input})=>verifyRadarCandidate(input.id,input.deadline,input.evidence)),
     radarReview: superadminProcedure.query(()=>listRadarReview()),
