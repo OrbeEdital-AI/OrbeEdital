@@ -139,6 +139,10 @@ export async function handleScheduledSync(req: Request) {
       try { runs.push({ source: "amm-mt", ...await runRadarAutomatic() }); }
       catch { runs.push({ source: "amm-mt", status: "failed" }); }
     }
+    if (process.env.ORBERADAR_AMM_MG_DISCOVERY === "true") {
+      try { runs.push({ source: "amm-mg", ...await runRadarAutomatic("amm-mg") }); }
+      catch (error) { runs.push({ source: "amm-mg", status: "failed", error: error instanceof Error ? error.message.slice(0, 180) : "Unknown error" }); }
+    }
     for (const source of enabledSources.filter(item => item.enabled)) {
       try {
         const result = await syncScheduledSource(source);
