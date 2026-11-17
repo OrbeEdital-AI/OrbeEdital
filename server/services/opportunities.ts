@@ -85,7 +85,11 @@ function buildFilters(filters: OpportunityFilters) {
   const clauses = [];
   const query = filters.query?.trim();
   if (query) {
-    const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
+    // Match all words regardless of intervening words or their order.
+    // Each word may occur in a different searchable field or procurement item.
+    const terms = query.split(/\\s+/).filter(Boolean).slice(0, 12);
+    for (const term of terms) {
+      const like = `%${term.replace(/[%_]/g, "\\    const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
     const matches = [
       ilike(opportunities.title, like),
       ilike(opportunities.description, like),
@@ -95,7 +99,18 @@ function buildFilters(filters: OpportunityFilters) {
       ilike(opportunities.agencyCnpj, like),
       sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
     ];
-    clauses.push(or(...matches)!);
+    clauses.push(or(...matches)!);")}%`;
+      const matches = [
+        ilike(opportunities.title, like),
+        ilike(opportunities.description, like),
+        ilike(opportunities.agencyName, like),
+        ilike(opportunities.processNumber, like),
+        ilike(opportunities.procurementNumber, like),
+        ilike(opportunities.agencyCnpj, like),
+        sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
+      ];
+      clauses.push(or(...matches)!);
+    }
   }
   if (filters.states?.length) clauses.push(inArray(opportunities.state, filters.states.map(state => state.toUpperCase())));
   if (filters.municipality?.trim()) clauses.push(ilike(opportunities.municipality, `%${filters.municipality.trim()}%`));
