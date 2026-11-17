@@ -69,17 +69,43 @@ export async function runAmmMgPilot(ids: string[], request: typeof fetch = fetch
 
 /** Discover AMM-MG matter links from the public daily index. Fail closed if the
  * index exposes no matter links; do not fabricate identifiers or guess APIs. */
+export function buildAmmMgSearch(from: Date, to: Date, title: string, page = 1): URL {
+  if (!Number.isFinite(+from) || !Number.isFinite(+to) || from > to || !Number.isInteger(page) || page < 1 || page > 2 || !["pregão", "licitação", "dispensa"].includes(title)) throw new Error("Invalid AMM-MG search");
+  const url = new URL("/amm-mg/pesquisar", "https://www.diariomunicipal.com.br");
+  const date = (d: Date) => d.toISOString().slice(0, 10);
+  url.searchParams.set("busca_avancada[dataInicio]", date(from));
+  url.searchParams.set("busca_avancada[dataFim]", date(to));
+  url.searchParams.set("busca_avancada[titulo]", title);
+  url.searchParams.set("busca_avancada[ordenacao]", "recente");
+  url.searchParams.set("busca_avancada[pagina]", String(page));
+  return url;
+}
+/** Uses the public search form's documented query fields; never circumvents a challenge. */
 export async function runAmmMgDiscovery(now = new Date(), request: typeof fetch = fetch): Promise<{notices: RadarNotice[]; failures: string[]}> {
-  const html = await fetchRadarHtml(new URL("/amm-mg/", "https://www.diariomunicipal.com.br"), request);
-  const links = discoverRadarLinks(html, "amm-mg").slice(0, 12);
-  if (!links.length) throw new Error("AMM-MG: índice público não expôs links de matérias; descoberta automática indisponível");
-  const notices: RadarNotice[] = [], failures: string[] = [];
-  for (const link of links) {
+  const from = new Date(+now - 7 * 86400000);
+  const candidates = new Map<string, RadarCandidate>();
+  const failures: string[] = [];
+  for (const term of ["pregão", "licitação", "dispensa"]) {
+    for (let page = 1; page <= 2; page++) {
+      try {
+        const html = await fetchRadarHtml(buildAmmMgSearch(from, now, term, page), request);
+        if (/captcha|acesso automatizado bloqueado|verifique que voc[eê] [eé] humano/iu.test(radarPlainText(html))) throw new Error("Portal exige verificação humana");
+        const links = discoverRadarLinks(html, "amm-mg");
+        for (const link of links) candidates.set(link.publicationId, link);
+        if (!links.length) break;
+      } catch (error) {
+        failures.push("Busca " + term + " página " + page + ": " + (error instanceof Error ? error.message : "unknown"));
+        break;
+      }
+      await new Promise<void>(resolve => setTimeout(resolve, 1100));
+    }
+  }
+  if (!candidates.size) throw new Error("AMM-MG: pesquisa pública não retornou links de matérias; " + failures.join("; "));
+  const notices: RadarNotice[] = [];
+  for (const link of [...candidates.values()].slice(0, 12)) {
     try {
       const plain = radarPlainText(await fetchRadarHtml(new URL(link.url), request));
-      if (/\\b(?:aviso de licita[çc][ãa]o|preg[ãa]o eletr[ôo]nico|concorr[êe]ncia eletr[ôo]nica|aviso de dispensa|credenciamento)\\b/iu.test(plain)) {
-        notices.push(parseRadarNotice(link, plain));
-      }
+      if (/\\b(?:aviso de licita[çc][ãa]o|preg[ãa]o eletr[ôo]nico|concorr[êe]ncia eletr[ôo]nica|aviso de dispensa|credenciamento)\\b/iu.test(plain)) notices.push(parseRadarNotice(link, plain));
     } catch (error) {
       failures.push(link.publicationId + ": " + (error instanceof Error ? error.message : "unknown"));
     }
