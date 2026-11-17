@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { connectors, opportunities, opportunityItems } from "../../drizzle/schema";
 import { getDb } from "../db";
 
@@ -11,7 +11,7 @@ export async function indexPncpItems(limit = 80) {
   const cursor = typeof config.itemsCursor === "string" ? config.itemsCursor : "";
   const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData })
     .from(opportunities)
-    .where(and(eq(opportunities.connectorId, connector.id), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000")))
+    .where(and(inArray(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray(connectors.code, ["pncp", "compras.gov.br"]))), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), sql`${opportunities.proposalDeadline} >= now()`, sql`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`))
     .orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 100));
   let indexed = 0, failures = 0;
   for (let offset = 0; offset < rows.length; offset += 8) {
@@ -20,8 +20,8 @@ export async function indexPncpItems(limit = 80) {
       const raw = (row.rawData?.raw ?? {}) as Record<string, unknown>;
       const control = row.controlNumber;
       const seq = Number(raw.sequencialCompra ?? (control?.match(/-\d-(\d+)\/\d{4}$/)?.[1]));
-      const year = Number(raw.anoCompra ?? row.year);
-      const cnpj = row.agencyCnpj?.replace(/\D/g, "");
+      const year = Number(control?.match(/\/(\d{4})$/)?.[1] ?? raw.anoCompra ?? row.year);
+      const cnpj = (control?.split("-")[0] || row.agencyCnpj || "").replace(/\D/g, "");
       if (!cnpj || cnpj.length !== 14 || !Number.isInteger(year) || !Number.isInteger(seq) || seq < 1) return;
       const url = new URL(`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${year}/${seq}/itens`);
       url.searchParams.set("pagina", "1");
@@ -52,7 +52,7 @@ export async function indexPncpItems(limit = 80) {
    }));
   }
   // Advance even after an individual source failure; next full sweep retries it.
-  const itemsCursor = rows.length < limit ? "" : rows.at(-1)!.id;
+  const itemsCursor = rows.length < Math.min(Math.max(limit, 1), 100) ? "" : rows.at(-1)!.id;
   await db.update(connectors).set({ configuration: { ...config, itemsCursor }, updatedAt: new Date() }).where(eq(connectors.id, connector.id));
   return { scanned: rows.length, indexed, failures };
 }
