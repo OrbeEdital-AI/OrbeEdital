@@ -9,7 +9,7 @@ export async function indexPncpItems(limit = 80) {
   if (!connector) return { scanned: 0, indexed: 0, failures: 0 };
   const config = connector.configuration ?? {};
   const cursor = typeof config.itemsCursor === "string" ? config.itemsCursor : "";
-  const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, rawData: opportunities.rawData })
+  const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData })
     .from(opportunities)
     .where(and(eq(opportunities.connectorId, connector.id), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000")))
     .orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 100));
@@ -18,7 +18,8 @@ export async function indexPncpItems(limit = 80) {
    await Promise.all(rows.slice(offset, offset + 8).map(async row => {
     try {
       const raw = (row.rawData?.raw ?? {}) as Record<string, unknown>;
-      const seq = Number(raw.sequencialCompra);
+      const control = row.controlNumber;
+      const seq = Number(raw.sequencialCompra ?? (control?.match(/-\d-(\d+)\/\d{4}$/)?.[1]));
       const year = Number(raw.anoCompra ?? row.year);
       const cnpj = row.agencyCnpj?.replace(/\D/g, "");
       if (!cnpj || cnpj.length !== 14 || !Number.isInteger(year) || !Number.isInteger(seq) || seq < 1) return;
