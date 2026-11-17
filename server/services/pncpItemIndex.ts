@@ -53,6 +53,6 @@ export async function indexPncpItems(limit = 160) {
   }
   // Advance even after an individual source failure; next full sweep retries it.
   const itemsCursor = rows.length < Math.min(Math.max(limit, 1), 180) ? "" : rows.at(-1)!.id;
-  await db.update(connectors).set({ configuration: { ...config, itemsCursor }, updatedAt: new Date() }).where(eq(connectors.id, connector.id));
+  await db.update(connectors).set({ configuration: sql`jsonb_set(coalesce(${connectors.configuration}, '{}'::jsonb), '{itemsCursor}', to_jsonb(${itemsCursor}::text), true)`, updatedAt: new Date() }).where(eq(connectors.id, connector.id));
   return { scanned: rows.length, indexed, failures };
 }
