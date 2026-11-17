@@ -165,7 +165,7 @@ export async function handleScheduledSync(req: Request) {
         }).catch(() => undefined);
       }
     }
-    const itemIndex = await indexPncpItems(15).catch(error => ({ scanned: 0, indexed: 0, failures: 1, error: error instanceof Error ? error.message.slice(0, 150) : "unknown" }));
+    const itemIndex = await indexPncpItems(80).catch(error => ({ scanned: 0, indexed: 0, failures: 1, error: error instanceof Error ? error.message.slice(0, 150) : "unknown" }));
     runs.push({ source: "pncp-items", ...itemIndex });
     const notificationSummary = await dispatchDeadlineNotifications().catch(() => ({
       scannedEvents: 0, createdReminders: 0, createdSummaries: 0, failed: true,
