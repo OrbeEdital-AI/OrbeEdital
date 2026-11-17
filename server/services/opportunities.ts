@@ -85,18 +85,41 @@ function buildFilters(filters: OpportunityFilters) {
   const clauses = [];
   const query = filters.query?.trim();
   if (query) {
-    const terms = query.split(/\s+/).filter(Boolean).slice(0, 12);
-    for (const term of terms) {
-      const like = "%" + term.replace(/[%_]/g, "\\$&") + "%";
-      const matches = [
-        ilike(opportunities.title, like),
-        ilike(opportunities.description, like),
-        ilike(opportunities.agencyName, like),
-        ilike(opportunities.processNumber, like),
-        ilike(opportunities.procurementNumber, like),
-        ilike(opportunities.agencyCnpj, like),
-        sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
-      ];
+    // Product vocabulary: aliases are alternatives within a term, not additional
+    // mandatory words. Preserve all other terms, including model numbers.
+    const aliases: Record<string, string[]> = {
+      tv: ["tv", "televisor", "televisao", "televisão", "smart tv"],
+      televisor: ["televisor", "tv", "televisao", "televisão"],
+      televisao: ["televisao", "televisão", "televisor", "tv"],
+      televisaoo: ["televisão", "televisor", "tv"],
+      full: ["full", "fhd", "1920x1080", "1920 x 1080"],
+      hd: ["hd", "high definition", "1080p"],
+      notebook: ["notebook", "laptop", "computador portatil", "computador portátil"],
+      computador: ["computador", "desktop", "microcomputador", "pc"],
+      celular: ["celular", "smartphone", "telefone movel", "telefone móvel"],
+      impressora: ["impressora", "multifuncional"],
+      legumes: ["legumes", "legume", "hortalica", "hortaliça"],
+      legume: ["legume", "legumes", "hortalica", "hortaliça"],
+    };
+    const terms = query.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/\s+/).filter(Boolean).slice(0, 12);
+    const normalized = terms.filter(term => !["de", "da", "do", "das", "dos", "em", "para"].includes(term));
+    for (const term of normalized) {
+      // "in natura" is a meaningful product qualifier; "in" is not a
+      // useful standalone token for substring search.
+      if (term === "in") continue;
+      const options = aliases[term] ?? [term];
+      const matches = options.flatMap(option => {
+        const like = "%" + option.replace(/[%_]/g, "\\$&") + "%";
+        return [
+          ilike(opportunities.title, like),
+          ilike(opportunities.description, like),
+          ilike(opportunities.agencyName, like),
+          ilike(opportunities.processNumber, like),
+          ilike(opportunities.procurementNumber, like),
+          ilike(opportunities.agencyCnpj, like),
+          sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
+        ];
+      });
       clauses.push(or(...matches)!);
     }
   }
