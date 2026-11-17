@@ -337,6 +337,43 @@ function PermissionsPage() {
   </section>;
 }
 
+function PlanPricingEditor() {
+  const listing = trpc.admin.planPricing.list.useQuery();
+  const utils = trpc.useUtils();
+  const update = trpc.admin.planPricing.update.useMutation({
+    onSuccess: async () => {
+      await listing.refetch();
+      await utils.billing.plans.invalidate();
+      toast.success("Preços atualizados no catálogo.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const [drafts, setDrafts] = useState<Record<string, { monthly: string; annual: string }>>({});
+  const reais = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
+  const cents = (value: string) => {
+    const parsed = Number(value.replace(",", "."));
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : NaN;
+  };
+  return <div className="rounded-xl border bg-white p-5">
+    <h3 className="font-semibold">Preços dos planos</h3>
+    <p className="mt-1 text-sm text-slate-600">Somente o Superadmin pode alterar valores. Os novos preços são usados no catálogo e nas novas contratações; assinaturas já cobradas exigem análise das regras do provedor.</p>
+    <div className="mt-4 grid gap-4 md:grid-cols-2">
+      {listing.data?.map(plan => {
+        const draft = drafts[plan.id] ?? { monthly: reais(plan.monthlyPriceCents), annual: reais(plan.annualPriceCents) };
+        const monthly = cents(draft.monthly), annual = cents(draft.annual);
+        return <div key={plan.id} className="rounded-lg border p-4">
+          <div className="mb-3 font-semibold">{plan.name}</div>
+          <label className="block text-sm">Mensal (R$)<input type="text" inputMode="decimal" aria-label={`Preço mensal de ${plan.name}`} className="mt-1 w-full rounded-lg border p-2" value={draft.monthly} onChange={e => setDrafts(old => ({...old,[plan.id]:{...draft,monthly:e.target.value}}))}/></label>
+          <label className="mt-3 block text-sm">Anual (R$)<input type="text" inputMode="decimal" aria-label={`Preço anual de ${plan.name}`} className="mt-1 w-full rounded-lg border p-2" value={draft.annual} onChange={e => setDrafts(old => ({...old,[plan.id]:{...draft,annual:e.target.value}}))}/></label>
+          <button className="mt-4 rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={update.isPending || !Number.isFinite(monthly) || !Number.isFinite(annual)} onClick={() => { if (confirm(`Confirmar novos valores do plano ${plan.name}?`)) update.mutate({id:plan.id,monthlyPriceCents:monthly,annualPriceCents:annual}); }}>Salvar preços</button>
+        </div>;
+      })}
+    </div>
+    {listing.isLoading && <p className="mt-3 text-sm">Carregando planos…</p>}
+    {listing.error && <p className="mt-3 text-sm text-red-700">{listing.error.message}</p>}
+  </div>;
+}
+
 function SettingsPage() {
   const settings = trpc.admin.settings.get.useQuery();
   const save = trpc.admin.settings.save.useMutation({ onSuccess: () => { settings.refetch(); toast.success("Configuração salva."); }, onError: e => toast.error(e.message) });
@@ -354,7 +391,7 @@ function SettingsPage() {
     {tab === "branding" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Identidade visual</h3><p className="mt-1 text-sm text-slate-500">Dados institucionais persistidos para uso pelos componentes que consumirem as configurações globais.</p><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Nome público<input value={brandName} onChange={e=>setBrandName(e.target.value)} maxLength={60} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="text-sm font-medium">Slogan<input value={tagline} onChange={e=>setTagline(e.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border px-3 py-2"/></label></div><button disabled={save.isPending || !brandName.trim()} onClick={()=>save.mutate({key:"branding",value:{name:brandName.trim(),tagline:tagline.trim()}})} className="mt-4 rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{save.isPending?"Salvando…":"Salvar identidade"}</button></div>}
     {tab === "experience" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Experiência do cliente</h3><label className="mt-4 block text-sm font-medium">Mensagem de boas-vindas<input value={welcome} onChange={e=>setWelcome(e.target.value)} maxLength={140} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={showWelcome} onChange={e=>setShowWelcome(e.target.checked)}/> Exibir saudação no portal</label><button disabled={save.isPending} onClick={()=>save.mutate({key:"experience",value:{welcome:welcome.trim(),showWelcome}})} className="mt-4 rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Salvar experiência</button></div>}
     {tab === "notifications" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Comunicado aos clientes</h3><p className="mt-1 text-sm text-slate-500">O comunicado será entregue na central de notificações do portal.</p><label className="mt-4 block text-sm font-medium">Título<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={120} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="mt-3 block text-sm font-medium">Mensagem<textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={1000} rows={4} className="mt-1 w-full rounded-lg border px-3 py-2"/></label><label className="mt-3 block text-sm font-medium">Destinatários<select value={audience} onChange={e=>setAudience(e.target.value as "all"|"active")} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="all">Todos os clientes</option><option value="active">Clientes com assinatura ativa</option></select></label><button disabled={announce.isPending || title.trim().length<3 || message.trim().length<5} onClick={()=>{if(confirm("Enviar este comunicado aos destinatários selecionados?"))announce.mutate({title,message,audience});}} className="mt-4 rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{announce.isPending?"Enviando…":"Enviar comunicado"}</button></div>}
-    {tab === "plans" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Planos e recursos</h3><p className="mt-1 text-sm text-slate-600">O catálogo e os limites comerciais já possuem gestão própria na área Planos e financeiro.</p><Link href="/app/admin/finance" className="mt-3 inline-flex rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white">Abrir gestão de planos e financeiro</Link></div>}
+    {tab === "plans" && <><PlanPricingEditor /><Link href="/app/admin/finance" className="mt-3 inline-flex rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white">Abrir gestão financeira</Link></>}
     {tab === "security" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Segurança</h3><p className="mt-1 text-sm text-slate-600">Suspensão de contas, encerramento de sessões e controle de papéis já estão disponíveis em Clientes e usuários. Políticas globais de duração de sessão e autenticação ainda não são editáveis para evitar alterações sem efeito garantido.</p><Link href="/app/admin/customers" className="mt-3 inline-flex rounded-lg border px-4 py-2 text-sm font-semibold">Abrir gestão de contas</Link></div>}
     {tab === "audit" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Auditoria</h3><p className="mt-1 text-sm text-slate-600">As alterações de configurações e os comunicados são registrados com responsável, data e resumo.</p><Link href="/app/admin/audit" className="mt-3 inline-flex rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white">Consultar trilha de auditoria</Link></div>}
     {settings.isLoading && <p className="text-sm text-slate-500">Carregando configurações…</p>}
