@@ -21,12 +21,12 @@ export async function indexPncpItems(limit = 80) {
       const seq = Number(raw.sequencialCompra);
       const year = Number(raw.anoCompra ?? row.year);
       const cnpj = row.agencyCnpj?.replace(/\D/g, "");
-      if (!cnpj || cnpj.length !== 14 || !Number.isInteger(year) || !Number.isInteger(seq) || seq < 1) continue;
+      if (!cnpj || cnpj.length !== 14 || !Number.isInteger(year) || !Number.isInteger(seq) || seq < 1) return;
       const url = new URL(`https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${year}/${seq}/itens`);
       url.searchParams.set("pagina", "1");
       url.searchParams.set("tamanhoPagina", "500");
       const response = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
-      if (!response.ok) { failures++; continue; }
+      if (!response.ok) { failures++; return; }
       const body: unknown = await response.json();
       const data = Array.isArray(body) ? body : (body && typeof body === "object" && Array.isArray((body as {data?:unknown}).data) ? (body as {data:unknown[]}).data : []);
       const mapped = data.slice(0, 500).flatMap((value: unknown) => {
