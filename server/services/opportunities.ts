@@ -25,6 +25,7 @@ export type OpportunityFilters = {
   maxValue?: number;
   publishedFrom?: string;
   publishedTo?: string;
+  createdFrom?: string;
   deadlineFrom?: string;
   deadlineTo?: string;
   onlyOpen?: boolean;
@@ -133,8 +134,9 @@ function buildFilters(filters: OpportunityFilters) {
   if (filters.maxValue !== undefined) clauses.push(lte(opportunities.estimatedValue, String(filters.maxValue)));
   if (filters.publishedFrom) clauses.push(gte(opportunities.publicationDate, new Date(filters.publishedFrom)));
   if (filters.publishedTo) clauses.push(lte(opportunities.publicationDate, new Date(filters.publishedTo)));
+  if (filters.createdFrom) clauses.push(gte(opportunities.createdAt, new Date(filters.createdFrom)));
   if (filters.deadlineFrom) clauses.push(gte(opportunities.proposalDeadline, new Date(filters.deadlineFrom)));
-  if (filters.deadlineTo) clauses.push(lte(opportunities.proposalDeadline, new Date(filters.deadlineTo)));
+  if (filters.deadlineTo) clauses.push(lt(opportunities.proposalDeadline, new Date(filters.deadlineTo)));
   if (filters.source) clauses.push(eq(connectors.code, filters.source));
   if (filters.onlyOpen) {
     clauses.push(gte(opportunities.proposalDeadline, new Date()));
@@ -239,14 +241,16 @@ export async function getDashboardSummary(user: SafeUser) {
   const db = getDb();
   const now = new Date();
   const today = brazilDayBounds(now);
+  const days1to3End = new Date(today.end.getTime() + 3 * 24 * 60 * 60 * 1000);
   const nextWeek = new Date(today.end.getTime() + 7 * 24 * 60 * 60 * 1000);
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
+  const [all, open, closingToday, closing1to3, closing4to7, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
     db.select({ n: count() }).from(opportunities),
     db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, today.end), lt(opportunities.proposalDeadline, days1to3End), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.proposalDeadline, days1to3End), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and(gte(opportunities.createdAt, day), gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count() }).from(favorites).where(eq(favorites.userId, user.id)),
@@ -298,7 +302,8 @@ export async function getDashboardSummary(user: SafeUser) {
   const historicalByConnector = new Map(historicalErrors.map(row => [row.connector_id, row]));
   const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name })
     .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
-    .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate)).limit(6);
+    .where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES), isNotNull(opportunities.publicationDate)))
+    .orderBy(desc(opportunities.publicationDate), desc(opportunities.createdAt)).limit(6);
   const recent = recentRows.map(row => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName };
   });
@@ -306,7 +311,9 @@ export async function getDashboardSummary(user: SafeUser) {
     total: all[0]?.n ?? 0,
     open: open[0]?.n ?? 0,
     closingToday: closingToday[0]?.n ?? 0,
-    closingSoon: closingSoon[0]?.n ?? 0,
+    closingSoon: (closingToday[0]?.n ?? 0) + (closing1to3[0]?.n ?? 0) + (closing4to7[0]?.n ?? 0),
+    closing1to3: closing1to3[0]?.n ?? 0,
+    closing4to7: closing4to7[0]?.n ?? 0,
     new24h: fresh[0]?.n ?? 0,
     withoutDeadline: withoutDeadline[0]?.n ?? 0,
     estimatedValue: value[0]?.n ?? "0",
@@ -336,6 +343,56 @@ export async function getDashboardSummary(user: SafeUser) {
     }),
     recent,
   };
+}
+
+/** Only audited content changes on opportunities this user bookmarked; a sync alone is not an event. */
+export async function getFavoriteChanges(userId: string) {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const rows = await getDb()
+    .select({
+      id: opportunityHistory.id,
+      opportunityId: opportunities.id,
+      title: opportunities.title,
+      happenedAt: opportunityHistory.happenedAt,
+      eventType: opportunityHistory.eventType,
+      summary: opportunityHistory.summary,
+      previousValues: opportunityHistory.previousValues,
+      newValues: opportunityHistory.newValues,
+    })
+    .from(opportunityHistory)
+    .innerJoin(favorites, eq(favorites.opportunityId, opportunityHistory.opportunityId))
+    .innerJoin(opportunities, eq(opportunities.id, opportunityHistory.opportunityId))
+    .where(and(eq(favorites.userId, userId), gte(opportunityHistory.happenedAt, since)))
+    .orderBy(desc(opportunityHistory.happenedAt))
+    .limit(60);
+  const changeLabels: Record<string, string> = {
+    documents: "Documentos alterados",
+    proposalDeadline: "Prazo de propostas alterado",
+    openingDate: "Abertura alterada",
+    sessionAt: "Sessão alterada",
+    title: "Objeto alterado",
+    description: "Descrição alterada",
+    estimatedValue: "Valor estimado alterado",
+    status: "Situação alterada",
+    itemCount: "Quantidade de itens alterada",
+    items: "Itens alterados",
+  };
+  return rows.flatMap(row => {
+    const before = row.previousValues ?? {};
+    const after = row.newValues ?? {};
+    const changed = Object.keys(after).filter(key =>
+      Object.hasOwn(changeLabels, key) && JSON.stringify(before[key]) !== JSON.stringify(after[key])
+    );
+    if (!changed.length) return [];
+    return [{
+      id: row.id,
+      opportunityId: row.opportunityId,
+      title: row.title,
+      happenedAt: row.happenedAt,
+      description: changed.map(key => changeLabels[key]).join(" · "),
+      origin: "Alteração registrada na coleta da fonte",
+    }];
+  }).slice(0, 8);
 }
 
 export async function getCompanyIdForUser(userId: string): Promise<string | null> {
