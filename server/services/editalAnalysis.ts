@@ -44,7 +44,7 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): { files: Array<{ name: 
       if (!bytes) continue;
       if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
         const filename = name.split("/").pop() || "Documento PDF";
-        const priority = /^edital(?:[\s_.-]|$)/i.test(filename) ? 0 : /termo de refer[eê]ncia/i.test(filename) ? 1 : /projeto b[aá]sico/i.test(filename) ? 2 : 3;
+        const priority = /^edital(?:[\s_.-]|$)/i.test(filename) ? 0 : /termo de refer[eê]ncia/i.test(filename) ? 1 : /projeto b[aá]sico/i.test(filename) ? 2 : /contrato|justificativa|estudo t[eé]cnico/i.test(filename) ? 3 : 4;
         pdfCandidates.push({ name: filename, bytes, priority });
         continue;
       }
@@ -56,8 +56,8 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): { files: Array<{ name: 
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
-  skipped.push(...pdfCandidates.slice(6).map(file => file.name + " (não selecionado: limite de seis PDFs por ZIP)"));
-  return { files: pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes })), skipped };
+  skipped.push(...pdfCandidates.slice(12).map(file => file.name + " (não selecionado: limite de doze PDFs por ZIP)"));
+  return { files: pdfCandidates.slice(0, 12).map(({ name, bytes }) => ({ name, bytes })), skipped };
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
@@ -512,7 +512,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
           documentsNotProcessed.push(document.name + " (falha no download ou leitura do documento: " + [...new Set(downloadErrors)].join("; ") + ")");
           continue;
         }
-        if (documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
+        if (!zipPdfFiles.length && documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
           documentsNotProcessed.push(document.name + " (limite total de 40 MB por análise atingido)");
           continue;
         }
