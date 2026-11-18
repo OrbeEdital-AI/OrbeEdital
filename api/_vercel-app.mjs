@@ -769,10 +769,10 @@ function buildAmmMtSearch(from, to, page = 1) {
 
 // server/connectors/orberadar-notice.ts
 function parseRadarNotice(candidate, plainText) {
-  const text2 = plainText.normalize("NFKC").replace(/\s+/g, " ").trim();
-  const field = (pattern) => pattern.exec(text2)?.[1]?.trim() || null;
+  const text3 = plainText.normalize("NFKC").replace(/\s+/g, " ").trim();
+  const field = (pattern) => pattern.exec(text3)?.[1]?.trim() || null;
   const object = field(/\bobjeto\s*[:–-]\s*(.{10,900}?)(?=\s+(?:informa[çc][õo]es|valor|data de|local|edital|in[ií]cio da sess[ãa]o|recebimento das propostas)\b|$)/iu);
-  const matches = [...(candidate.title + " " + text2).normalize("NFKC").matchAll(/\b(preg[ãa]o(?:\s+(?:eletr[ôo]nico|presencial))?|concorr[êe]ncia(?:\s+(?:eletr[ôo]nica|presencial))?|dispensa(?:\s+eletr[ôo]nica)?)\s*(?:[-–:]\s*)?(?:SRP\s*)?(?:n(?:[º°o.]|\s)*\s*)?(\d+\s*\/\s*20\d{2})/giu)];
+  const matches = [...(candidate.title + " " + text3).normalize("NFKC").matchAll(/\b(preg[ãa]o(?:\s+(?:eletr[ôo]nico|presencial))?|concorr[êe]ncia(?:\s+(?:eletr[ôo]nica|presencial))?|dispensa(?:\s+eletr[ôo]nica)?)\s*(?:[-–:]\s*)?(?:SRP\s*)?(?:n(?:[º°o.]|\s)*\s*)?(\d+\s*\/\s*20\d{2})/giu)];
   const numbers = [...new Set(matches.map((m) => m[2].replace(/\s/g, "")))];
   const processNumber = field(/\bprocesso(?:\s+(?:administrativo|licitat[óo]rio|de licita[çc][ãa]o)){0,2}\s*[:–-]?\s*(?:n[º°o.]*\s*)?(\d+\s*\/\s*20\d{2})/iu);
   const sessionEvidence = field(/((?:data de abertura|data de realiza[çc][ãa]o|sess[ãa]o p[uú]blica|in[ií]cio da sess[ãa]o|data da sess[ãa]o|abertura da disputa|abertura das propostas)\s*[:–-]?\s*.{1,100})/iu);
@@ -2815,9 +2815,9 @@ function textValue(value) {
   return null;
 }
 function integerValue(value) {
-  const text2 = textValue(value);
-  if (!text2 || !/^\d+$/.test(text2)) return null;
-  const parsed = Number(text2);
+  const text3 = textValue(value);
+  if (!text3 || !/^\d+$/.test(text3)) return null;
+  const parsed = Number(text3);
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 function buildPncpDetailUrl(input) {
@@ -2837,14 +2837,14 @@ function buildPncpDetailUrl(input) {
 }
 function normalizeProcurementStatus(rawValue, fallback = "unknown") {
   const raw = asRecord(rawValue);
-  const text2 = [
+  const text3 = [
     raw.situacaoCompraNomePncp,
     raw.situacaoCompraNome,
     raw.situacaoNome,
     raw.status
   ].map(textValue).find((value) => value !== null);
-  if (!text2) return fallback;
-  const normalized = text2.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!text3) return fallback;
+  const normalized = text3.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (normalized.includes("suspens")) return "suspended";
   if (normalized.includes("revog")) return "revoked";
   if (normalized.includes("anulad")) return "annulled";
@@ -3033,6 +3033,94 @@ async function indexPncpItems(limit = 160) {
   return { scanned: rows.length, indexed, failures };
 }
 
+// server/services/pncpHistory.ts
+var PAGE_SIZE = 100;
+var MAX_HISTORY_PAGES = 20;
+var PNCP_API = "https://pncp.gov.br/api/pncp/v1";
+function asRecord2(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function text2(value) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function procurementIdentity(input) {
+  const raw = asRecord2(asRecord2(input.rawData).raw);
+  const cnpjCandidate = input.agencyCnpj ?? text2(raw.orgaoEntidadeCnpj) ?? text2(asRecord2(raw.orgaoEntidade).cnpj);
+  const cnpj = cnpjCandidate?.replace(/\D/g, "") ?? "";
+  const control = input.controlNumber ?? text2(raw.numeroControlePNCP) ?? "";
+  const controlMatch = control.match(/^(\d{14})-\d+-(\d+)\/(\d{4})$/);
+  const cnpjFromControl = controlMatch?.[1];
+  const year = positiveInteger(input.year) ?? positiveInteger(controlMatch?.[3]) ?? positiveInteger(raw.anoCompra) ?? positiveInteger(raw.anoCompraPncp);
+  const sequence = positiveInteger(controlMatch?.[2]) ?? positiveInteger(raw.sequencialCompra) ?? positiveInteger(raw.sequencialCompraPncp);
+  const resolvedCnpj = /^\d{14}$/.test(cnpj) ? cnpj : cnpjFromControl ?? "";
+  if (!/^\d{14}$/.test(resolvedCnpj) || !year || year < 2e3 || year > 2100 || !sequence) return null;
+  return { cnpj: resolvedCnpj, year, sequence };
+}
+function buildPncpHistoryUrl(input) {
+  const identity = procurementIdentity(input);
+  if (!identity) return null;
+  return `${PNCP_API}/orgaos/${identity.cnpj}/compras/${identity.year}/${identity.sequence}/historico`;
+}
+function mapPncpHistoryRecords(records) {
+  return records.flatMap((value, index2) => {
+    const record = asRecord2(value);
+    const type = text2(record.tipoLogManutencaoNome);
+    const category = text2(record.categoriaLogManutencaoNome);
+    const event = [type, category].filter((part) => part !== null).join(" - ");
+    const happenedAt = text2(record.logManutencaoDataInclusao);
+    if (!event || !happenedAt) return [];
+    const name = text2(record.documentoTitulo) ?? text2(record.documentoAtaTitulo) ?? text2(record.tituloDocumentoContrato) ?? "";
+    const justification = text2(record.justificativa) ?? "Exig\xEAncia Legal";
+    const documentSequence = text2(record.documentoSequencial) ?? "";
+    const itemNumber = text2(record.itemNumero) ?? "";
+    return [{
+      id: `${happenedAt}|${event}|${documentSequence}|${itemNumber}|${index2}`,
+      event,
+      name,
+      happenedAt,
+      justification
+    }];
+  });
+}
+async function requestJson(url, fetcher) {
+  const response = await fetcher(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8e3)
+  });
+  if (response.status === 204) return null;
+  if (!response.ok) throw new Error(`PNCP history API returned ${response.status}`);
+  return response.json();
+}
+async function fetchPncpHistory(input, fetcher = fetch) {
+  const baseUrl = buildPncpHistoryUrl(input);
+  if (!baseUrl) return null;
+  const quantityPayload = await requestJson(`${baseUrl}/quantidade`, fetcher);
+  if (quantityPayload === null) return [];
+  const totalRecords = Number(quantityPayload);
+  if (!Number.isSafeInteger(totalRecords) || totalRecords < 0) throw new Error("PNCP returned an invalid history count");
+  if (totalRecords === 0) return [];
+  const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+  if (totalPages > MAX_HISTORY_PAGES) throw new Error(`PNCP history exceeds the safe page limit of ${MAX_HISTORY_PAGES}`);
+  const allRecords = [];
+  for (let page = 1; page <= totalPages; page++) {
+    const url = new URL(baseUrl);
+    url.searchParams.set("pagina", String(page));
+    url.searchParams.set("tamanhoPagina", String(PAGE_SIZE));
+    const payload = await requestJson(url.toString(), fetcher);
+    if (payload === null) break;
+    const records = Array.isArray(payload) ? payload : [asRecord2(payload).data, asRecord2(payload).items, asRecord2(payload).content].find(Array.isArray) ?? [];
+    allRecords.push(...records);
+    if (records.length < PAGE_SIZE) break;
+  }
+  return mapPncpHistoryRecords(allRecords);
+}
+
 // server/services/opportunities.ts
 var OPPORTUNITIES_PAGE_SIZE = 25;
 var OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
@@ -3151,10 +3239,18 @@ async function getOpportunityDetail(id, userId) {
   const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq10(opportunities.connectorId, connectors.id)).where(eq10(opportunities.id, id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  const [storedItems, history, saved] = await Promise.all([
+  const pncpHistoryInput = {
+    agencyCnpj: row.opportunity.agencyCnpj,
+    year: row.opportunity.year,
+    controlNumber: row.opportunity.controlNumber,
+    rawData: row.opportunity.rawData
+  };
+  const pncpBacked = row.sourceCode === "pncp" || row.opportunity.sourceUrl?.startsWith("https://pncp.gov.br/app/editais/") === true || buildPncpHistoryUrl(pncpHistoryInput) !== null;
+  const [storedItems, history, saved, pncpHistory] = await Promise.all([
     db.select().from(opportunityItems).where(eq10(opportunityItems.opportunityId, id)),
-    db.select().from(opportunityHistory).where(eq10(opportunityHistory.opportunityId, id)).orderBy(desc7(opportunityHistory.happenedAt)).limit(30),
-    db.select({ id: favorites.id }).from(favorites).where(and9(eq10(favorites.userId, userId), eq10(favorites.opportunityId, id))).limit(1)
+    pncpBacked ? Promise.resolve([]) : db.select().from(opportunityHistory).where(eq10(opportunityHistory.opportunityId, id)).orderBy(desc7(opportunityHistory.happenedAt)).limit(30),
+    db.select({ id: favorites.id }).from(favorites).where(and9(eq10(favorites.userId, userId), eq10(favorites.opportunityId, id))).limit(1),
+    pncpBacked ? fetchPncpHistory(pncpHistoryInput).catch(() => null) : Promise.resolve(void 0)
   ]);
   let items = storedItems;
   if (!items.length) {
@@ -3170,7 +3266,7 @@ async function getOpportunityDetail(id, userId) {
     } catch {
     }
   }
-  return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history };
+  return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history, pncpHistory };
 }
 async function listFavorites(userId) {
   const rows = await getDb().select({ opportunity: opportunities, sourceName: connectors.name }).from(favorites).innerJoin(opportunities, eq10(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq10(opportunities.connectorId, connectors.id)).where(eq10(favorites.userId, userId)).orderBy(desc7(opportunities.lastSyncedAt), desc7(favorites.createdAt));
@@ -3475,7 +3571,7 @@ var orbeAiRouter = router({
     const minimumValue = money(profile?.minimumValue ?? null);
     const maximumValue = money(profile?.maximumValue ?? null);
     const now = /* @__PURE__ */ new Date();
-    const PAGE_SIZE = 250;
+    const PAGE_SIZE2 = 250;
     let offset = 0;
     let candidateCount = 0;
     let totalMatchedCount = 0;
@@ -3488,7 +3584,7 @@ var orbeAiRouter = router({
       }).from(opportunities).innerJoin(connectors, eq11(opportunities.connectorId, connectors.id)).where(and10(
         inArray8(opportunities.status, OPEN_STATUSES2),
         or6(gte2(opportunities.proposalDeadline, now), isNull2(opportunities.proposalDeadline))
-      )).orderBy(desc8(opportunities.lastSyncedAt), desc8(opportunities.publicationDate), asc3(opportunities.id)).limit(PAGE_SIZE).offset(offset);
+      )).orderBy(desc8(opportunities.lastSyncedAt), desc8(opportunities.publicationDate), asc3(opportunities.id)).limit(PAGE_SIZE2).offset(offset);
       if (!candidateRows.length) break;
       offset += candidateRows.length;
       candidateCount += candidateRows.length;
@@ -3577,7 +3673,7 @@ var orbeAiRouter = router({
       matches.push(...pageMatches);
       matches.sort((a, b) => b.score - a.score);
       if (matches.length > 40) matches.length = 40;
-      if (candidateRows.length < PAGE_SIZE) break;
+      if (candidateRows.length < PAGE_SIZE2) break;
     }
     await db.insert(auditLogs).values({
       actorUserId: ctx.user.id,
