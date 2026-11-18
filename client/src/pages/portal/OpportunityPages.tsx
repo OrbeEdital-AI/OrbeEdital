@@ -683,13 +683,13 @@ export function OpportunityDetailPage() {
                 </ul>
               </div>
             )}
-            {editalAnalysis.data.analysis.documentChecklist?.length > 0 && (
+            {(editalAnalysis.data.analysis.documentChecklist?.length > 0 || editalAnalysis.data.analysis.qualificationRequirements?.length > 0) && (
               <div className="rounded-lg border border-cyan-200 bg-white p-4">
                 <h4 className="text-sm font-semibold text-[#102B4E]">Preparação documental · checklist interativo</h4>
-                <p className="mt-1 text-xs text-slate-500">Marque os itens providenciados. Progresso salvo neste navegador para esta licitação.</p>
-                <p className="mt-2 text-xs font-semibold text-cyan-900">{editalAnalysis.data.analysis.documentChecklist.filter((entry: string) => checkedDocuments[entry]).length} de {editalAnalysis.data.analysis.documentChecklist.length} concluídos</p>
+                <p className="mt-1 text-xs text-slate-500">Proposta e habilitação em uma única lista, sem duplicações. Progresso salvo neste navegador.</p>
+                <p className="mt-2 text-xs font-semibold text-cyan-900">{Array.from(new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements])).filter((entry: string) => checkedDocuments[entry]).length} de {new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements]).size} concluídos</p>
                 <div className="mt-3 space-y-2">
-                  {editalAnalysis.data.analysis.documentChecklist.map((entry: string, index: number) => (
+                  {Array.from(new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements])).map((entry: string, index: number) => (
                     <label key={index} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
                       <input type="checkbox" className="mt-1 accent-cyan-700" checked={Boolean(checkedDocuments[entry])} onChange={event => setCheckedDocuments(previous => ({ ...previous, [entry]: event.target.checked }))} />
                       <span className={checkedDocuments[entry] ? "text-slate-400 line-through" : ""}>{entry}</span>
