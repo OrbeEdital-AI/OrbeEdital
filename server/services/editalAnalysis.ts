@@ -1,19 +1,26 @@
 import { TRPCError } from "@trpc/server";
 import { inflateRawSync } from "node:zlib";
 
+const CP437_HIGH = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤ÁÂÀ©╣║╗╝¢¥┐└┴┬├─┼ãÃ╚╔╩╦╠═╬¤ðÐÊËÈıÍÎÏ┘┌█▄¦Ì▀ÓßÔÒõÕµþÞÚÛÙýÝ¯´≡±‗¾¶§÷¸°¨·¹³²■ ";
+function decodeZipName(bytes: Buffer, utf8: boolean): string {
+  if (utf8) return bytes.toString("utf8");
+  return Array.from(bytes, byte => byte < 128 ? String.fromCharCode(byte) : CP437_HIGH[byte - 128] ?? "?").join("");
+}
+
 // Read PDF members from a ZIP returned by an official procurement endpoint.
 // Bound decompression to prevent ZIP bombs and never write archive paths to disk.
-function extractPdfsFromZip(archive: Buffer, depth = 0): Array<{ name: string; bytes: Buffer }> {
-  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return [];
+function extractPdfsFromZip(archive: Buffer, depth = 0): { files: Array<{ name: string; bytes: Buffer }>; skipped: string[] } {
+  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return { files: [], skipped: [] };
   const tailStart = Math.max(0, archive.length - 65557);
   let eocd = -1;
   for (let i = archive.length - 22; i >= tailStart; i--) {
     if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   }
-  if (eocd < 0) return [];
+  if (eocd < 0) return { files: [], skipped: [] };
   const entries = Math.min(archive.readUInt16LE(eocd + 10), 200);
   let cursor = archive.readUInt32LE(eocd + 16);
   const pdfCandidates: Array<{ name: string; bytes: Buffer; priority: number }> = [];
+  const skipped: string[] = [];
   for (let i = 0; i < entries; i++) {
     if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 0x02014b50) break;
     const method = archive.readUInt16LE(cursor + 10);
@@ -23,8 +30,9 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): Array<{ name: string; b
     const extraLength = archive.readUInt16LE(cursor + 30);
     const commentLength = archive.readUInt16LE(cursor + 32);
     const localOffset = archive.readUInt32LE(cursor + 42);
-    const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    const name = decodeZipName(archive.subarray(cursor + 46, cursor + 46 + nameLength), Boolean(archive.readUInt16LE(cursor + 8) & 0x800));
     cursor += 46 + nameLength + extraLength + commentLength;
+    if (name.toLowerCase().endsWith(".pdf") && uncompressedSize > 40 * 1024 * 1024) skipped.push(name + " (arquivo maior que 40 MB)");
     if (uncompressedSize > 40 * 1024 * 1024 || compressedSize > 40 * 1024 * 1024) continue;
     if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) continue;
     const dataStart = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
@@ -42,12 +50,14 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): Array<{ name: string; b
       }
       if (/\\.zip$/i.test(name) && bytes.subarray(0, 4).toString("hex") === "504b0304") {
         const nested = extractPdfsFromZip(bytes, depth + 1);
-        pdfCandidates.push(...nested.map(file => ({ ...file, priority: 3 })));
+        pdfCandidates.push(...nested.files.map(file => ({ ...file, priority: 3 })));
+        skipped.push(...nested.skipped);
       }
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
-  return pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes }));
+  skipped.push(...pdfCandidates.slice(6).map(file => file.name + " (não selecionado: limite de seis PDFs por ZIP)"));
+  return { files: pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes })), skipped };
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
@@ -480,10 +490,11 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
               pdfBuffer = bytes;
             } else {
               const extracted = extractPdfsFromZip(bytes);
-              if (extracted.length) {
-                zipPdfFiles = extracted;
-                pdfBuffer = extracted[0].bytes;
-                console.info("[edital-analysis] PDFs extracted from official ZIP", { opportunityId, filenames: extracted.map(file => file.name) });
+              if (extracted.files.length) {
+                zipPdfFiles = extracted.files;
+                documentsNotProcessed.push(...extracted.skipped);
+                pdfBuffer = extracted.files[0].bytes;
+                console.info("[edital-analysis] PDFs extracted from official ZIP", { opportunityId, filenames: extracted.files.map(file => file.name) });
               } else {
                 wordText = extractDocxText(bytes);
                 if (wordText) break;
