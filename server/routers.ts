@@ -237,8 +237,8 @@ export const appRouter = router({
       return result;
     }),
     analyzeEdital: protectedProcedure
-      .input(z.object({ id: z.string().uuid() }))
-      .mutation(({ input, ctx }) => analyzeOpportunityEdital(input.id, ctx.user.id)),
+      .input(z.object({ id: z.string().uuid(), force: z.boolean().optional() }))
+      .mutation(({ input, ctx }) => analyzeOpportunityEdital(input.id, ctx.user.id, input.force ?? false)),
   }),
   agenda: router({
     list: protectedProcedure.query(async ({ ctx }) => {
