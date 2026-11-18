@@ -192,7 +192,7 @@ function getOfficialPdfs(
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate as Record<string, unknown>;
-    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo, record._downloadUrl]
+    const rawUrl = [record._downloadUrl, record.downloadUrl, record.urlArquivo, record.url, record.uri, record.link, record.href]
       .find(value => {
         if (typeof value !== "string" || !value.trim()) return false;
         try {
