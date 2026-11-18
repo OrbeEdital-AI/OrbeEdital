@@ -220,7 +220,7 @@ export function Dashboard({
           <div><h3 className="font-bold text-[#102B4E]">Publicações recentes</h3><p className="mt-1 text-xs text-slate-500">Licitações abertas ordenadas pela data de publicação oficial, da mais recente para a mais antiga.</p></div>
           <Link href="/app/opportunities" className="text-sm font-semibold text-cyan-800">Ver todas →</Link>
         </div>
-        <OpportunityList items={recent.slice(0,5)} loading={false} empty="Nenhuma oportunidade disponível no momento." compact />
+        {recommendations?.items?.length ? <><div className="space-y-2 px-5 pt-4">{recommendations.items.map(item => <div key={item.id} className="text-xs text-cyan-900"><Link href={`/app/opportunities/${item.id}`} className="font-semibold hover:underline">{item.title}</Link><p className="mt-1 text-slate-600">Correspondência: {item.matchReasons.length ? item.matchReasons.join(", ") : item.matchBasis} · {item.state ?? "UF não informada"} · Prazo: {date(item.proposalDeadline)}</p></div>)}</div></> : <div className="p-5 text-sm text-slate-600">{recommendations?.configured ? "Nenhuma oportunidade compatível identificada na base sincronizada." : <Link href="/app/profile" className="font-semibold text-cyan-800">Configurar perfil da empresa →</Link>}</div>}
       </section>
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
         <span>Base nacional: {Number(summary?.open ?? 0).toLocaleString("pt-BR")} oportunidades abertas</span>
@@ -835,4 +835,5 @@ export function OpportunityDetailPage() {
       </section>
     </div>
   );
-}
+}        {favoriteChanges.length > 0 && <div className="mt-4 space-y-2 border-t pt-3"><p className="text-sm font-semibold text-[#102B4E]">Alterações registradas em favoritos</p>{favoriteChanges.slice(0,4).map(change => <Link key={change.id} href={`/app/opportunities/${change.opportunityId}`} className="block rounded-lg bg-cyan-50 p-3 text-sm text-[#102B4E] hover:bg-cyan-100"><strong>{change.title}</strong><span className="mt-1 block text-xs text-slate-600">{change.description} · {dateTime(change.happenedAt)}</span></Link>)}</div>}
+
