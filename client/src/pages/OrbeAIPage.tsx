@@ -155,7 +155,7 @@ export function OrbeAIPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="rounded-xl border border-white/20 bg-white/10 p-3"><Sparkles size={25}/></div>
-          <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">Orbe IA · Plano Profissional</p><h2 className="mt-1 text-2xl font-bold text-white">Seu assistente de licitações</h2></div>
+          <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">Orbe IA · Plano Profissional</p><h2 className="mt-1 text-2xl font-bold !text-white" style={{ color: "#ffffff", WebkitTextFillColor: "#ffffff" }}>Seu assistente de licitações</h2></div>
         </div>
         <button type="button" onClick={startNewConversation} className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-3 py-2 text-sm font-semibold hover:bg-white/10"><Plus size={16}/> Nova conversa</button>
       </div>
