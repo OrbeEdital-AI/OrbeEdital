@@ -12,6 +12,7 @@ import {
 import { getDb } from "../db";
 import { buildPncpDetailUrl, normalizeProcurementStatus } from "../connectors/presentation";
 import { indexOpportunityItems } from "./pncpItemIndex";
+import { buildPncpHistoryUrl, fetchPncpHistory } from "./pncpHistory";
 
 export type OpportunityFilters = {
   query?: string;
@@ -176,10 +177,20 @@ export async function getOpportunityDetail(id: string, userId: string) {
     .where(eq(opportunities.id, id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  const [storedItems, history, saved] = await Promise.all([
+  const pncpHistoryInput = {
+    agencyCnpj: row.opportunity.agencyCnpj,
+    year: row.opportunity.year,
+    controlNumber: row.opportunity.controlNumber,
+    rawData: row.opportunity.rawData,
+  };
+  const pncpBacked = row.sourceCode === "pncp"
+    || row.opportunity.sourceUrl?.startsWith("https://pncp.gov.br/app/editais/") === true
+    || buildPncpHistoryUrl(pncpHistoryInput) !== null;
+  const [storedItems, history, saved, pncpHistory] = await Promise.all([
     db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, id)),
-    db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
+    pncpBacked ? Promise.resolve([]) : db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
     db.select({ id: favorites.id }).from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.opportunityId, id))).limit(1),
+    pncpBacked ? fetchPncpHistory(pncpHistoryInput).catch(() => null) : Promise.resolve(undefined),
   ]);
   let items = storedItems;
   if (!items.length) {
@@ -196,7 +207,7 @@ export async function getOpportunityDetail(id: string, userId: string) {
       // Preserve the rest of the detail page if the upstream item API is unavailable.
     }
   }
-  return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history };
+  return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history, pncpHistory };
 }
 
 export async function listFavorites(userId: string) {

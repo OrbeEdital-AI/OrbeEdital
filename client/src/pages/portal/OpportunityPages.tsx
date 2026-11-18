@@ -85,6 +85,15 @@ function historyFieldLabel(field: string) {
   return HISTORY_FIELD_LABELS[field] ?? field;
 }
 
+function formatPncpHistoryDate(value: string) {
+  const localTimestamp = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (localTimestamp) {
+    const [, year, month, day, hour, minute, second = "00"] = localTimestamp;
+    return `${day}/${month}/${year} - ${hour}:${minute}:${second}`;
+  }
+  return dateTime(value);
+}
+
 export function Dashboard({
   summary,
   loading,
@@ -544,6 +553,8 @@ export function OpportunityDetailPage() {
       />
     );
   const item = query.data!;
+  const pncpHistory = item.pncpHistory;
+  const isPncpHistory = pncpHistory !== undefined;
   return (
     <div className="space-y-5">
       <Link
@@ -748,8 +759,37 @@ export function OpportunityDetailPage() {
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="font-semibold text-[#102B4E]">Histórico de atualizações</h3>
-        <p className="mt-1 text-xs text-slate-500">Alterações identificadas nas consultas à fonte oficial, com os dados anteriores e atuais.</p>
-        {item.history.length ? (
+        <p className="mt-1 text-xs text-slate-500">{isPncpHistory ? "Eventos oficiais registrados no PNCP." : "Alterações registradas para esta oportunidade."}</p>
+        {isPncpHistory ? pncpHistory === null ? (
+          <p className="mt-3 text-sm text-amber-800" role="status">
+            Não foi possível carregar o histórico oficial do PNCP agora. Consulte o edital na fonte oficial e tente novamente mais tarde.
+          </p>
+        ) : pncpHistory.length ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-2.5 font-semibold" scope="col">Evento</th>
+                  <th className="px-3 py-2.5 font-semibold" scope="col">Nome</th>
+                  <th className="px-3 py-2.5 font-semibold" scope="col">Data/Hora do Evento</th>
+                  <th className="px-3 py-2.5 font-semibold" scope="col">Justificativa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pncpHistory.map((event: any) => (
+                  <tr className="border-b border-slate-100 align-top last:border-0" key={event.id}>
+                    <td className="px-3 py-3 font-medium text-slate-800">{event.event}</td>
+                    <td className="max-w-sm break-words px-3 py-3 text-slate-700">{event.name}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-700">{formatPncpHistoryDate(event.happenedAt)}</td>
+                    <td className="min-w-56 break-words px-3 py-3 text-slate-700">{event.justification}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-slate-500">O PNCP ainda não registrou eventos para esta contratação.</p>
+        ) : item.history.length ? (
           <ul className="mt-4 space-y-3">
             {item.history.map((event: any) => {
               const previousValues = event.previousValues ?? {};
@@ -811,7 +851,7 @@ export function OpportunityDetailPage() {
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500">
-            Nenhuma alteração posterior foi identificada desde a primeira captura no Orbe em {date(item.createdAt)}. Alterações anteriores à primeira consulta não ficam disponíveis.
+            Ainda não há histórico de alterações para esta oportunidade.
           </p>
         )}
       </section>
