@@ -13,6 +13,7 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
   if (eocd < 0) return null;
   const entries = Math.min(archive.readUInt16LE(eocd + 10), 200);
   let cursor = archive.readUInt32LE(eocd + 16);
+  const pdfCandidates: Array<{ name: string; bytes: Buffer; priority: number }> = [];
   for (let i = 0; i < entries; i++) {
     if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 0x02014b50) break;
     const method = archive.readUInt16LE(cursor + 10);
@@ -34,7 +35,10 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
         ? inflateRawSync(compressed, { maxOutputLength: 40 * 1024 * 1024 }) : null;
       if (!bytes) continue;
       if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
-        return { name: name.split("/").pop() || "Documento PDF", bytes };
+        const filename = name.split("/").pop() || "Documento PDF";
+        const priority = /^edital(?:[\s_.-]|$)/i.test(filename) ? 0 : /termo de refer[eê]ncia/i.test(filename) ? 1 : /projeto b[aá]sico/i.test(filename) ? 2 : 3;
+        pdfCandidates.push({ name: filename, bytes, priority });
+        continue;
       }
       if (/\\.zip$/i.test(name) && bytes.subarray(0, 4).toString("hex") === "504b0304") {
         const nested = extractPdfFromZip(bytes, depth + 1);
@@ -42,7 +46,8 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
       }
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
-  return null;
+  pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
+  return pdfCandidates[0] ? { name: pdfCandidates[0].name, bytes: pdfCandidates[0].bytes } : null;
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
