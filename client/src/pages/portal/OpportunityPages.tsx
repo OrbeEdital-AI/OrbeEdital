@@ -656,7 +656,7 @@ export function OpportunityDetailPage() {
           <button
             type="button"
             disabled={editalAnalysis.isPending}
-            onClick={() => editalAnalysis.mutate({ id: item.id, force: Boolean(editalAnalysis.data) })}
+            onClick={() => { const force = Boolean(editalAnalysis.data); editalAnalysis.reset(); editalAnalysis.mutate({ id: item.id, force }); }}
             className="inline-flex items-center gap-2 rounded-lg bg-[#102B4E] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
           >
             <Sparkles size={16} />
