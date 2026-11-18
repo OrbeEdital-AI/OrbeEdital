@@ -1,6 +1,9 @@
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, lte, or, sql, sum } from "drizzle-orm";
 import {
   companyMembers,
+  companyProfiles,
+  companies,
+  globalSettings,
   connectors,
   favorites,
   opportunities,
@@ -353,6 +356,47 @@ export async function getDashboardSummary(user: SafeUser) {
 }
 
 /** Only audited content changes on opportunities this user bookmarked; a sync alone is not an event. */
+export async function getRecommendedOpportunities(userId: string) {
+  const db = getDb();
+  const [membership] = await db.select({ profile: companyProfiles, state: companies.state, segment: companies.primarySegment })
+    .from(companyMembers).innerJoin(companies, eq(companies.id, companyMembers.companyId))
+    .leftJoin(companyProfiles, eq(companyProfiles.companyId, companies.id))
+    .where(eq(companyMembers.userId, userId)).limit(1);
+  const profile = membership?.profile;
+  const terms = [...new Set([...(profile?.products ?? []), ...(profile?.services ?? []), ...(profile?.keywords ?? []), ...(profile?.segments ?? []), membership?.segment ?? ""]
+    .map(t => t.trim().toLowerCase()).filter(t => t.length >= 3))].slice(0, 40);
+  if (!terms.length) return { configured: false, items: [] };
+  const [settings] = await db.select({ value: globalSettings.value }).from(globalSettings).where(eq(globalSettings.key, "recommendations")).limit(1);
+  const config = (settings?.value ?? {}) as Record<string, unknown>;
+  if (config.enabled === false) return { configured: true, items: [] };
+  const limit = Math.min(12, Math.max(1, Number(config.maxItems) || 6));
+  const servedStates = (profile?.servedStates ?? []).map(s => s.toUpperCase());
+  const searchTerms = terms.slice(0, 20);
+  const matches = searchTerms.map(term => {
+    const like = "%" + term.replace(/[%_]/g, "\\$&") + "%";
+    return or(ilike(opportunities.title, like), ilike(opportunities.description, like),
+      sql`exists(select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and oi.description ilike ${like})`)!;
+  });
+  const now = new Date();
+  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name })
+    .from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
+    .where(and(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES), or(...matches)))
+    .orderBy(desc(opportunities.publicationDate)).limit(250);
+  const scored = rows.flatMap(row => {
+    const o = row.opportunity;
+    if (servedStates.length && o.state && !servedStates.includes(o.state.toUpperCase())) return [];
+    const value = Number(o.estimatedValue);
+    if (profile?.minimumValue && Number.isFinite(value) && value < Number(profile.minimumValue)) return [];
+    if (profile?.maximumValue && Number.isFinite(value) && value > Number(profile.maximumValue)) return [];
+    const text = [o.title, o.description].filter(Boolean).join(" ").toLowerCase();
+    const matched = terms.filter(t => text.includes(t));
+    const score = matched.length * 10 + (servedStates.includes(o.state ?? "") ? 4 : 0);
+    return [{ ...presentOpportunity(o), sourceName: row.sourceName, matchReasons: matched.slice(0, 4), matchScore: score, matchBasis: matched.length ? "objeto e descrição" : "itens indexados" }];
+  });
+  scored.sort((a,b) => b.matchScore - a.matchScore || new Date(b.publicationDate ?? 0).getTime() - new Date(a.publicationDate ?? 0).getTime());
+  return { configured: true, items: scored.slice(0, limit) };
+}
+
 export async function getFavoriteChanges(userId: string) {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const rows = await getDb()
