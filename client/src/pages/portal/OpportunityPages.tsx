@@ -835,5 +835,4 @@ export function OpportunityDetailPage() {
       </section>
     </div>
   );
-}        {favoriteChanges.length > 0 && <div className="mt-4 space-y-2 border-t pt-3"><p className="text-sm font-semibold text-[#102B4E]">Alterações registradas em favoritos</p>{favoriteChanges.slice(0,4).map(change => <Link key={change.id} href={`/app/opportunities/${change.opportunityId}`} className="block rounded-lg bg-cyan-50 p-3 text-sm text-[#102B4E] hover:bg-cyan-100"><strong>{change.title}</strong><span className="mt-1 block text-xs text-slate-600">{change.description} · {dateTime(change.happenedAt)}</span></Link>)}</div>}
-
+}
