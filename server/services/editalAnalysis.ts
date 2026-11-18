@@ -3,15 +3,15 @@ import { inflateRawSync } from "node:zlib";
 
 // Read PDF members from a ZIP returned by an official procurement endpoint.
 // Bound decompression to prevent ZIP bombs and never write archive paths to disk.
-function extractPdfFromZip(archive: Buffer): { name: string; bytes: Buffer } | null {
-  if (archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return null;
+function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: Buffer } | null {
+  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return null;
   const tailStart = Math.max(0, archive.length - 65557);
   let eocd = -1;
   for (let i = archive.length - 22; i >= tailStart; i--) {
     if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   }
   if (eocd < 0) return null;
-  const entries = Math.min(archive.readUInt16LE(eocd + 10), 100);
+  const entries = Math.min(archive.readUInt16LE(eocd + 10), 200);
   let cursor = archive.readUInt32LE(eocd + 16);
   for (let i = 0; i < entries; i++) {
     if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 0x02014b50) break;
@@ -24,18 +24,23 @@ function extractPdfFromZip(archive: Buffer): { name: string; bytes: Buffer } | n
     const localOffset = archive.readUInt32LE(cursor + 42);
     const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
     cursor += 46 + nameLength + extraLength + commentLength;
-    if (!/\.pdf$/i.test(name) || uncompressedSize > 15 * 1024 * 1024 || compressedSize > 15 * 1024 * 1024) continue;
+    if (uncompressedSize > 40 * 1024 * 1024 || compressedSize > 40 * 1024 * 1024) continue;
     if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) continue;
     const dataStart = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
     if (dataStart + compressedSize > archive.length) continue;
-    const compressed = archive.subarray(dataStart, dataStart + compressedSize);
     try {
+      const compressed = archive.subarray(dataStart, dataStart + compressedSize);
       const bytes = method === 0 ? compressed : method === 8
-        ? inflateRawSync(compressed, { maxOutputLength: 15 * 1024 * 1024 }) : null;
-      if (bytes && bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
+        ? inflateRawSync(compressed, { maxOutputLength: 40 * 1024 * 1024 }) : null;
+      if (!bytes) continue;
+      if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
         return { name: name.split("/").pop() || "Documento PDF", bytes };
       }
-    } catch { /* Corrupt or unsupported ZIP entry. */ }
+      if (/\\.zip$/i.test(name) && bytes.subarray(0, 4).toString("hex") === "504b0304") {
+        const nested = extractPdfFromZip(bytes, depth + 1);
+        if (nested) return nested;
+      }
+    } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   return null;
 }
@@ -449,6 +454,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais não processados nesta análise rápida`);
     if (pdfs.length && !documentsAnalyzed.length) {
       console.warn("[edital-analysis] no official PDF processed", { opportunityId, errors: documentsNotProcessed });
+      throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF pôde ser extraído. A análise não foi gerada apenas com metadados." });
     }
 
     const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
