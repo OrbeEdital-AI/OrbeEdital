@@ -230,6 +230,7 @@ var opportunities = pgTable(
     noticeUrl: text("notice_url"),
     documents: jsonb("documents").$type().notNull().default([]),
     itemCount: integer("item_count"),
+    itemsSyncedAt: timestamp("items_synced_at", { withTimezone: true }),
     lastSourceUpdateAt: timestamp("last_source_update_at", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).defaultNow().notNull(),
     rawData: jsonb("raw_data").$type().notNull().default({}),
@@ -1024,7 +1025,7 @@ async function verifyRadarCandidate(id, deadline, evidence) {
 // server/routers.ts
 import { parse as parseCookieHeader2 } from "cookie";
 import { TRPCError as TRPCError7 } from "@trpc/server";
-import { and as and12, count as count5, desc as desc9, eq as eq14, gte as gte3, inArray as inArray10, isNotNull, lt as lt3, or as or7, sql as sql6, sum as sum2 } from "drizzle-orm";
+import { and as and12, count as count5, desc as desc9, eq as eq14, gte as gte3, inArray as inArray10, isNotNull, lt as lt3, or as or8, sql as sql6, sum as sum2 } from "drizzle-orm";
 import { z as z5 } from "zod";
 
 // server/services/authActions.ts
@@ -2675,7 +2676,7 @@ var supportRouter = router({
 });
 
 // server/orbeAiRouter.ts
-import { and as and10, asc as asc3, count as count4, desc as desc8, eq as eq11, gte as gte2, inArray as inArray8, isNull as isNull2, or as or5 } from "drizzle-orm";
+import { and as and10, asc as asc3, count as count4, desc as desc8, eq as eq11, gte as gte2, inArray as inArray8, isNull as isNull2, or as or6 } from "drizzle-orm";
 import { TRPCError as TRPCError4 } from "@trpc/server";
 import { z as z3 } from "zod";
 
@@ -2802,7 +2803,7 @@ async function ensureCanSaveSearch(userId) {
 }
 
 // server/services/opportunities.ts
-import { and as and9, asc as asc2, count as count3, desc as desc7, eq as eq10, gte, ilike as ilike2, inArray as inArray7, isNull, lt as lt2, lte, or as or4, sql as sql4, sum } from "drizzle-orm";
+import { and as and9, asc as asc2, count as count3, desc as desc7, eq as eq10, gte, ilike as ilike2, inArray as inArray7, isNull, lt as lt2, lte, or as or5, sql as sql4, sum } from "drizzle-orm";
 
 // server/connectors/presentation.ts
 function asRecord(value) {
@@ -2858,7 +2859,59 @@ function normalizeProcurementStatus(rawValue, fallback = "unknown") {
 }
 
 // server/services/pncpItemIndex.ts
-import { and as and8, asc, eq as eq9, gt as gt3, inArray as inArray6, sql as sql3 } from "drizzle-orm";
+import { and as and8, asc, eq as eq9, gt as gt3, inArray as inArray6, or as or4, sql as sql3 } from "drizzle-orm";
+
+// server/services/opportunityItemHistory.ts
+var ITEM_FIELDS = [
+  "description",
+  "catalogCode",
+  "catalogSystem",
+  "quantity",
+  "unit",
+  "estimatedUnitValue",
+  "estimatedTotalValue",
+  "specifications"
+];
+function itemKey(item) {
+  return item.itemNumber?.trim() || item.sourceItemKey?.trim() || `${item.catalogCode ?? ""}:${item.description.trim()}`;
+}
+function compareOpportunityItems(previous, next) {
+  const oldByKey = new Map(previous.map((item) => [itemKey(item), item]));
+  const newByKey = new Map(next.map((item) => [itemKey(item), item]));
+  const altered = [];
+  const added = [];
+  const removed = [];
+  for (const [key, current] of newByKey) {
+    const old = oldByKey.get(key);
+    if (!old) {
+      added.push(current);
+      continue;
+    }
+    const changes = {};
+    for (const field of ITEM_FIELDS) {
+      if ((old[field] ?? null) !== (current[field] ?? null)) {
+        changes[field] = { previous: old[field] ?? null, next: current[field] ?? null };
+      }
+    }
+    if (Object.keys(changes).length) {
+      altered.push({ itemNumber: current.itemNumber, description: current.description, changes });
+    }
+  }
+  for (const [key, old] of oldByKey) {
+    if (!newByKey.has(key)) removed.push(old);
+  }
+  return { altered, added, removed };
+}
+function summarizeOpportunityItemChanges(changes) {
+  const parts = [
+    changes.altered.length ? `${changes.altered.length} alterado(s)` : "",
+    changes.added.length ? `${changes.added.length} inclu\xEDdo(s)` : "",
+    changes.removed.length ? `${changes.removed.length} removido(s)` : ""
+  ].filter(Boolean);
+  return parts.length ? `A fonte oficial atualizou itens do edital: ${parts.join(", ")}.` : null;
+}
+
+// server/services/pncpItemIndex.ts
 function itemUrl(row) {
   const raw = row.rawData?.raw;
   const record = raw && typeof raw === "object" ? raw : {};
@@ -2894,6 +2947,7 @@ async function indexOpportunityItems(row) {
     const item = value;
     const description = [item.descricao, item.descricaoDetalhada, item.descricaoComplementar].find((entry) => typeof entry === "string" && entry.trim().length > 0)?.trim();
     if (!description) return [];
+    const sourceItemKey = item.numeroItem ?? item.itemId ?? item.id ?? item.identificadorItem;
     const numeric2 = (...keys) => {
       for (const key of keys) {
         const value2 = item[key];
@@ -2913,16 +2967,44 @@ async function indexOpportunityItems(row) {
       unit: typeof item.unidadeMedida === "string" ? item.unidadeMedida : null,
       estimatedUnitValue: numeric2("valorUnitarioEstimado"),
       estimatedTotalValue: numeric2("valorTotal", "valorTotalEstimado"),
-      specifications: [item.especificacao, item.descricaoDetalhada, item.descricaoComplementar].filter((entry) => typeof entry === "string" && entry.trim().length > 0 && entry.trim() !== description).join("\n") || null
+      specifications: [item.especificacao, item.descricaoDetalhada, item.descricaoComplementar].filter((entry) => typeof entry === "string" && entry.trim().length > 0 && entry.trim() !== description).join("\n") || null,
+      sourceItemKey: sourceItemKey == null ? null : String(sourceItemKey)
     }];
   });
   const db = getDb();
-  if (mapped.length) {
-    await db.transaction(async (tx) => {
+  const existing = await db.select().from(opportunityItems).where(eq9(opportunityItems.opportunityId, row.id));
+  const toSnapshot = (item) => ({
+    sourceItemKey: item.sourceItemKey,
+    itemNumber: item.itemNumber,
+    description: item.description,
+    catalogCode: item.catalogCode,
+    catalogSystem: item.catalogSystem,
+    quantity: item.quantity,
+    unit: item.unit,
+    estimatedUnitValue: item.estimatedUnitValue,
+    estimatedTotalValue: item.estimatedTotalValue,
+    specifications: item.specifications
+  });
+  const changes = existing.length && mapped.length ? compareOpportunityItems(existing.map(toSnapshot), mapped.map(toSnapshot)) : null;
+  const summary = changes ? summarizeOpportunityItemChanges(changes) : null;
+  await db.transaction(async (tx) => {
+    if (mapped.length && (changes?.altered.length || changes?.added.length || changes?.removed.length)) {
       await tx.delete(opportunityItems).where(eq9(opportunityItems.opportunityId, row.id));
       for (let offset = 0; offset < mapped.length; offset += 100) await tx.insert(opportunityItems).values(mapped.slice(offset, offset + 100));
-    });
-  }
+    } else if (mapped.length && !existing.length) {
+      for (let offset = 0; offset < mapped.length; offset += 100) await tx.insert(opportunityItems).values(mapped.slice(offset, offset + 100));
+    }
+    await tx.update(opportunities).set({ itemsSyncedAt: /* @__PURE__ */ new Date() }).where(eq9(opportunities.id, row.id));
+    if (summary && changes) {
+      await tx.insert(opportunityHistory).values({
+        opportunityId: row.id,
+        eventType: "source_items_update",
+        summary,
+        previousValues: { items: { altered: changes.altered.map((item) => ({ itemNumber: item.itemNumber, description: item.description, fields: Object.fromEntries(Object.entries(item.changes).map(([field, values]) => [field, values.previous])) })), removed: changes.removed.map(({ itemNumber, description }) => ({ itemNumber, description })) } },
+        newValues: { items: { altered: changes.altered.map((item) => ({ itemNumber: item.itemNumber, description: item.description, fields: Object.fromEntries(Object.entries(item.changes).map(([field, values]) => [field, values.next])) })), added: changes.added.map(({ itemNumber, description }) => ({ itemNumber, description })) } }
+      });
+    }
+  });
   return db.select().from(opportunityItems).where(eq9(opportunityItems.opportunityId, row.id));
 }
 async function indexPncpItems(limit = 160) {
@@ -2931,7 +3013,11 @@ async function indexPncpItems(limit = 160) {
   if (!connector) return { scanned: 0, indexed: 0, failures: 0 };
   const config = connector.configuration ?? {};
   const cursor = typeof config.itemsCursor === "string" ? config.itemsCursor : "";
-  const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData }).from(opportunities).where(and8(inArray6(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray6(connectors.code, ["pncp", "compras.gov.br"]))), gt3(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), sql3`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`)).orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 180));
+  const staleItems = or4(
+    and8(sql3`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`, sql3`${opportunities.itemsSyncedAt} is null`),
+    and8(sql3`${opportunities.lastSourceUpdateAt} is not null`, or4(sql3`${opportunities.itemsSyncedAt} is null`, gt3(opportunities.lastSourceUpdateAt, opportunities.itemsSyncedAt)))
+  );
+  const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData }).from(opportunities).where(and8(inArray6(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray6(connectors.code, ["pncp", "compras.gov.br"]))), gt3(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), staleItems)).orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 180));
   let indexed = 0, failures = 0;
   for (let offset = 0; offset < rows.length; offset += 12) {
     await Promise.all(rows.slice(offset, offset + 12).map(async (row) => {
@@ -3020,7 +3106,7 @@ function buildFilters(filters) {
           sql4`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`
         ];
       });
-      clauses.push(or4(...matches));
+      clauses.push(or5(...matches));
     }
   }
   if (filters.states?.length) clauses.push(inArray7(opportunities.state, filters.states.map((state) => state.toUpperCase())));
@@ -3401,7 +3487,7 @@ var orbeAiRouter = router({
         sourceCode: connectors.code
       }).from(opportunities).innerJoin(connectors, eq11(opportunities.connectorId, connectors.id)).where(and10(
         inArray8(opportunities.status, OPEN_STATUSES2),
-        or5(gte2(opportunities.proposalDeadline, now), isNull2(opportunities.proposalDeadline))
+        or6(gte2(opportunities.proposalDeadline, now), isNull2(opportunities.proposalDeadline))
       )).orderBy(desc8(opportunities.lastSyncedAt), desc8(opportunities.publicationDate), asc3(opportunities.id)).limit(PAGE_SIZE).offset(offset);
       if (!candidateRows.length) break;
       offset += candidateRows.length;
@@ -3802,7 +3888,7 @@ var systemRouter = router({
 
 // server/services/ingestion.ts
 import { isDeepStrictEqual } from "node:util";
-import { and as and11, eq as eq12, inArray as inArray9, or as or6, sql as sql5 } from "drizzle-orm";
+import { and as and11, eq as eq12, inArray as inArray9, or as or7, sql as sql5 } from "drizzle-orm";
 
 // server/connectors/types.ts
 var ConnectorError = class extends Error {
@@ -4352,7 +4438,7 @@ async function syncConnector(sourceCode, input = {}) {
             const sameSourceCondition = and11(eq12(opportunities.connectorId, source.id), inArray9(opportunities.sourceKey, sourceKeys));
             const lookupConditions = [sameSourceCondition];
             if (controlNumbers.length) lookupConditions.push(inArray9(opportunities.controlNumber, controlNumbers));
-            const lookupCondition = or6(...lookupConditions);
+            const lookupCondition = or7(...lookupConditions);
             const existingRows = lookupCondition ? await db.select().from(opportunities).where(lookupCondition) : [];
             const existingBySourceKey = new Map(existingRows.filter((row) => row.connectorId === source.id).map((row) => [row.sourceKey, row]));
             const existingByControlNumber = new Map(existingRows.filter((row) => row.controlNumber).map((row) => [row.controlNumber, row]));
@@ -5046,7 +5132,7 @@ var appRouter = router({
         sourceName: connectors.name
       }).from(favorites).innerJoin(opportunities, eq14(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq14(opportunities.connectorId, connectors.id)).where(and12(
         eq14(favorites.userId, ctx.user.id),
-        or7(
+        or8(
           and12(gte3(opportunities.proposalDeadline, now), lt3(opportunities.proposalDeadline, horizon)),
           and12(gte3(opportunities.openingDate, now), lt3(opportunities.openingDate, horizon)),
           and12(gte3(opportunities.sessionAt, now), lt3(opportunities.sessionAt, horizon))
@@ -5451,7 +5537,7 @@ import { parse as parseCookieHeader3 } from "cookie";
 import { eq as eq16, inArray as inArray11 } from "drizzle-orm";
 
 // server/services/deadlineNotifications.ts
-import { and as and13, eq as eq15, gte as gte4, isNotNull as isNotNull2, lt as lt4, or as or8 } from "drizzle-orm";
+import { and as and13, eq as eq15, gte as gte4, isNotNull as isNotNull2, lt as lt4, or as or9 } from "drizzle-orm";
 var TIME_ZONE = "America/Sao_Paulo";
 var REMINDER_OFFSETS = /* @__PURE__ */ new Set([7, 3, 1, 0]);
 function dateKey2(value) {
@@ -5482,7 +5568,7 @@ async function dispatchDeadlineNotifications() {
     proposalDeadline: opportunities.proposalDeadline,
     openingDate: opportunities.openingDate,
     sessionAt: opportunities.sessionAt
-  }).from(favorites).innerJoin(opportunities, eq15(favorites.opportunityId, opportunities.id)).where(or8(
+  }).from(favorites).innerJoin(opportunities, eq15(favorites.opportunityId, opportunities.id)).where(or9(
     and13(isNotNull2(opportunities.proposalDeadline), gte4(opportunities.proposalDeadline, startOfToday), lt4(opportunities.proposalDeadline, horizon)),
     and13(isNotNull2(opportunities.openingDate), gte4(opportunities.openingDate, startOfToday), lt4(opportunities.openingDate, horizon)),
     and13(isNotNull2(opportunities.sessionAt), gte4(opportunities.sessionAt, startOfToday), lt4(opportunities.sessionAt, horizon))

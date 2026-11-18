@@ -192,6 +192,7 @@ export const opportunities = pgTable(
     noticeUrl: text("notice_url"),
     documents: jsonb("documents").$type<Array<Record<string, unknown>>>().notNull().default([]),
     itemCount: integer("item_count"),
+    itemsSyncedAt: timestamp("items_synced_at", { withTimezone: true }),
     lastSourceUpdateAt: timestamp("last_source_update_at", { withTimezone: true }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).defaultNow().notNull(),
     rawData: jsonb("raw_data").$type<Record<string, unknown>>().notNull().default({}),

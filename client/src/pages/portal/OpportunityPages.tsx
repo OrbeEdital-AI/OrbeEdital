@@ -26,6 +26,65 @@ import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
 import { brazilGreeting, date, dateTime, money, Loading, ErrorState, statusLabel } from "./common";
 import type { AnyOpportunity } from "./common";
+
+const HISTORY_FIELD_LABELS: Record<string, string> = {
+  procurementNumber: "Número da licitação",
+  processNumber: "Número do processo",
+  year: "Ano",
+  modality: "Modalidade",
+  procurementType: "Tipo de contratação",
+  title: "Objeto",
+  description: "Descrição",
+  summary: "Resumo",
+  agencyName: "Órgão responsável",
+  unitName: "Unidade compradora",
+  agencyCnpj: "CNPJ do órgão",
+  state: "Estado",
+  municipality: "Município",
+  address: "Endereço",
+  publicationDate: "Data de publicação",
+  openingDate: "Data de abertura",
+  sessionAt: "Data da sessão",
+  proposalDeadline: "Prazo de propostas",
+  estimatedValue: "Valor estimado",
+  awardedValue: "Valor homologado",
+  status: "Situação",
+  judgmentCriterion: "Critério de julgamento",
+  disputeMode: "Modo de disputa",
+  sourceUrl: "Link da fonte",
+  noticeUrl: "Link do edital",
+  documents: "Documentos do edital",
+  itemCount: "Quantidade de itens",
+  lastSourceUpdateAt: "Última atualização informada pela fonte",
+  descriptionItem: "Descrição do item",
+  catalogCode: "Código de catálogo",
+  catalogSystem: "Sistema de catálogo",
+  quantity: "Quantidade",
+  unit: "Unidade de fornecimento",
+  estimatedUnitValue: "Valor estimado unitário",
+  estimatedTotalValue: "Valor estimado total",
+  specifications: "Especificações",
+};
+
+function historyValue(field: string, value: unknown) {
+  if (value == null || value === "") return "Não informado";
+  if (field === "status" && typeof value === "string") return statusLabel(value);
+  if (["estimatedValue", "awardedValue", "estimatedUnitValue", "estimatedTotalValue"].includes(field)) {
+    return money(typeof value === "string" || typeof value === "number" ? value : null);
+  }
+  if (["publicationDate", "openingDate", "sessionAt", "proposalDeadline", "lastSourceUpdateAt"].includes(field)) {
+    const parsed = new Date(String(value));
+    if (Number.isFinite(parsed.getTime())) return dateTime(parsed);
+  }
+  if (Array.isArray(value)) return value.length ? value.map(entry => typeof entry === "string" ? entry : JSON.stringify(entry)).join("; ") : "Nenhum";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function historyFieldLabel(field: string) {
+  return HISTORY_FIELD_LABELS[field] ?? field;
+}
+
 export function Dashboard({
   summary,
   loading,
@@ -627,7 +686,7 @@ export function OpportunityDetailPage() {
               ["Pontos de atenção", editalAnalysis.data.analysis.attentionPoints],
               ["Informações não localizadas", editalAnalysis.data.analysis.missingInformation],
             ].map(([title, entries]) => Array.isArray(entries) && entries.length > 0 && (
-              <div key={title}>
+              <div key={String(title)}>
                 <h4 className="text-sm font-semibold text-[#102B4E]">{title}</h4>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
                   {entries.map((entry: string, index: number) => <li key={index}>{entry}</li>)}
@@ -688,25 +747,71 @@ export function OpportunityDetailPage() {
         )}
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="font-semibold text-[#102B4E]">
-          Histórico de atualizações
-        </h3>
+        <h3 className="font-semibold text-[#102B4E]">Histórico de atualizações</h3>
+        <p className="mt-1 text-xs text-slate-500">Alterações identificadas nas consultas à fonte oficial, com os dados anteriores e atuais.</p>
         {item.history.length ? (
           <ul className="mt-4 space-y-3">
-            {item.history.map((event: any) => (
-              <li className="border-l-2 border-cyan-300 pl-4" key={event.id}>
-                <p className="text-xs text-slate-500">
-                  {date(event.happenedAt)} · {event.eventType}
-                </p>
-                <p className="mt-1 text-sm">
-                  {event.summary ?? "Atualização registrada pela fonte."}
-                </p>
-              </li>
-            ))}
+            {item.history.map((event: any) => {
+              const previousValues = event.previousValues ?? {};
+              const newValues = event.newValues ?? {};
+              const previousItems = previousValues.items ?? {};
+              const newItems = newValues.items ?? {};
+              const isItemUpdate = event.eventType === "source_items_update";
+              const changedFields = Object.keys(newValues).filter(field => field !== "items");
+              const eventLabel = event.eventType === "source_update"
+                ? "Atualização da fonte oficial"
+                : event.eventType === "source_items_update"
+                  ? "Alteração nos itens do edital"
+                  : event.eventType;
+              return (
+                <li className="border-l-2 border-cyan-300 pl-4" key={event.id}>
+                  <p className="text-xs font-medium text-slate-500">{dateTime(event.happenedAt)} · {eventLabel}</p>
+                  <p className="mt-1 text-sm font-medium text-slate-800">{event.summary ?? "Atualização registrada pela fonte oficial."}</p>
+                  {!isItemUpdate && changedFields.length > 0 && (
+                    <dl className="mt-3 space-y-2">
+                      {changedFields.map(field => (
+                        <div key={field} className="grid gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs sm:grid-cols-[minmax(130px,0.7fr)_1fr_1fr]">
+                          <dt className="font-semibold text-slate-700">{historyFieldLabel(field)}</dt>
+                          <dd className="break-words"><span className="font-medium text-slate-500">Antes: </span>{historyValue(field, previousValues[field])}</dd>
+                          <dd className="break-words"><span className="font-medium text-slate-500">Agora: </span>{historyValue(field, newValues[field])}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  {isItemUpdate && (
+                    <div className="mt-3 space-y-2">
+                      {(newItems.altered ?? []).map((current: any, index: number) => {
+                        const previous = previousItems.altered?.[index];
+                        return (
+                          <div key={`altered-${current.itemNumber ?? index}`} className="rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-slate-700">Item {current.itemNumber ?? "—"}: {current.description}</p>
+                            <dl className="mt-2 space-y-1">
+                              {Object.keys(current.fields ?? {}).map(field => (
+                                <div key={field} className="grid gap-x-3 gap-y-1 text-xs sm:grid-cols-[140px_1fr_1fr]">
+                                  <dt className="font-medium text-slate-600">{historyFieldLabel(field === "description" ? "descriptionItem" : field)}</dt>
+                                  <dd className="break-words"><span className="text-slate-500">Antes: </span>{historyValue(field, previous?.fields?.[field])}</dd>
+                                  <dd className="break-words"><span className="text-slate-500">Agora: </span>{historyValue(field, current.fields[field])}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </div>
+                        );
+                      })}
+                      {(newItems.added ?? []).map((added: any, index: number) => (
+                        <p key={`added-${added.itemNumber ?? index}`} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900"><span className="font-semibold">Item incluído {added.itemNumber ? `(${added.itemNumber})` : ""}:</span> {added.description}</p>
+                      ))}
+                      {(previousItems.removed ?? []).map((removed: any, index: number) => (
+                        <p key={`removed-${removed.itemNumber ?? index}`} className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-900"><span className="font-semibold">Item removido {removed.itemNumber ? `(${removed.itemNumber})` : ""}:</span> {removed.description}</p>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500">
-            Ainda não há histórico de mudanças para este registro.
+            Nenhuma alteração posterior foi identificada desde a primeira captura no Orbe em {date(item.createdAt)}. Alterações anteriores à primeira consulta não ficam disponíveis.
           </p>
         )}
       </section>
