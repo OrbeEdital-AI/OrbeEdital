@@ -51,6 +51,10 @@ export default function Portal() {
   const emailVerified = Boolean(auth.user?.emailVerifiedAt);
   const recordSearch = trpc.opportunities.recordSearch.useMutation();
   const locationSearch = useSearch();
+  const overviewFilters = new URLSearchParams(locationSearch);
+  const deadlineFrom = overviewFilters.get("deadlineFrom") || undefined;
+  const deadlineTo = overviewFilters.get("deadlineTo") || undefined;
+  const createdFrom = overviewFilters.get("createdFrom") || undefined;
   const savedSearchRequested =
     path === "/app/opportunities" &&
     new URLSearchParams(locationSearch).get("savedSearch") === "1";
@@ -61,7 +65,7 @@ export default function Portal() {
       return;
     }
     const params = new URLSearchParams(locationSearch);
-    if (params.get("savedSearch") !== "1" && !params.has("query") && !params.has("state") && !params.has("source")) {
+    if (params.get("savedSearch") !== "1" && !["query", "state", "source", "deadlineFrom", "deadlineTo", "createdFrom"].some(key => params.has(key))) {
       setRestoredSearchUrl(locationSearch);
       return;
     }
@@ -108,6 +112,9 @@ export default function Portal() {
       states: state ? [state] : undefined,
       source: source || undefined,
       onlyOpen: true,
+      deadlineFrom,
+      deadlineTo,
+      createdFrom,
       page,
       pageSize: 25,
     },
@@ -121,6 +128,12 @@ export default function Portal() {
   );
   const favorites = trpc.favorites.list.useQuery(undefined, {
     enabled: !!auth.user && emailVerified && (path === "/app/favorites" || path === "/app"),
+  });
+  const favoriteChanges = trpc.dashboard.favoriteChanges.useQuery(undefined, {
+    enabled: !!auth.user && emailVerified && path === "/app",
+  });
+  const dashboardSavedSearches = trpc.savedSearches.list.useQuery(undefined, {
+    enabled: !!auth.user && emailVerified && path === "/app",
   });
   const logout = trpc.auth.logout.useMutation({
     onSuccess: async () => {
@@ -271,42 +284,10 @@ export default function Portal() {
             : "Visão geral");
   const cards = summary.data
     ? [
-        {
-          label: "Oportunidades",
-          value: summary.data.total,
-          icon: FileSearch,
-          color: "text-blue-700 bg-blue-50",
-        },
-        {
-          label: "Abertas",
-          value: summary.data.open,
-          icon: CheckCircle2,
-          color: "text-emerald-700 bg-emerald-50",
-        },
-        {
-          label: "Encerram em 7 dias",
-          value: summary.data.closingSoon,
-          icon: CalendarDays,
-          color: "text-amber-700 bg-amber-50",
-        },
-        {
-          label: "Encerram hoje",
-          value: summary.data.closingToday,
-          icon: CalendarDays,
-          color: "text-rose-700 bg-rose-50",
-        },
-        {
-          label: "Novas em 24 horas",
-          value: summary.data.new24h,
-          icon: Activity,
-          color: "text-cyan-700 bg-cyan-50",
-        },
-        {
-          label: "Sem prazo informado",
-          value: summary.data.withoutDeadline,
-          icon: Activity,
-          color: "text-slate-700 bg-slate-100",
-        },
+        { label: "Encerram hoje", value: summary.data.closingToday, icon: CalendarDays, color: "text-rose-700 bg-rose-50" },
+        { label: "Próximos 1–3 dias", value: summary.data.closing1to3, icon: CalendarDays, color: "text-amber-700 bg-amber-50" },
+        { label: "De 4 a 7 dias", value: summary.data.closing4to7, icon: CalendarDays, color: "text-cyan-700 bg-cyan-50" },
+        { label: "Novas na base (24h)", value: summary.data.new24h, icon: Activity, color: "text-emerald-700 bg-emerald-50" },
       ]
     : [];
 
@@ -456,10 +437,14 @@ export default function Portal() {
             </Route>
             <Route path="/app/favorites">
               <OpportunityList
-                items={(favorites.data ?? []) as AnyOpportunity[]}
+                items={((favorites.data ?? []) as AnyOpportunity[]).filter(item => {
+                  if (!deadlineFrom && !deadlineTo) return true;
+                  const deadline = item.proposalDeadline ? new Date(item.proposalDeadline).getTime() : NaN;
+                  return Number.isFinite(deadline) && (!deadlineFrom || deadline >= new Date(deadlineFrom).getTime()) && (!deadlineTo || deadline < new Date(deadlineTo).getTime());
+                })}
                 loading={favorites.isLoading}
                 error={favorites.error?.message}
-                empty="Você ainda não salvou oportunidades."
+                empty={deadlineFrom || deadlineTo ? "Nenhum favorito com vencimento nesse período." : "Você ainda não salvou oportunidades."}
               />
             </Route>
             <Route path="/app/opportunities">
@@ -492,6 +477,8 @@ export default function Portal() {
                 cards={cards}
                 recent={(summary.data?.recent ?? []) as AnyOpportunity[]}
                 favorites={(favorites.data ?? []) as AnyOpportunity[]}
+                favoriteChanges={favoriteChanges.data ?? []}
+                savedSearches={dashboardSavedSearches.data ?? []}
                 onRetry={() => summary.refetch()}
               />
             </Route>
