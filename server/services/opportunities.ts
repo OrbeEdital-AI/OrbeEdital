@@ -11,6 +11,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { buildPncpDetailUrl, normalizeProcurementStatus } from "../connectors/presentation";
+import { indexOpportunityItems } from "./pncpItemIndex";
 
 export type OpportunityFilters = {
   query?: string;
@@ -175,11 +176,26 @@ export async function getOpportunityDetail(id: string, userId: string) {
     .where(eq(opportunities.id, id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  const [items, history, saved] = await Promise.all([
+  const [storedItems, history, saved] = await Promise.all([
     db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, id)),
     db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
     db.select({ id: favorites.id }).from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.opportunityId, id))).limit(1),
   ]);
+  let items = storedItems;
+  if (!items.length) {
+    try {
+      const recovered = await indexOpportunityItems({
+        id: row.opportunity.id,
+        agencyCnpj: row.opportunity.agencyCnpj,
+        year: row.opportunity.year,
+        controlNumber: row.opportunity.controlNumber,
+        rawData: row.opportunity.rawData,
+      });
+      if (recovered.length) items = recovered;
+    } catch {
+      // Preserve the rest of the detail page if the upstream item API is unavailable.
+    }
+  }
   return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history };
 }
 
