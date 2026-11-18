@@ -215,7 +215,8 @@ function getOfficialPdfs(
       ].filter(value => typeof value === "string").join(" ").toLocaleLowerCase("pt-BR");
       const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? record.extensao ?? "").toLowerCase();
       const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
-      const isPdf = /\.pdf$/i.test(parsed.pathname) || /\bpdf\b/i.test(documentType) || mime.includes("pdf") || relevantType;
+      const isPncpAttachment = /^\/api\/pncp\/v1\/orgaos\/[^/]+\/compras\/\d{4}\/\d+\/arquivos\/\d+\/?$/.test(parsed.pathname);
+      const isPdf = /\.pdf$/i.test(parsed.pathname) || /\bpdf\b/i.test(documentType) || mime.includes("pdf") || relevantType || isPncpAttachment;
       if (parsed.protocol !== "https:" || !officialHost || !isPdf) continue;
       const url = parsed.toString();
       if (seen.has(url)) continue;
@@ -298,6 +299,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     ? await discoverPncpDocuments(opportunityId)
     : [];
   const pdfs = getOfficialPdfs(opportunity, discoveredDocuments);
+  console.info("[edital-analysis] official attachment discovery", { opportunityId, discoveredCount: discoveredDocuments.length, candidateCount: pdfs.length });
   const pncpDates = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode)
     ? await getPncpDateMetadata(opportunityId)
     : null;
@@ -450,6 +452,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       documentName: analysis.documentName,
       documentsAnalyzed,
       documentsNotProcessed,
+      discoveredCount: discoveredDocuments.length,
+      candidateCount: pdfs.length,
       documentSizeBytes,
       promptTokenCount: tokenUsage.promptTokenCount ?? null,
       candidatesTokenCount: tokenUsage.candidatesTokenCount ?? null,
@@ -470,6 +474,9 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       provider: "google_gemini",
       model,
       documentAnalyzed: false,
+      documentsNotProcessed,
+      discoveredCount: discoveredDocuments.length,
+      candidateCount: pdfs.length,
       documentSizeBytes,
       elapsedMs: Date.now() - startedAt,
       error: message.slice(0, 300),
