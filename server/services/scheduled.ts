@@ -5,6 +5,7 @@ import type { Request } from "express";
 import { connectors } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { syncConnector } from "./ingestion";
+import { indexPncpItems } from "./pncpItemIndex";
 
 const COOKIE_NAME = "app_session_id";
 const CONNECTORS = ["pncp", "compras.gov.br"] as const;
@@ -86,6 +87,10 @@ async function resolveScheduledTask(req: Request): Promise<string> {
 
 export async function handleScheduledSync(req: Request) {
   const taskUid = await resolveScheduledTask(req);
+  const task = (req as unknown as { query?: { task?: string } }).query?.task;
+  if (taskUid === "supabase-cron:all-sources" && task === "items") {
+    return { status: "indexed" as const, ...(await indexPncpItems(80)) };
+  }
   const enabledSources = await getDb()
     .select()
     .from(connectors)

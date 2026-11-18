@@ -663,7 +663,7 @@ async function createContext(opts) {
 // server/routers.ts
 import { parse as parseCookieHeader2 } from "cookie";
 import { TRPCError as TRPCError3 } from "@trpc/server";
-import { count as count2, desc as desc3, eq as eq5, inArray as inArray3, sum as sum2 } from "drizzle-orm";
+import { count as count2, desc as desc3, eq as eq6, inArray as inArray4, sum as sum2 } from "drizzle-orm";
 import { z as z2 } from "zod";
 
 // server/services/authActions.ts
@@ -1169,7 +1169,7 @@ var systemRouter = router({
 
 // server/services/ingestion.ts
 import { isDeepStrictEqual } from "node:util";
-import { and as and4, eq as eq4, inArray as inArray2, or as or2, sql } from "drizzle-orm";
+import { and as and5, eq as eq5, inArray as inArray3, or as or2, sql as sql3 } from "drizzle-orm";
 
 // server/connectors/types.ts
 var ConnectorError = class extends Error {
@@ -1512,7 +1512,7 @@ async function searchPncpOpen(options) {
 }
 
 // server/services/opportunities.ts
-import { and as and3, asc, count, desc as desc2, eq as eq3, gte, ilike, inArray, isNull, lt, lte, or, sum } from "drizzle-orm";
+import { and as and4, asc as asc2, count, desc as desc2, eq as eq4, gte, ilike, inArray as inArray2, isNull, lt, lte, or, sql as sql2, sum } from "drizzle-orm";
 
 // server/connectors/presentation.ts
 function asRecord(value) {
@@ -1567,6 +1567,155 @@ function normalizeProcurementStatus(rawValue, fallback = "unknown") {
   return "unknown";
 }
 
+// server/services/pncpItemIndex.ts
+import { and as and3, asc, eq as eq3, gt as gt3, inArray, sql } from "drizzle-orm";
+function itemUrl(row) {
+  const raw = row.rawData?.raw;
+  const record = raw && typeof raw === "object" ? raw : {};
+  const control = row.controlNumber ?? (typeof record.numeroControlePNCP === "string" ? record.numeroControlePNCP : null);
+  const sequence = Number(
+    record.sequencialCompra ?? control?.match(/-\d-(\d+)\/\d{4}$/)?.[1]
+  );
+  const year = Number(
+    control?.match(/\/(\d{4})$/)?.[1] ?? record.anoCompra ?? row.year
+  );
+  const cnpj = (control?.split("-")[0] || row.agencyCnpj || "").replace(
+    /\D/g,
+    ""
+  );
+  if (cnpj.length !== 14 || !Number.isInteger(year) || !Number.isInteger(sequence) || sequence < 1)
+    return null;
+  return new URL(
+    `https://pncp.gov.br/api/pncp/v1/orgaos/${cnpj}/compras/${year}/${sequence}/itens`
+  );
+}
+async function indexOpportunityItems(row) {
+  const baseUrl = itemUrl(row);
+  if (!baseUrl) return [];
+  const fetched = [];
+  for (let page = 1; page <= 20; page++) {
+    const url = new URL(baseUrl);
+    url.searchParams.set("pagina", String(page));
+    url.searchParams.set("tamanhoPagina", "500");
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(8e3),
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok)
+      throw new Error(`PNCP item API returned ${response.status}`);
+    const body = await response.json();
+    const object = body && typeof body === "object" && !Array.isArray(body) ? body : null;
+    const data = Array.isArray(body) ? body : [
+      object?.data,
+      object?.items,
+      object?.resultado,
+      object?.results
+    ].find(Array.isArray) ?? [];
+    fetched.push(...data);
+    const totalPages = Number(object?.totalPaginas ?? object?.totalPages);
+    if (page === 20 && data.length === 500 && (!Number.isFinite(totalPages) || totalPages > 20)) {
+      throw new Error(
+        "PNCP item API page count exceeds the safe indexing limit"
+      );
+    }
+    if (!data.length || Number.isFinite(totalPages) && totalPages > 0 && page >= totalPages || data.length < 500)
+      break;
+  }
+  const mapped = fetched.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const item = value;
+    const description = [
+      item.descricao,
+      item.descricaoDetalhada,
+      item.descricaoComplementar
+    ].find((v) => typeof v === "string" && v.trim().length > 0)?.trim();
+    if (!description) return [];
+    const number = (...keys) => {
+      for (const key of keys) {
+        const value2 = item[key];
+        if (typeof value2 === "number" && Number.isFinite(value2))
+          return String(value2);
+        if (typeof value2 === "string" && value2.trim() && Number.isFinite(Number(value2)))
+          return String(Number(value2));
+      }
+      return null;
+    };
+    const catalog = item.catalogo && typeof item.catalogo === "object" ? item.catalogo : null;
+    return [
+      {
+        opportunityId: row.id,
+        itemNumber: item.numeroItem == null ? null : String(item.numeroItem),
+        description,
+        catalogCode: item.codigoItem == null ? item.catalogoCodigoItem == null ? null : String(item.catalogoCodigoItem) : String(item.codigoItem),
+        catalogSystem: typeof item.catalogo === "string" ? item.catalogo : typeof catalog?.nome === "string" ? catalog.nome : null,
+        quantity: number("quantidade"),
+        unit: typeof item.unidadeMedida === "string" ? item.unidadeMedida : null,
+        estimatedUnitValue: number("valorUnitarioEstimado"),
+        estimatedTotalValue: number("valorTotal", "valorTotalEstimado"),
+        specifications: [
+          item.especificacao,
+          item.descricaoDetalhada,
+          item.descricaoComplementar
+        ].filter(
+          (v) => typeof v === "string" && v.trim().length > 0 && v.trim() !== description
+        ).join("\n") || null
+      }
+    ];
+  });
+  const db = getDb();
+  if (mapped.length) {
+    await db.transaction(async (tx) => {
+      await tx.delete(opportunityItems).where(eq3(opportunityItems.opportunityId, row.id));
+      for (let offset = 0; offset < mapped.length; offset += 100)
+        await tx.insert(opportunityItems).values(mapped.slice(offset, offset + 100));
+    });
+  }
+  return db.select().from(opportunityItems).where(eq3(opportunityItems.opportunityId, row.id));
+}
+async function indexPncpItems(limit = 12) {
+  const db = getDb();
+  const [connector] = await db.select().from(connectors).where(eq3(connectors.code, "pncp")).limit(1);
+  if (!connector) return { scanned: 0, indexed: 0, failures: 0 };
+  const config = connector.configuration ?? {};
+  const cursor = typeof config.itemsCursor === "string" ? config.itemsCursor : "";
+  const batchSize = Math.min(Math.max(limit, 1), 80);
+  const rows = await db.select({
+    id: opportunities.id,
+    agencyCnpj: opportunities.agencyCnpj,
+    year: opportunities.year,
+    controlNumber: opportunities.controlNumber,
+    rawData: opportunities.rawData
+  }).from(opportunities).where(
+    and3(
+      inArray(
+        opportunities.connectorId,
+        db.select({ id: connectors.id }).from(connectors).where(inArray(connectors.code, ["pncp", "compras.gov.br"]))
+      ),
+      gt3(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"),
+      sql`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`
+    )
+  ).orderBy(asc(opportunities.id)).limit(batchSize);
+  let indexed = 0;
+  let failures = 0;
+  for (let offset = 0; offset < rows.length; offset += 12) {
+    await Promise.all(
+      rows.slice(offset, offset + 12).map(async (row) => {
+        try {
+          indexed += (await indexOpportunityItems(row)).length;
+        } catch {
+          failures++;
+        }
+      })
+    );
+  }
+  const nextCursor = rows.length < batchSize ? "" : rows.at(-1).id;
+  await db.update(connectors).set({
+    configuration: sql`jsonb_set(coalesce(${connectors.configuration}, '{}'::jsonb), '{itemsCursor}', to_jsonb(${nextCursor}::text), true)`,
+    updatedAt: /* @__PURE__ */ new Date()
+  }).where(eq3(connectors.id, connector.id));
+  return { scanned: rows.length, indexed, failures };
+}
+
 // server/services/opportunities.ts
 var OPPORTUNITIES_PAGE_SIZE = 25;
 var OPEN_STATUSES = ["unknown", "published", "receiving_proposals", "open", "in_progress"];
@@ -1609,43 +1758,48 @@ function buildFilters(filters) {
   const clauses = [];
   const query = filters.query?.trim();
   if (query) {
-    const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
-    const matches = [
-      ilike(opportunities.title, like),
-      ilike(opportunities.description, like),
-      ilike(opportunities.agencyName, like),
-      ilike(opportunities.processNumber, like),
-      ilike(opportunities.procurementNumber, like),
-      ilike(opportunities.agencyCnpj, like)
-    ];
-    clauses.push(or(...matches));
+    const allTerms = query.split(/\s+/).filter(Boolean);
+    const meaningfulTerms = allTerms.length > 1 ? allTerms.filter((term) => !["de", "da", "do", "das", "dos", "em", "para"].includes(term.toLocaleLowerCase("pt-BR"))) : allTerms;
+    const terms = (meaningfulTerms.length ? meaningfulTerms : allTerms).slice(0, 12);
+    for (const term of terms) {
+      const like = `%${term.replace(/[%_]/g, "\\$&")}%`;
+      clauses.push(or(
+        ilike(opportunities.title, like),
+        ilike(opportunities.description, like),
+        ilike(opportunities.agencyName, like),
+        ilike(opportunities.processNumber, like),
+        ilike(opportunities.procurementNumber, like),
+        ilike(opportunities.agencyCnpj, like),
+        sql2`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`
+      ));
+    }
   }
-  if (filters.states?.length) clauses.push(inArray(opportunities.state, filters.states.map((state) => state.toUpperCase())));
+  if (filters.states?.length) clauses.push(inArray2(opportunities.state, filters.states.map((state) => state.toUpperCase())));
   if (filters.municipality?.trim()) clauses.push(ilike(opportunities.municipality, `%${filters.municipality.trim()}%`));
-  if (filters.modalities?.length) clauses.push(inArray(opportunities.modality, filters.modalities));
-  if (filters.statuses?.length) clauses.push(inArray(opportunities.status, filters.statuses));
+  if (filters.modalities?.length) clauses.push(inArray2(opportunities.modality, filters.modalities));
+  if (filters.statuses?.length) clauses.push(inArray2(opportunities.status, filters.statuses));
   if (filters.minValue !== void 0) clauses.push(gte(opportunities.estimatedValue, String(filters.minValue)));
   if (filters.maxValue !== void 0) clauses.push(lte(opportunities.estimatedValue, String(filters.maxValue)));
   if (filters.publishedFrom) clauses.push(gte(opportunities.publicationDate, new Date(filters.publishedFrom)));
   if (filters.publishedTo) clauses.push(lte(opportunities.publicationDate, new Date(filters.publishedTo)));
   if (filters.deadlineFrom) clauses.push(gte(opportunities.proposalDeadline, new Date(filters.deadlineFrom)));
   if (filters.deadlineTo) clauses.push(lte(opportunities.proposalDeadline, new Date(filters.deadlineTo)));
-  if (filters.source) clauses.push(eq3(connectors.code, filters.source));
+  if (filters.source) clauses.push(eq4(connectors.code, filters.source));
   if (filters.onlyOpen) {
     clauses.push(gte(opportunities.proposalDeadline, /* @__PURE__ */ new Date()));
-    clauses.push(inArray(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"]));
+    clauses.push(inArray2(opportunities.status, ["unknown", "published", "receiving_proposals", "open", "in_progress"]));
   }
-  return clauses.length ? and3(...clauses) : void 0;
+  return clauses.length ? and4(...clauses) : void 0;
 }
 async function searchOpportunities(filters, userId) {
   const db = getDb();
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = OPPORTUNITIES_PAGE_SIZE;
-  const [totalRow] = await db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(where);
-  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(where).orderBy(asc(opportunities.proposalDeadline), desc2(opportunities.publicationDate), asc(opportunities.id)).limit(pageSize).offset((page - 1) * pageSize);
+  const [totalRow] = await db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq4(opportunities.connectorId, connectors.id)).where(where);
+  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq4(opportunities.connectorId, connectors.id)).where(where).orderBy(asc2(opportunities.proposalDeadline), desc2(opportunities.publicationDate), asc2(opportunities.id)).limit(pageSize).offset((page - 1) * pageSize);
   const ids = rows.map((row) => row.opportunity.id);
-  const saved = ids.length ? await db.select({ id: favorites.opportunityId }).from(favorites).where(and3(eq3(favorites.userId, userId), inArray(favorites.opportunityId, ids))) : [];
+  const saved = ids.length ? await db.select({ id: favorites.opportunityId }).from(favorites).where(and4(eq4(favorites.userId, userId), inArray2(favorites.opportunityId, ids))) : [];
   const favoriteIds = new Set(saved.map((row) => row.id));
   return {
     total: totalRow?.total ?? 0,
@@ -1659,27 +1813,41 @@ async function searchOpportunities(filters, userId) {
 }
 async function getOpportunityDetail(id, userId) {
   const db = getDb();
-  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(eq3(opportunities.id, id)).limit(1);
+  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code }).from(opportunities).innerJoin(connectors, eq4(opportunities.connectorId, connectors.id)).where(eq4(opportunities.id, id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  const [items, history, saved] = await Promise.all([
-    db.select().from(opportunityItems).where(eq3(opportunityItems.opportunityId, id)),
-    db.select().from(opportunityHistory).where(eq3(opportunityHistory.opportunityId, id)).orderBy(desc2(opportunityHistory.happenedAt)).limit(30),
-    db.select({ id: favorites.id }).from(favorites).where(and3(eq3(favorites.userId, userId), eq3(favorites.opportunityId, id))).limit(1)
+  const [storedItems, history, saved] = await Promise.all([
+    db.select().from(opportunityItems).where(eq4(opportunityItems.opportunityId, id)),
+    db.select().from(opportunityHistory).where(eq4(opportunityHistory.opportunityId, id)).orderBy(desc2(opportunityHistory.happenedAt)).limit(30),
+    db.select({ id: favorites.id }).from(favorites).where(and4(eq4(favorites.userId, userId), eq4(favorites.opportunityId, id))).limit(1)
   ]);
+  let items = storedItems;
+  if (!items.length) {
+    try {
+      const recovered = await indexOpportunityItems({
+        id: row.opportunity.id,
+        agencyCnpj: row.opportunity.agencyCnpj,
+        year: row.opportunity.year,
+        controlNumber: row.opportunity.controlNumber,
+        rawData: row.opportunity.rawData
+      });
+      if (recovered.length) items = recovered;
+    } catch {
+    }
+  }
   return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history };
 }
 async function listFavorites(userId) {
-  const rows = await getDb().select({ opportunity: opportunities, sourceName: connectors.name }).from(favorites).innerJoin(opportunities, eq3(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).where(eq3(favorites.userId, userId)).orderBy(desc2(favorites.createdAt));
+  const rows = await getDb().select({ opportunity: opportunities, sourceName: connectors.name }).from(favorites).innerJoin(opportunities, eq4(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq4(opportunities.connectorId, connectors.id)).where(eq4(favorites.userId, userId)).orderBy(desc2(favorites.createdAt));
   return rows.map((row) => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, isFavorite: true };
   });
 }
 async function toggleFavorite(userId, opportunityId) {
   const db = getDb();
-  const existing = await db.select({ id: favorites.id }).from(favorites).where(and3(eq3(favorites.userId, userId), eq3(favorites.opportunityId, opportunityId))).limit(1);
+  const existing = await db.select({ id: favorites.id }).from(favorites).where(and4(eq4(favorites.userId, userId), eq4(favorites.opportunityId, opportunityId))).limit(1);
   if (existing.length) {
-    await db.delete(favorites).where(eq3(favorites.id, existing[0].id));
+    await db.delete(favorites).where(eq4(favorites.id, existing[0].id));
     return false;
   }
   await db.insert(favorites).values({ userId, opportunityId }).onConflictDoNothing();
@@ -1694,19 +1862,19 @@ async function getDashboardSummary(user) {
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
   const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows, lastRuns] = await Promise.all([
     db.select({ n: count() }).from(opportunities),
-    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count() }).from(opportunities).where(and3(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and4(gte(opportunities.proposalDeadline, now), inArray2(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and4(gte(opportunities.proposalDeadline, today.start), lt(opportunities.proposalDeadline, today.end), inArray2(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count() }).from(opportunities).where(and4(gte(opportunities.proposalDeadline, now), lt(opportunities.proposalDeadline, nextWeek), inArray2(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count() }).from(opportunities).where(gte(opportunities.createdAt, day)),
     db.select({ n: count() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
-    db.select({ n: count() }).from(favorites).where(eq3(favorites.userId, user.id)),
-    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray(opportunities.status, OPEN_STATUSES)).groupBy(opportunities.state).orderBy(desc2(count())).limit(8),
+    db.select({ n: count() }).from(favorites).where(eq4(favorites.userId, user.id)),
+    db.select({ label: opportunities.state, n: count() }).from(opportunities).where(inArray2(opportunities.status, OPEN_STATUSES)).groupBy(opportunities.state).orderBy(desc2(count())).limit(8),
     db.select({ label: opportunities.modality, n: count() }).from(opportunities).groupBy(opportunities.modality).orderBy(desc2(count())).limit(8),
-    db.select().from(connectors).orderBy(asc(connectors.name)),
-    db.select({ run: syncRuns, sourceCode: connectors.code }).from(syncRuns).innerJoin(connectors, eq3(syncRuns.connectorId, connectors.id)).orderBy(desc2(syncRuns.startedAt)).limit(100)
+    db.select().from(connectors).orderBy(asc2(connectors.name)),
+    db.select({ run: syncRuns, sourceCode: connectors.code }).from(syncRuns).innerJoin(connectors, eq4(syncRuns.connectorId, connectors.id)).orderBy(desc2(syncRuns.startedAt)).limit(100)
   ]);
-  const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq3(opportunities.connectorId, connectors.id)).orderBy(desc2(opportunities.publicationDate)).limit(6);
+  const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq4(opportunities.connectorId, connectors.id)).orderBy(desc2(opportunities.publicationDate)).limit(6);
   const recent = recentRows.map((row) => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName };
   });
@@ -1732,11 +1900,11 @@ async function getDashboardSummary(user) {
   };
 }
 async function getCompanyIdForUser(userId) {
-  const [row] = await getDb().select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq3(companyMembers.userId, userId)).limit(1);
+  const [row] = await getDb().select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq4(companyMembers.userId, userId)).limit(1);
   return row?.companyId ?? null;
 }
 async function listSavedSearches(userId) {
-  return getDb().select().from(savedSearches).where(eq3(savedSearches.userId, userId)).orderBy(desc2(savedSearches.updatedAt));
+  return getDb().select().from(savedSearches).where(eq4(savedSearches.userId, userId)).orderBy(desc2(savedSearches.updatedAt));
 }
 async function saveSearch(userId, name, criteria) {
   const companyId = await getCompanyIdForUser(userId);
@@ -1744,7 +1912,7 @@ async function saveSearch(userId, name, criteria) {
   return row;
 }
 async function deleteSavedSearch(userId, id) {
-  const result = await getDb().delete(savedSearches).where(and3(eq3(savedSearches.id, id), eq3(savedSearches.userId, userId))).returning({ id: savedSearches.id });
+  const result = await getDb().delete(savedSearches).where(and4(eq4(savedSearches.id, id), eq4(savedSearches.userId, userId))).returning({ id: savedSearches.id });
   return result.length > 0;
 }
 
@@ -1871,7 +2039,7 @@ function dateOnly(date, compact) {
 async function syncConnector(sourceCode, input = {}) {
   await ensureBuiltInConnectors();
   const db = getDb();
-  const [source] = await db.select().from(connectors).where(eq4(connectors.code, sourceCode)).limit(1);
+  const [source] = await db.select().from(connectors).where(eq5(connectors.code, sourceCode)).limit(1);
   if (!source) throw new Error("Fonte n\xE3o cadastrada.");
   if (!source.enabled) throw new Error("Esta fonte est\xE1 desativada.");
   const mode = input.mode ?? "publication";
@@ -1890,7 +2058,7 @@ async function syncConnector(sourceCode, input = {}) {
   const queryConcurrency = sourceCode === "compras.gov.br" ? 3 : 1;
   const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency };
   const [run] = await db.insert(syncRuns).values({ connectorId: source.id, status: "running", startedAt: runStartedAt, metadata: runMetadata }).returning();
-  await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(connectors.id, source.id));
+  await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(connectors.id, source.id));
   let fetched = 0;
   let inserted = 0;
   let updated = 0;
@@ -1953,9 +2121,9 @@ async function syncConnector(sourceCode, input = {}) {
             if (!prepared.length) continue;
             const sourceKeys = prepared.map(({ next }) => next.sourceKey);
             const controlNumbers = [...new Set(prepared.map(({ next }) => next.controlNumber).filter((value) => Boolean(value)))];
-            const sameSourceCondition = and4(eq4(opportunities.connectorId, source.id), inArray2(opportunities.sourceKey, sourceKeys));
+            const sameSourceCondition = and5(eq5(opportunities.connectorId, source.id), inArray3(opportunities.sourceKey, sourceKeys));
             const lookupConditions = [sameSourceCondition];
-            if (controlNumbers.length) lookupConditions.push(inArray2(opportunities.controlNumber, controlNumbers));
+            if (controlNumbers.length) lookupConditions.push(inArray3(opportunities.controlNumber, controlNumbers));
             const lookupCondition = or2(...lookupConditions);
             const existingRows = lookupCondition ? await db.select().from(opportunities).where(lookupCondition) : [];
             const existingBySourceKey = new Map(existingRows.filter((row) => row.connectorId === source.id).map((row) => [row.sourceKey, row]));
@@ -2019,40 +2187,40 @@ async function syncConnector(sourceCode, input = {}) {
                 if (upsertRows.length) await tx.insert(opportunities).values(upsertRows).onConflictDoUpdate({
                   target: opportunities.id,
                   set: {
-                    connectorId: sql`excluded.connector_id`,
-                    sourceKey: sql`excluded.source_key`,
-                    controlNumber: sql`excluded.control_number`,
-                    procurementNumber: sql`excluded.procurement_number`,
-                    processNumber: sql`excluded.process_number`,
-                    year: sql`excluded.year`,
-                    modality: sql`excluded.modality`,
-                    procurementType: sql`excluded.procurement_type`,
-                    title: sql`excluded.title`,
-                    description: sql`excluded.description`,
-                    summary: sql`excluded.summary`,
-                    agencyName: sql`excluded.agency_name`,
-                    unitName: sql`excluded.unit_name`,
-                    agencyCnpj: sql`excluded.agency_cnpj`,
-                    state: sql`excluded.state`,
-                    municipality: sql`excluded.municipality`,
-                    address: sql`excluded.address`,
-                    publicationDate: sql`excluded.publication_date`,
-                    openingDate: sql`excluded.opening_date`,
-                    sessionAt: sql`excluded.session_at`,
-                    proposalDeadline: sql`excluded.proposal_deadline`,
-                    estimatedValue: sql`excluded.estimated_value`,
-                    awardedValue: sql`excluded.awarded_value`,
-                    status: sql`excluded.status`,
-                    judgmentCriterion: sql`excluded.judgment_criterion`,
-                    disputeMode: sql`excluded.dispute_mode`,
-                    sourceUrl: sql`excluded.source_url`,
-                    noticeUrl: sql`excluded.notice_url`,
-                    documents: sql`excluded.documents`,
-                    itemCount: sql`excluded.item_count`,
-                    lastSourceUpdateAt: sql`excluded.last_source_update_at`,
-                    lastSyncedAt: sql`excluded.last_synced_at`,
-                    rawData: sql`excluded.raw_data`,
-                    updatedAt: sql`excluded.updated_at`
+                    connectorId: sql3`excluded.connector_id`,
+                    sourceKey: sql3`excluded.source_key`,
+                    controlNumber: sql3`excluded.control_number`,
+                    procurementNumber: sql3`excluded.procurement_number`,
+                    processNumber: sql3`excluded.process_number`,
+                    year: sql3`excluded.year`,
+                    modality: sql3`excluded.modality`,
+                    procurementType: sql3`excluded.procurement_type`,
+                    title: sql3`excluded.title`,
+                    description: sql3`excluded.description`,
+                    summary: sql3`excluded.summary`,
+                    agencyName: sql3`excluded.agency_name`,
+                    unitName: sql3`excluded.unit_name`,
+                    agencyCnpj: sql3`excluded.agency_cnpj`,
+                    state: sql3`excluded.state`,
+                    municipality: sql3`excluded.municipality`,
+                    address: sql3`excluded.address`,
+                    publicationDate: sql3`excluded.publication_date`,
+                    openingDate: sql3`excluded.opening_date`,
+                    sessionAt: sql3`excluded.session_at`,
+                    proposalDeadline: sql3`excluded.proposal_deadline`,
+                    estimatedValue: sql3`excluded.estimated_value`,
+                    awardedValue: sql3`excluded.awarded_value`,
+                    status: sql3`excluded.status`,
+                    judgmentCriterion: sql3`excluded.judgment_criterion`,
+                    disputeMode: sql3`excluded.dispute_mode`,
+                    sourceUrl: sql3`excluded.source_url`,
+                    noticeUrl: sql3`excluded.notice_url`,
+                    documents: sql3`excluded.documents`,
+                    itemCount: sql3`excluded.item_count`,
+                    lastSourceUpdateAt: sql3`excluded.last_source_update_at`,
+                    lastSyncedAt: sql3`excluded.last_synced_at`,
+                    rawData: sql3`excluded.raw_data`,
+                    updatedAt: sql3`excluded.updated_at`
                   }
                 });
                 if (historyRows.length) await tx.insert(opportunityHistory).values(historyRows);
@@ -2068,14 +2236,14 @@ async function syncConnector(sourceCode, input = {}) {
       if (queryFailure) throw queryFailure.error;
     }
     const duration = Date.now() - durationStart;
-    await db.update(syncRuns).set({ status: "completed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq4(syncRuns.id, run.id));
-    await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1e3), updatedAt: /* @__PURE__ */ new Date() }).where(eq4(connectors.id, source.id));
+    await db.update(syncRuns).set({ status: "completed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq5(syncRuns.id, run.id));
+    await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1e3), updatedAt: /* @__PURE__ */ new Date() }).where(eq5(connectors.id, source.id));
     return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
   } catch (error) {
     const duration = Date.now() - durationStart;
     const errorCode = error instanceof ConnectorError ? `${error.code}${error.status ? `_${error.status}` : ""}` : "sync_failed";
-    await db.update(syncRuns).set({ status: "failed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: 1, errorSummary: errorCode, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq4(syncRuns.id, run.id));
-    await db.update(connectors).set({ status: "error", errorCount: source.errorCount + 1, lastError: errorCode, averageDurationMs: duration, updatedAt: /* @__PURE__ */ new Date() }).where(eq4(connectors.id, source.id));
+    await db.update(syncRuns).set({ status: "failed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: 1, errorSummary: errorCode, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq5(syncRuns.id, run.id));
+    await db.update(connectors).set({ status: "error", errorCount: source.errorCount + 1, lastError: errorCode, averageDurationMs: duration, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(connectors.id, source.id));
     throw new Error(`Falha ao consultar a fonte oficial (${errorCode}).`);
   }
 }
@@ -2205,17 +2373,17 @@ var appRouter = router({
   }),
   account: router({
     profile: protectedProcedure.query(async ({ ctx }) => {
-      const [row] = await getDb().select({ company: companies, profile: companyProfiles, memberRole: companyMembers.memberRole }).from(companyMembers).innerJoin(companies, eq5(companyMembers.companyId, companies.id)).leftJoin(companyProfiles, eq5(companyProfiles.companyId, companies.id)).where(eq5(companyMembers.userId, ctx.user.id)).limit(1);
+      const [row] = await getDb().select({ company: companies, profile: companyProfiles, memberRole: companyMembers.memberRole }).from(companyMembers).innerJoin(companies, eq6(companyMembers.companyId, companies.id)).leftJoin(companyProfiles, eq6(companyProfiles.companyId, companies.id)).where(eq6(companyMembers.userId, ctx.user.id)).limit(1);
       if (!row) throw new TRPCError3({ code: "NOT_FOUND", message: "N\xE3o h\xE1 empresa vinculada a esta conta." });
       return { ...row.company, profile: row.profile, memberRole: row.memberRole };
     }),
     updateProfile: protectedProcedure.input(profileUpdateSchema).mutation(async ({ input, ctx }) => {
       const db = getDb();
       return db.transaction(async (tx) => {
-        const [membership] = await tx.select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq5(companyMembers.userId, ctx.user.id)).limit(1);
+        const [membership] = await tx.select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq6(companyMembers.userId, ctx.user.id)).limit(1);
         if (!membership) throw new TRPCError3({ code: "NOT_FOUND", message: "N\xE3o h\xE1 empresa vinculada a esta conta." });
         const cnpj = input.cnpj?.replace(/\D/g, "") || null;
-        await tx.update(companies).set({ legalName: input.legalName, cnpj, state: input.state?.toUpperCase() || null, municipality: input.municipality || null, primarySegment: input.primarySegment || null, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(companies.id, membership.companyId));
+        await tx.update(companies).set({ legalName: input.legalName, cnpj, state: input.state?.toUpperCase() || null, municipality: input.municipality || null, primarySegment: input.primarySegment || null, updatedAt: /* @__PURE__ */ new Date() }).where(eq6(companies.id, membership.companyId));
         const profileValues = { segments: input.segments, products: input.products, services: input.services, keywords: input.keywords, servedStates: input.servedStates, servedMunicipalities: input.servedMunicipalities, catmatCodes: input.catmatCodes, catserCodes: input.catserCodes, minimumValue: input.minimumValue === null ? null : String(input.minimumValue), maximumValue: input.maximumValue === null ? null : String(input.maximumValue), updatedAt: /* @__PURE__ */ new Date() };
         await tx.insert(companyProfiles).values({ companyId: membership.companyId, ...profileValues }).onConflictDoUpdate({ target: companyProfiles.companyId, set: profileValues });
         return { saved: true };
@@ -2236,7 +2404,7 @@ var appRouter = router({
   favorites: router({
     list: protectedProcedure.query(({ ctx }) => listFavorites(ctx.user.id)),
     toggle: protectedProcedure.input(z2.object({ opportunityId: z2.string().uuid() })).mutation(async ({ input, ctx }) => {
-      const exists = await getDb().select({ id: opportunities.id }).from(opportunities).where(eq5(opportunities.id, input.opportunityId)).limit(1);
+      const exists = await getDb().select({ id: opportunities.id }).from(opportunities).where(eq6(opportunities.id, input.opportunityId)).limit(1);
       if (!exists.length) throw new TRPCError3({ code: "NOT_FOUND", message: "A oportunidade n\xE3o foi encontrada." });
       return { favorited: await toggleFavorite(ctx.user.id, input.opportunityId) };
     })
@@ -2254,8 +2422,8 @@ var appRouter = router({
         db.select({ n: count2() }).from(users),
         db.select({ n: count2() }).from(opportunities),
         db.select().from(connectors),
-        db.select({ n: count2() }).from(subscriptions).where(eq5(subscriptions.status, "active")),
-        db.select({ n: count2() }).from(subscriptions).where(inArray3(subscriptions.status, ["cancelled", "canceled"]))
+        db.select({ n: count2() }).from(subscriptions).where(eq6(subscriptions.status, "active")),
+        db.select({ n: count2() }).from(subscriptions).where(inArray4(subscriptions.status, ["cancelled", "canceled"]))
       ]);
       return { users: userCount[0]?.n ?? 0, opportunities: opportunityCount[0]?.n ?? 0, sourceCount: sourceRows.length, sources: sourceRows, activeSubscribers: activeSubscribers[0]?.n ?? 0, canceledSubscriptions: canceledSubscriptions[0]?.n ?? 0 };
     }),
@@ -2265,7 +2433,7 @@ var appRouter = router({
         const db = getDb();
         const [sources, runs] = await Promise.all([
           db.select().from(connectors).orderBy(connectors.name),
-          db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq5(syncRuns.connectorId, connectors.id)).orderBy(desc3(syncRuns.startedAt)).limit(50)
+          db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq6(syncRuns.connectorId, connectors.id)).orderBy(desc3(syncRuns.startedAt)).limit(50)
         ]);
         return { sources, runs };
       }),
@@ -2284,29 +2452,29 @@ var appRouter = router({
         const changes = { updatedAt: /* @__PURE__ */ new Date() };
         if (input.enabled !== void 0) changes.enabled = input.enabled;
         if (input.frequencySeconds !== void 0) changes.frequencySeconds = input.frequencySeconds;
-        const [source] = await getDb().update(connectors).set(changes).where(eq5(connectors.code, input.code)).returning();
+        const [source] = await getDb().update(connectors).set(changes).where(eq6(connectors.code, input.code)).returning();
         return source;
       }),
       setScheduledTask: sourceOperatorProcedure.input(z2.object({ code: z2.enum(["pncp", "compras.gov.br"]), taskUid: z2.string().trim().max(200) })).mutation(async ({ input }) => {
         await ensureBuiltInConnectors();
-        const [current] = await getDb().select().from(connectors).where(eq5(connectors.code, input.code)).limit(1);
+        const [current] = await getDb().select().from(connectors).where(eq6(connectors.code, input.code)).limit(1);
         if (!current) throw new TRPCError3({ code: "NOT_FOUND", message: "Fonte n\xE3o cadastrada." });
         const configuration = current.configuration && typeof current.configuration === "object" ? current.configuration : {};
         const nextConfiguration = { ...configuration };
         if (input.taskUid) nextConfiguration.scheduledTaskUid = input.taskUid;
         else delete nextConfiguration.scheduledTaskUid;
-        const [updated] = await getDb().update(connectors).set({ configuration: nextConfiguration, updatedAt: /* @__PURE__ */ new Date() }).where(eq5(connectors.id, current.id)).returning();
+        const [updated] = await getDb().update(connectors).set({ configuration: nextConfiguration, updatedAt: /* @__PURE__ */ new Date() }).where(eq6(connectors.id, current.id)).returning();
         return updated;
       })
     }),
-    recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq5(syncRuns.connectorId, connectors.id)).orderBy(desc3(syncRuns.startedAt)).limit(100)),
+    recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq6(syncRuns.connectorId, connectors.id)).orderBy(desc3(syncRuns.startedAt)).limit(100)),
     finance: financeProcedure.query(async () => {
       const db = getDb();
       const [activeSubscriptions, canceledSubscriptions, overdueSubscriptions, activePlans, paymentGroups] = await Promise.all([
-        db.select({ n: count2() }).from(subscriptions).where(eq5(subscriptions.status, "active")),
-        db.select({ n: count2() }).from(subscriptions).where(inArray3(subscriptions.status, ["cancelled", "canceled"])),
-        db.select({ n: count2() }).from(subscriptions).where(inArray3(subscriptions.status, ["past_due", "expired", "inadimplente"])),
-        db.select({ billingInterval: subscriptions.billingInterval, monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents }).from(subscriptions).innerJoin(plans, eq5(subscriptions.planId, plans.id)).where(eq5(subscriptions.status, "active")),
+        db.select({ n: count2() }).from(subscriptions).where(eq6(subscriptions.status, "active")),
+        db.select({ n: count2() }).from(subscriptions).where(inArray4(subscriptions.status, ["cancelled", "canceled"])),
+        db.select({ n: count2() }).from(subscriptions).where(inArray4(subscriptions.status, ["past_due", "expired", "inadimplente"])),
+        db.select({ billingInterval: subscriptions.billingInterval, monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents }).from(subscriptions).innerJoin(plans, eq6(subscriptions.planId, plans.id)).where(eq6(subscriptions.status, "active")),
         db.select({ status: payments.status, amountCents: sum2(payments.amountCents) }).from(payments).groupBy(payments.status)
       ]);
       const mrrCents = Math.round(activePlans.reduce((total, row) => total + (row.billingInterval === "annual" ? row.annualPriceCents / 12 : row.monthlyPriceCents), 0));
@@ -2329,7 +2497,7 @@ var appRouter = router({
 // server/services/scheduled.ts
 import { jwtVerify } from "jose";
 import { parse as parseCookieHeader3 } from "cookie";
-import { inArray as inArray4 } from "drizzle-orm";
+import { inArray as inArray5 } from "drizzle-orm";
 var COOKIE_NAME = "app_session_id";
 var CONNECTORS = ["pncp", "compras.gov.br"];
 var ScheduledAuthError = class extends Error {
@@ -2391,7 +2559,11 @@ async function resolveScheduledTask(req) {
 }
 async function handleScheduledSync(req) {
   const taskUid = await resolveScheduledTask(req);
-  const enabledSources = await getDb().select().from(connectors).where(inArray4(connectors.code, [...CONNECTORS]));
+  const task = req.query?.task;
+  if (taskUid === "supabase-cron:all-sources" && task === "items") {
+    return { status: "indexed", ...await indexPncpItems(80) };
+  }
+  const enabledSources = await getDb().select().from(connectors).where(inArray5(connectors.code, [...CONNECTORS]));
   const matched = enabledSources.find((source) => {
     const configuration = source.configuration && typeof source.configuration === "object" ? source.configuration : {};
     return source.enabled && configuration.scheduledTaskUid === taskUid;

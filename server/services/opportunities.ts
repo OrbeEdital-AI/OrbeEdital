@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lt, lte, or, sql, sum } from "drizzle-orm";
 import {
   companyMembers,
   connectors,
@@ -12,6 +12,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { buildPncpDetailUrl, normalizeProcurementStatus } from "../connectors/presentation";
+import { indexOpportunityItems } from "./pncpItemIndex";
 
 export type OpportunityFilters = {
   query?: string;
@@ -86,16 +87,21 @@ function buildFilters(filters: OpportunityFilters) {
   const clauses = [];
   const query = filters.query?.trim();
   if (query) {
-    const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
-    const matches = [
-      ilike(opportunities.title, like),
-      ilike(opportunities.description, like),
-      ilike(opportunities.agencyName, like),
-      ilike(opportunities.processNumber, like),
-      ilike(opportunities.procurementNumber, like),
-      ilike(opportunities.agencyCnpj, like),
-    ];
-    clauses.push(or(...matches)!);
+    const allTerms = query.split(/\s+/).filter(Boolean);
+    const meaningfulTerms = allTerms.length > 1 ? allTerms.filter(term => !["de", "da", "do", "das", "dos", "em", "para"].includes(term.toLocaleLowerCase("pt-BR"))) : allTerms;
+    const terms = (meaningfulTerms.length ? meaningfulTerms : allTerms).slice(0, 12);
+    for (const term of terms) {
+      const like = `%${term.replace(/[%_]/g, "\\$&")}%`;
+      clauses.push(or(
+        ilike(opportunities.title, like),
+        ilike(opportunities.description, like),
+        ilike(opportunities.agencyName, like),
+        ilike(opportunities.processNumber, like),
+        ilike(opportunities.procurementNumber, like),
+        ilike(opportunities.agencyCnpj, like),
+        sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
+      )!);
+    }
   }
   if (filters.states?.length) clauses.push(inArray(opportunities.state, filters.states.map(state => state.toUpperCase())));
   if (filters.municipality?.trim()) clauses.push(ilike(opportunities.municipality, `%${filters.municipality.trim()}%`));
@@ -149,11 +155,26 @@ export async function getOpportunityDetail(id: string, userId: string) {
     .where(eq(opportunities.id, id)).limit(1);
   const row = rows[0];
   if (!row) return null;
-  const [items, history, saved] = await Promise.all([
+  const [storedItems, history, saved] = await Promise.all([
     db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, id)),
     db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
     db.select({ id: favorites.id }).from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.opportunityId, id))).limit(1),
   ]);
+  let items = storedItems;
+  if (!items.length) {
+    try {
+      const recovered = await indexOpportunityItems({
+        id: row.opportunity.id,
+        agencyCnpj: row.opportunity.agencyCnpj,
+        year: row.opportunity.year,
+        controlNumber: row.opportunity.controlNumber,
+        rawData: row.opportunity.rawData,
+      });
+      if (recovered.length) items = recovered;
+    } catch {
+      // Não bloquear os outros dados da oportunidade quando a fonte de itens estiver indisponível.
+    }
+  }
   return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName, sourceCode: row.sourceCode, isFavorite: saved.length > 0, items, history };
 }
 
