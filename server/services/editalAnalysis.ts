@@ -43,7 +43,7 @@ function extractPdfFromZip(archive: Buffer): { name: string; bytes: Buffer } | n
 import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
 import { auditLogs, companyMembers, opportunities } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 
 type AnalysisResult = {
@@ -328,7 +328,7 @@ function parseAnalysis(content: unknown): AnalysisResult {
   };
 }
 
-export async function analyzeOpportunityEdital(opportunityId: string, userId: string) {
+export async function analyzeOpportunityEdital(opportunityId: string, userId: string, force = false) {
   const startedAt = Date.now();
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   let documentSizeBytes = 0;
@@ -337,6 +337,14 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
   let tokenUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } = {};
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError({ code: "NOT_FOUND", message: "A oportunidade não foi encontrada." });
+
+  // Reuse a previously completed analysis for this authenticated user and opportunity.
+  // Audit details are server-side; no shared customer cache or extra provider call is needed.
+  const [saved] = await getDb().select({ details: auditLogs.details, createdAt: auditLogs.createdAt })
+    .from(auditLogs).where(and(eq(auditLogs.actorUserId, userId), eq(auditLogs.entityId, opportunityId), eq(auditLogs.action, "orbe_ai.edital_analysis.completed")))
+    .orderBy(desc(auditLogs.createdAt)).limit(1);
+  const cached = saved?.details && typeof saved.details === "object" ? (saved.details as Record<string, unknown>).result : null;
+  if (!force && cached && typeof cached === "object" && "analysis" in cached) return cached as Awaited<ReturnType<typeof analyzeOpportunityEdital>>;
 
   // Compras.gov.br republishes PNCP procurement records. Its source key may be an
   // internal idCompra, so discover the official PNCP attachment list from raw metadata too.
@@ -516,7 +524,15 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (documentsNotProcessed.length) {
       analysis.missingInformation.push("Documentos oficiais localizados, mas não processados: " + documentsNotProcessed.join("; "));
     }
+    const result = {
+      opportunityId,
+      generatedAt: new Date().toISOString(),
+      source: opportunity.sourceName,
+      sourceUrl: opportunity.noticeUrl ?? opportunity.sourceUrl,
+      analysis,
+    };
     await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.completed", {
+      result,
       provider: "google_gemini",
       model: activeModel,
       documentAnalyzed: analysis.documentAnalyzed,
@@ -532,13 +548,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       elapsedMs: Date.now() - startedAt,
       sourceCode: opportunity.sourceCode,
     });
-    return {
-      opportunityId,
-      generatedAt: new Date().toISOString(),
-      source: opportunity.sourceName,
-      sourceUrl: opportunity.noticeUrl ?? opportunity.sourceUrl,
-      analysis,
-    };
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.failed", {
