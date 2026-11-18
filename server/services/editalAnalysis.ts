@@ -1,4 +1,45 @@
 import { TRPCError } from "@trpc/server";
+import { inflateRawSync } from "node:zlib";
+
+// Read PDF members from a ZIP returned by an official procurement endpoint.
+// Bound decompression to prevent ZIP bombs and never write archive paths to disk.
+function extractPdfFromZip(archive: Buffer): { name: string; bytes: Buffer } | null {
+  if (archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return null;
+  const tailStart = Math.max(0, archive.length - 65557);
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= tailStart; i--) {
+    if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+  const entries = Math.min(archive.readUInt16LE(eocd + 10), 100);
+  let cursor = archive.readUInt32LE(eocd + 16);
+  for (let i = 0; i < entries; i++) {
+    if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 0x02014b50) break;
+    const method = archive.readUInt16LE(cursor + 10);
+    const compressedSize = archive.readUInt32LE(cursor + 20);
+    const uncompressedSize = archive.readUInt32LE(cursor + 24);
+    const nameLength = archive.readUInt16LE(cursor + 28);
+    const extraLength = archive.readUInt16LE(cursor + 30);
+    const commentLength = archive.readUInt16LE(cursor + 32);
+    const localOffset = archive.readUInt32LE(cursor + 42);
+    const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!/\.pdf$/i.test(name) || uncompressedSize > 15 * 1024 * 1024 || compressedSize > 15 * 1024 * 1024) continue;
+    if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) continue;
+    const dataStart = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
+    if (dataStart + compressedSize > archive.length) continue;
+    const compressed = archive.subarray(dataStart, dataStart + compressedSize);
+    try {
+      const bytes = method === 0 ? compressed : method === 8
+        ? inflateRawSync(compressed, { maxOutputLength: 15 * 1024 * 1024 }) : null;
+      if (bytes && bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
+        return { name: name.split("/").pop() || "Documento PDF", bytes };
+      }
+    } catch { /* Corrupt or unsupported ZIP entry. */ }
+  }
+  return null;
+}
+
 import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
 import { auditLogs, companyMembers, opportunities } from "../../drizzle/schema";
@@ -356,11 +397,19 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
             }
             const contentType = pdfResponse.headers.get("content-type") || "não informado";
             const bytes = Buffer.from(await pdfResponse.arrayBuffer());
-            if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
-              downloadErrors.push("resposta não PDF (tipo: " + contentType.slice(0, 70) + "; bytes: " + bytes.length + ")");
-              continue;
+            if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
+              pdfBuffer = bytes;
+            } else {
+              const extracted = extractPdfFromZip(bytes);
+              if (extracted) {
+                pdfBuffer = extracted.bytes;
+                console.info("[edital-analysis] PDF extracted from official ZIP", { opportunityId, filename: extracted.name, bytes: pdfBuffer.length });
+              } else {
+                const signature = bytes.subarray(0, 8).toString("hex");
+                downloadErrors.push("arquivo não PDF (tipo: " + contentType.slice(0, 70) + "; bytes: " + bytes.length + "; assinatura: " + signature + ")");
+                continue;
+              }
             }
-            pdfBuffer = bytes;
             break;
           } catch (error) {
             downloadErrors.push(error instanceof Error ? error.message.slice(0, 100) : "falha de rede");
