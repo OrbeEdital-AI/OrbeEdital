@@ -66,6 +66,12 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   specifications: "Especificações",
 };
 
+function riskLevel(description: string): { label: string; className: string } {
+  if (/2 horas?|24 horas?|multa|impedimento|inabilita|desclassifica|penalidade|sanção|recusa/i.test(description)) return { label: "Alto · triagem automática", className: "bg-rose-100 text-rose-800" };
+  if (/prazo|exigência|comprovação|atestado|garantia|entrega|recurso|assinatura/i.test(description)) return { label: "Médio · triagem automática", className: "bg-amber-100 text-amber-800" };
+  return { label: "A revisar · triagem automática", className: "bg-slate-100 text-slate-700" };
+}
+
 function historyValue(field: string, value: unknown) {
   if (value == null || value === "") return "Não informado";
   if (field === "status" && typeof value === "string") return statusLabel(value);
@@ -505,6 +511,14 @@ export function OpportunityList({
 export function OpportunityDetailPage() {
   const [, params] = useRoute("/app/opportunities/:id");
   const id = params?.id;
+  const [checkedDocuments, setCheckedDocuments] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    try { setCheckedDocuments(JSON.parse(localStorage.getItem("orbe-edital-checklist:" + id) || "{}")); }
+    catch { setCheckedDocuments({}); }
+  }, [id]);
+  useEffect(() => {
+    if (id) try { localStorage.setItem("orbe-edital-checklist:" + id, JSON.stringify(checkedDocuments)); } catch { /* Storage unavailable. */ }
+  }, [id, checkedDocuments]);
   const query = trpc.opportunities.detail.useQuery(
     { id: id ?? "" },
     { enabled: Boolean(id), retry: false }
@@ -669,10 +683,35 @@ export function OpportunityDetailPage() {
                 </ul>
               </div>
             )}
+            {editalAnalysis.data.analysis.documentChecklist?.length > 0 && (
+              <div className="rounded-lg border border-cyan-200 bg-white p-4">
+                <h4 className="text-sm font-semibold text-[#102B4E]">Preparação documental · checklist interativo</h4>
+                <p className="mt-1 text-xs text-slate-500">Marque os itens providenciados. Progresso salvo neste navegador para esta licitação.</p>
+                <p className="mt-2 text-xs font-semibold text-cyan-900">{editalAnalysis.data.analysis.documentChecklist.filter((entry: string) => checkedDocuments[entry]).length} de {editalAnalysis.data.analysis.documentChecklist.length} concluídos</p>
+                <div className="mt-3 space-y-2">
+                  {editalAnalysis.data.analysis.documentChecklist.map((entry: string, index: number) => (
+                    <label key={index} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                      <input type="checkbox" className="mt-1 accent-cyan-700" checked={Boolean(checkedDocuments[entry])} onChange={event => setCheckedDocuments(previous => ({ ...previous, [entry]: event.target.checked }))} />
+                      <span className={checkedDocuments[entry] ? "text-slate-400 line-through" : ""}>{entry}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {editalAnalysis.data.analysis.risks?.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-[#102B4E]">Riscos priorizados</h4>
+                <p className="mt-1 text-xs text-slate-500">Classificação preliminar por palavras-chave; confirme a gravidade no edital.</p>
+                <ul className="mt-2 space-y-2">
+                  {editalAnalysis.data.analysis.risks.map((entry: string, index: number) => {
+                    const level = riskLevel(entry);
+                    return <li key={index} className="rounded-lg border bg-white p-3 text-sm text-slate-700"><span className={`mb-2 inline-block rounded px-2 py-1 text-xs font-semibold ${level.className}`}>{level.label}</span><p>{entry}</p></li>;
+                  })}
+                </ul>
+              </div>
+            )}
             {[
               ["Exigências de habilitação", editalAnalysis.data.analysis.qualificationRequirements],
-              ["Checklist documental", editalAnalysis.data.analysis.documentChecklist],
-              ["Riscos para revisão", editalAnalysis.data.analysis.risks],
               ["Pontos de atenção", editalAnalysis.data.analysis.attentionPoints],
               ["Informações não localizadas", editalAnalysis.data.analysis.missingInformation],
             ].map(([title, entries]) => Array.isArray(entries) && entries.length > 0 && (
