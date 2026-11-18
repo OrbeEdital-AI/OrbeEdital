@@ -335,6 +335,20 @@ function getOfficialPdfs(
   return documents.sort((a, b) => priority(a.kind) - priority(b.kind));
 }
 
+function uniqueRequirements(items: string[]): string[] {
+  const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const result: string[] = [];
+  for (const item of items) {
+    const key = normalized(item);
+    if (!key || result.some(previous => {
+      const other = normalized(previous);
+      return other === key || (Math.min(other.length, key.length) > 48 && (other.includes(key) || key.includes(other)));
+    })) continue;
+    result.push(item.trim());
+  }
+  return result;
+}
+
 function parseAnalysis(content: unknown): AnalysisResult {
   const raw = typeof content === "string" ? content : "";
   const cleaned = raw.trim().replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\s*\`\`\`$/, "");
@@ -370,10 +384,10 @@ function parseAnalysis(content: unknown): AnalysisResult {
     openingDate: nullable("openingDate"),
     sessionAt: nullable("sessionAt"),
     judgmentCriterion: nullable("judgmentCriterion"),
-    qualificationRequirements: strings("qualificationRequirements"),
-    documentChecklist: strings("documentChecklist"),
-    risks: strings("risks"),
-    attentionPoints: strings("attentionPoints"),
+    qualificationRequirements: uniqueRequirements(strings("qualificationRequirements")),
+    documentChecklist: uniqueRequirements(strings("documentChecklist").filter(item => !/^(?:proibi[cç][aã]o|necessidade de atestar|realiza[cç][aã]o de vistoria|habilita[cç][aã]o jur[ií]dica, fiscal)/i.test(item))),
+    risks: uniqueRequirements(strings("risks")),
+    attentionPoints: uniqueRequirements(strings("attentionPoints")),
     evidence,
     missingInformation: strings("missingInformation"),
     documentAnalyzed: value.documentAnalyzed === true,
@@ -513,7 +527,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF ou DOCX legível pôde ser extraído. A análise não foi gerada apenas com metadados." });
     }
 
-    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum documento oficial legível foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
+    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. O documentChecklist deve conter apenas documentos ou entregáveis que o licitante deve preparar, não repetir regras de habilitação nem riscos. Não inclua requisitos técnicos genéricos como documentos separados. Em risks, descreva risco concreto, consequência e fundamento do documento; não invente gravidade. Se nenhum documento oficial legível foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
 
     let response: Response | undefined;
     const fallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || null;
