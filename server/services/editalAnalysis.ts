@@ -3,14 +3,14 @@ import { inflateRawSync } from "node:zlib";
 
 // Read PDF members from a ZIP returned by an official procurement endpoint.
 // Bound decompression to prevent ZIP bombs and never write archive paths to disk.
-function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: Buffer } | null {
-  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return null;
+function extractPdfsFromZip(archive: Buffer, depth = 0): Array<{ name: string; bytes: Buffer }> {
+  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 0x04034b50) return [];
   const tailStart = Math.max(0, archive.length - 65557);
   let eocd = -1;
   for (let i = archive.length - 22; i >= tailStart; i--) {
     if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   }
-  if (eocd < 0) return null;
+  if (eocd < 0) return [];
   const entries = Math.min(archive.readUInt16LE(eocd + 10), 200);
   let cursor = archive.readUInt32LE(eocd + 16);
   const pdfCandidates: Array<{ name: string; bytes: Buffer; priority: number }> = [];
@@ -41,13 +41,13 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
         continue;
       }
       if (/\\.zip$/i.test(name) && bytes.subarray(0, 4).toString("hex") === "504b0304") {
-        const nested = extractPdfFromZip(bytes, depth + 1);
-        if (nested) return nested;
+        const nested = extractPdfsFromZip(bytes, depth + 1);
+        pdfCandidates.push(...nested.map(file => ({ ...file, priority: 3 })));
       }
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
-  return pdfCandidates[0] ? { name: pdfCandidates[0].name, bytes: pdfCandidates[0].bytes } : null;
+  return pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes }));
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
@@ -461,6 +461,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     for (const document of pdfs.slice(0, 4)) {
       try {
         let pdfBuffer: Buffer | null = null;
+        let zipPdfFiles: Array<{ name: string; bytes: Buffer }> = [];
         let wordText: string | null = null;
         const downloadErrors: string[] = [];
         for (const candidateUrl of [document.url, ...document.alternateUrls]) {
@@ -478,10 +479,11 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
             if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
               pdfBuffer = bytes;
             } else {
-              const extracted = extractPdfFromZip(bytes);
-              if (extracted) {
-                pdfBuffer = extracted.bytes;
-                console.info("[edital-analysis] PDF extracted from official ZIP", { opportunityId, filename: extracted.name, bytes: pdfBuffer.length });
+              const extracted = extractPdfsFromZip(bytes);
+              if (extracted.length) {
+                zipPdfFiles = extracted;
+                pdfBuffer = extracted[0].bytes;
+                console.info("[edital-analysis] PDFs extracted from official ZIP", { opportunityId, filenames: extracted.map(file => file.name) });
               } else {
                 wordText = extractDocxText(bytes);
                 if (wordText) break;
@@ -501,6 +503,19 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
         }
         if (documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
           documentsNotProcessed.push(document.name + " (limite total de 40 MB por análise atingido)");
+          continue;
+        }
+        if (zipPdfFiles.length) {
+          for (const file of zipPdfFiles) {
+            if (documentSizeBytes + file.bytes.length > maxAggregateBytes) {
+              documentsNotProcessed.push(file.name + " (limite de 40 MB atingido)");
+              continue;
+            }
+            documentSizeBytes += file.bytes.length;
+            documentsAnalyzed.push(file.name);
+            parts.push({ text: "Documento oficial extraído de " + document.name + ": " + file.name + ". Cite este nome nas evidências." });
+            parts.push({ inlineData: { mimeType: "application/pdf", data: file.bytes.toString("base64") } });
+          }
           continue;
         }
         documentSizeBytes += pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "");
