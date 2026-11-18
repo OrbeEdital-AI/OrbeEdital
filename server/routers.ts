@@ -43,6 +43,7 @@ import {
   deleteSavedSearch,
   getDashboardSummary,
   getFavoriteChanges,
+  getRecommendedOpportunities,
   getOpportunityDetail,
   listFavorites,
   listSavedSearches,
@@ -216,6 +217,7 @@ export const appRouter = router({
   dashboard: router({
     summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user)),
     favoriteChanges: protectedProcedure.query(({ ctx }) => getFavoriteChanges(ctx.user.id)),
+    recommendations: protectedProcedure.query(({ ctx }) => getRecommendedOpportunities(ctx.user.id)),
   }),
   opportunities: router({
     search: protectedProcedure.input(opportunitySearchSchema).query(({ input, ctx }) => searchOpportunities(input, ctx.user.id)),
@@ -469,7 +471,7 @@ export const appRouter = router({
         return Object.fromEntries(rows.map(row => [row.key, row.value]));
       }),
       save: superadminProcedure.input(z.object({
-        key: z.enum(["branding", "experience"]),
+        key: z.enum(["branding", "experience", "recommendations"]),
         value: z.record(z.string(), z.unknown()),
       })).mutation(async ({ input, ctx }) => {
         const [saved] = await getDb().insert(globalSettings).values({ key: input.key, value: input.value, updatedBy: ctx.user.id, updatedAt: new Date() }).onConflictDoUpdate({ target: globalSettings.key, set: { value: input.value, updatedBy: ctx.user.id, updatedAt: new Date() } }).returning();
