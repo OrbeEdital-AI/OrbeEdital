@@ -95,7 +95,7 @@ function formatPncpHistoryDate(value: string) {
 }
 
 export function Dashboard({
-  summary, loading, error, cards, recent, favorites = [], onRetry,
+  summary, loading, error, cards, recent, favorites = [], favoriteChanges = [], savedSearches = [], onRetry,
 }: {
   summary: any;
   loading: boolean;
@@ -103,6 +103,8 @@ export function Dashboard({
   cards: { label: string; value: number; icon: any; color: string }[];
   recent: AnyOpportunity[];
   favorites?: AnyOpportunity[];
+  favoriteChanges?: { id: string; opportunityId: string; title: string; happenedAt: Date | string; description: string; origin: string }[];
+  savedSearches?: { id: string; name: string; criteria: Record<string, unknown> | null }[];
   onRetry: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
@@ -116,18 +118,29 @@ export function Dashboard({
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
 
   const deadline = (item: AnyOpportunity) => item.proposalDeadline ? new Date(item.proposalDeadline).getTime() : Infinity;
-  const today = new Date(now);
-  const endToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
-  const nextWeek = now.getTime() + 7 * 86400000;
-  const urgentFavorites = favorites.filter(item => deadline(item) >= now.getTime() && deadline(item) <= nextWeek).sort((a,b) => deadline(a)-deadline(b));
-  const recentFavorites = favorites.filter(item => item.lastSyncedAt && new Date(item.lastSyncedAt).getTime() > now.getTime() - 86400000);
-  const metric = (key: string) => cards.find(c => c.label.toLowerCase().includes(key))?.value;
+  const urgentLimit = summary?.dashboardFilters?.favoriteUrgent?.deadlineTo
+    ? new Date(summary.dashboardFilters.favoriteUrgent.deadlineTo).getTime()
+    : now.getTime() + 7 * 86400000;
+  const urgentFavorites = favorites
+    .filter(item => deadline(item) >= now.getTime() && deadline(item) < urgentLimit)
+    .sort((a,b) => deadline(a)-deadline(b));
+  const metricLink = (params?: Record<string, string>) => `/app/opportunities?${new URLSearchParams(params ?? {}).toString()}`;
   const metrics = [
-    { label: "Encerram hoje", value: metric("encerram hoje"), icon: CalendarDays },
-    { label: "Encerram em 7 dias", value: metric("7 dias"), icon: Activity },
-    { label: "Novas em 24 horas", value: metric("24 horas"), icon: Sparkles },
-    { label: "Favoritos com prazo próximo", value: urgentFavorites.length, icon: Heart },
+    { label: "Encerram hoje", value: summary.closingToday, icon: CalendarDays, href: metricLink(summary.dashboardFilters?.today) },
+    { label: "Próximos 1–3 dias", value: summary.closing1to3, icon: Activity, href: metricLink(summary.dashboardFilters?.days1to3) },
+    { label: "De 4 a 7 dias", value: summary.closing4to7, icon: CalendarDays, href: metricLink(summary.dashboardFilters?.days4to7) },
+    { label: "Novas na base (24h)", value: summary.new24h, icon: Sparkles, href: metricLink(summary.dashboardFilters?.new24h) },
+    { label: "Favoritos próximos", value: urgentFavorites.length, icon: Heart, href: `/app/favorites?${new URLSearchParams(summary.dashboardFilters?.favoriteUrgent ?? {}).toString()}` },
   ];
+  const savedSearchHref = (saved: { name: string; criteria: Record<string, unknown> | null }) => {
+    const criteria = saved.criteria ?? {};
+    const params = new URLSearchParams();
+    params.set("query", typeof criteria.query === "string" && criteria.query.trim() ? criteria.query : saved.name);
+    const state = typeof criteria.state === "string" ? criteria.state : Array.isArray(criteria.states) && typeof criteria.states[0] === "string" ? criteria.states[0] : "";
+    if (state) params.set("state", state);
+    if (criteria.source === "pncp" || criteria.source === "compras.gov.br") params.set("source", criteria.source);
+    return `/app/opportunities?${params.toString()}`;
+  };
   const states = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
   const sources = summary?.sources ?? [];
   const lastUpdate = sources.map((s: any) => s.lastRunAt ? new Date(s.lastRunAt).getTime() : 0).filter((t: number) => Number.isFinite(t) && t > 0);
@@ -151,16 +164,29 @@ export function Dashboard({
           <button type="submit" className="rounded-lg bg-[#102B4E] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#173b65]">Buscar</button>
         </form>
         <Link href="/app/opportunities" className="mt-3 inline-block text-xs font-semibold text-cyan-100 underline">Abrir busca completa</Link>
+        {savedSearches.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="Atalhos de pesquisas salvas">
+            <span className="text-xs font-semibold text-blue-100">Pesquisas salvas:</span>
+            {savedSearches.slice(0, 4).map(saved => (
+              <Link key={saved.id} href={savedSearchHref(saved)} className="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20">
+                {saved.name}
+              </Link>
+            ))}
+            <Link href="/app/opportunities/saved-searches" className="text-xs font-semibold text-blue-100 underline">Gerenciar</Link>
+          </div>
+        )}
       </section>
 
       <section aria-labelledby="dashboard-priorities">
         <h3 id="dashboard-priorities" className="mb-3 font-bold text-[#102B4E]">Prazos e indicadores</h3>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map(m => <article key={m.label} className="rounded-xl border border-[#cbdce8] bg-white p-4 shadow-sm">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {metrics.map(m => <Link key={m.label} href={m.href} className="rounded-xl border border-[#cbdce8] bg-white p-4 shadow-sm transition hover:border-cyan-400 hover:shadow-md focus-visible:ring-2 focus-visible:ring-cyan-700">
             <div className="flex items-center justify-between gap-2"><p className="text-sm text-slate-600">{m.label}</p><m.icon size={19} className="text-cyan-800" /></div>
             <p className="mt-3 text-3xl font-bold text-[#102B4E]">{m.value == null ? "—" : m.value.toLocaleString("pt-BR")}</p>
-          </article>)}
+            <p className="mt-1 text-xs font-medium text-cyan-800">Ver oportunidades →</p>
+          </Link>)}
         </div>
+        <p className="mt-2 text-xs text-slate-500">As faixas de vencimento não se sobrepõem. “Novas na base” significa registros adicionados ao OrbeEdital nas últimas 24h, não necessariamente publicados hoje.</p>
       </section>
 
       <section className="rounded-2xl border border-[#c5d9e7] bg-white p-5 shadow-sm" aria-labelledby="dashboard-actions">
@@ -172,19 +198,32 @@ export function Dashboard({
           <Link key={item.id} href={`/app/opportunities/${item.id}`} className="flex flex-wrap justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100">
             <span className="font-semibold text-[#102B4E]">{item.title}</span><span className="text-amber-900">Prazo: {date(item.proposalDeadline)}</span>
           </Link>)}</div> : <p className="mt-3 text-sm text-slate-600">Nenhum favorito com prazo nos próximos 7 dias. Salve oportunidades para acompanhar seus vencimentos aqui.</p>}
-        {recentFavorites.length > 0 && <p className="mt-3 text-xs text-slate-500">{recentFavorites.length} favorito(s) sincronizado(s) nas últimas 24 horas. Consulte o histórico de cada oportunidade para confirmar alterações oficiais.</p>}
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h4 className="text-sm font-bold text-[#102B4E]">Alterações registradas nos favoritos</h4>
+          {favoriteChanges.length ? (
+            <div className="mt-2 space-y-2">
+              {favoriteChanges.slice(0, 5).map(change => (
+                <Link key={change.id} href={`/app/opportunities/${change.opportunityId}`} className="block rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 hover:bg-cyan-100">
+                  <p className="text-sm font-semibold text-[#102B4E]">{change.title}</p>
+                  <p className="mt-1 text-xs text-slate-700">{change.description} · {dateTime(change.happenedAt)}</p>
+                  <p className="text-xs text-slate-500">{change.origin} — confira o histórico e o edital oficial</p>
+                </Link>
+              ))}
+            </div>
+          ) : <p className="mt-2 text-sm text-slate-600">Nenhuma alteração de conteúdo registrada nos seus favoritos nos últimos 30 dias.</p>}
+        </div>
         <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold"><Link href="/app/favorites" className="text-cyan-800">Meus favoritos →</Link><Link href="/app/notifications" className="text-cyan-800">Notificações →</Link></div>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-[#c5d9e7] bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-          <div><h3 className="font-bold text-[#102B4E]">Oportunidades para sua empresa</h3><p className="mt-1 text-xs text-slate-500">Enquanto o perfil de recomendação é integrado, exibimos publicações recentes, sem afirmar compatibilidade automática.</p></div>
+          <div><h3 className="font-bold text-[#102B4E]">Publicações recentes</h3><p className="mt-1 text-xs text-slate-500">Licitações abertas ordenadas pela data de publicação oficial, da mais recente para a mais antiga.</p></div>
           <Link href="/app/opportunities" className="text-sm font-semibold text-cyan-800">Ver todas →</Link>
         </div>
         <OpportunityList items={recent.slice(0,5)} loading={false} empty="Nenhuma oportunidade disponível no momento." compact />
       </section>
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
-        <span>Base nacional: {(metric("abertas") ?? metric("abert"))?.toLocaleString("pt-BR") ?? "—"} oportunidades abertas</span>
+        <span>Base nacional: {Number(summary?.open ?? 0).toLocaleString("pt-BR")} oportunidades abertas</span>
         <span>Última sincronização registrada: {lastSync ? dateTime(lastSync) : "não informada"}</span>
       </div>
     </div>
