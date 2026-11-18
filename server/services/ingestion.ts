@@ -297,6 +297,11 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
               if (inserts.length) {
                 const created = await tx.insert(opportunities).values(inserts).onConflictDoNothing().returning({ id: opportunities.id });
                 createdRows = created.length;
+                if (created.length) await tx.insert(opportunityHistory).values(created.map(({ id }) => ({
+                  opportunityId: id,
+                  eventType: "source_imported",
+                  summary: "Oportunidade registrada pela primeira vez no Orbe.",
+                })));
               }
               if (upsertRows.length) await tx.insert(opportunities).values(upsertRows).onConflictDoUpdate({
                 target: opportunities.id,

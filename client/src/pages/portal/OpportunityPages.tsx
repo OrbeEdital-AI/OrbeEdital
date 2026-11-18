@@ -696,7 +696,7 @@ export function OpportunityDetailPage() {
             {item.history.map((event: any) => (
               <li className="border-l-2 border-cyan-300 pl-4" key={event.id}>
                 <p className="text-xs text-slate-500">
-                  {date(event.happenedAt)} · {event.eventType}
+                  {date(event.happenedAt)} · {event.eventType === "source_imported" ? "Primeiro registro" : event.eventType === "source_update" ? "Atualização da fonte oficial" : event.eventType}
                 </p>
                 <p className="mt-1 text-sm">
                   {event.summary ?? "Atualização registrada pela fonte."}
@@ -706,7 +706,7 @@ export function OpportunityDetailPage() {
           </ul>
         ) : (
           <p className="mt-3 text-sm text-slate-500">
-            Ainda não há histórico de mudanças para este registro.
+            Primeiro registro no Orbe em {date(item.createdAt)}. Ainda não há alterações posteriores capturadas da fonte oficial; mudanças anteriores à primeira coleta não estão disponíveis.
           </p>
         )}
       </section>
