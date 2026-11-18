@@ -42,6 +42,7 @@ import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordS
 import {
   deleteSavedSearch,
   getDashboardSummary,
+  getFavoriteChanges,
   getOpportunityDetail,
   listFavorites,
   listSavedSearches,
@@ -76,6 +77,7 @@ const opportunitySearchSchema = z.object({
   maxValue: z.number().nonnegative().max(1_000_000_000_000).optional(),
   publishedFrom: z.string().datetime().optional(),
   publishedTo: z.string().datetime().optional(),
+  createdFrom: z.string().datetime().optional(),
   deadlineFrom: z.string().datetime().optional(),
   deadlineTo: z.string().datetime().optional(),
   onlyOpen: z.boolean().optional(),
@@ -213,6 +215,7 @@ export const appRouter = router({
   }),
   dashboard: router({
     summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user)),
+    favoriteChanges: protectedProcedure.query(({ ctx }) => getFavoriteChanges(ctx.user.id)),
   }),
   opportunities: router({
     search: protectedProcedure.input(opportunitySearchSchema).query(({ input, ctx }) => searchOpportunities(input, ctx.user.id)),
