@@ -4661,6 +4661,70 @@ async function syncConnector(sourceCode, input = {}) {
 // server/services/editalAnalysis.ts
 import { TRPCError as TRPCError6 } from "@trpc/server";
 import { eq as eq13 } from "drizzle-orm";
+
+// server/services/geminiApi.ts
+var MAX_ATTEMPTS = 3;
+var RETRYABLE_STATUSES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
+var BACKOFF_MS = [1e3, 2e3];
+var MAX_RETRY_AFTER_MS = 8e3;
+var GeminiApiError = class extends Error {
+  constructor(message, status, attempts) {
+    super(message);
+    this.status = status;
+    this.attempts = attempts;
+    this.name = "GeminiApiError";
+  }
+};
+function parseRetryAfter(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1e3, MAX_RETRY_AFTER_MS);
+  }
+  const date2 = Date.parse(value);
+  if (!Number.isFinite(date2)) return null;
+  return Math.min(Math.max(0, date2 - Date.now()), MAX_RETRY_AFTER_MS);
+}
+async function generateGeminiContent(model, apiKey, body, dependencies = {}) {
+  const fetcher = dependencies.fetcher ?? fetch;
+  const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const random = dependencies.random ?? Math.random;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let response;
+    try {
+      response = await fetcher(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(9e4)
+      });
+    } catch (error) {
+      const message2 = error instanceof Error ? error.message : "erro de rede desconhecido";
+      throw new GeminiApiError(`Gemini API request failed: ${message2}`, null, attempt);
+    }
+    if (response.ok) {
+      return await response.json();
+    }
+    const providerError = await response.json().catch(() => null);
+    const providerMessage = providerError?.error?.message || "provider request rejected";
+    const message = `Gemini API failed with HTTP ${response.status}: ${providerMessage}`;
+    const retryable = RETRYABLE_STATUSES.has(response.status);
+    if (!retryable || attempt === MAX_ATTEMPTS) {
+      throw new GeminiApiError(message, response.status, attempt);
+    }
+    const retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+    const baseDelay = BACKOFF_MS[attempt - 1] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
+    const jitteredDelay = Math.round(baseDelay * (0.75 + random() * 0.5));
+    await sleep(retryAfter ?? jitteredDelay);
+  }
+  throw new GeminiApiError("Gemini API request exhausted its retry limit", null, MAX_ATTEMPTS);
+}
+
+// server/services/editalAnalysis.ts
 function formatPncpBrazilDate(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   const raw = value.trim();
@@ -4965,27 +5029,14 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
       throw new Error("Nenhum dos PDFs oficiais localizados p\xF4de ser baixado e validado");
     }
     const systemInstruction = "Voc\xEA \xE9 um analista t\xE9cnico de licita\xE7\xF5es p\xFAblicas brasileiras. Analise exclusivamente o conte\xFAdo fornecido. N\xE3o invente datas, valores, documentos, p\xE1ginas, artigos ou exig\xEAncias. Diferencie informa\xE7\xE3o encontrada no documento de metadados da oportunidade. REGRA CR\xCDTICA DE DATAS: em pncpOfficialDates, publicationAt \xE9 a divulga\xE7\xE3o no PNCP; proposalReceiptStartsAt \xE9 o IN\xCDCIO do recebimento de propostas; proposalReceiptEndsAt \xE9 o FIM do recebimento de propostas. O fim do recebimento n\xE3o \xE9 o in\xEDcio, e nenhum desses campos deve ser confundido automaticamente com a sess\xE3o p\xFAblica. Compare somente eventos equivalentes: in\xEDcio com in\xEDcio, fim com fim e sess\xE3o p\xFAblica com sess\xE3o p\xFAblica. Nunca compare o in\xEDcio do recebimento com a data da sess\xE3o para declarar diverg\xEAncia. Se o fim do recebimento e a sess\xE3o p\xFAblica tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada priorit\xE1ria para os campos proposalStartAt e proposalDeadline; preserve o hor\xE1rio de Bras\xEDlia indicado e n\xE3o aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sess\xE3o p\xFAblica. Se houver diverg\xEAncia real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se n\xE3o localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revis\xE3o humana, nunca como conclus\xE3o jur\xEDdica. Para cada evid\xEAncia, forne\xE7a o nome do documento de origem, p\xE1gina somente se estiver vis\xEDvel e um trecho curto fiel ao documento. Responda apenas JSON v\xE1lido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limita\xE7\xE3o em missingInformation. N\xE3o trate metadados como se fossem conte\xFAdo lido do edital.";
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 3500
-        }
-      }),
-      signal: AbortSignal.timeout(9e4)
+    const payload = await generateGeminiContent(model, apiKey, {
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 3500
+      }
     });
-    if (!response.ok) {
-      const providerError = await response.json().catch(() => null);
-      throw new Error(`Gemini API failed with HTTP ${response.status}: ${providerError?.error?.message || "provider request rejected"}`);
-    }
-    const payload = await response.json();
     tokenUsage = payload.usageMetadata ?? {};
     const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
     const analysis = parseAnalysis(answer);
@@ -5043,11 +5094,19 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
       documentAnalyzed: false,
       documentSizeBytes,
       elapsedMs: Date.now() - startedAt,
-      error: message.slice(0, 300)
+      error: message.slice(0, 300),
+      providerStatus: error instanceof GeminiApiError ? error.status : null,
+      providerAttempts: error instanceof GeminiApiError ? error.attempts : null
     });
     if (error instanceof TRPCError6) throw error;
     console.error("[edital-analysis] failed", message);
-    throw new TRPCError6({ code: "BAD_GATEWAY", message: "N\xE3o foi poss\xEDvel analisar o edital agora. Confira se o documento oficial est\xE1 acess\xEDvel e tente novamente." });
+    if (error instanceof GeminiApiError && [429, 500, 502, 503, 504].includes(error.status ?? -1)) {
+      throw new TRPCError6({
+        code: "BAD_GATEWAY",
+        message: "O servi\xE7o de IA est\xE1 temporariamente sobrecarregado. Tentamos novamente automaticamente, mas ele continua indispon\xEDvel. Aguarde alguns instantes e tente de novo."
+      });
+    }
+    throw new TRPCError6({ code: "BAD_GATEWAY", message: "N\xE3o foi poss\xEDvel concluir a an\xE1lise agora. Tente novamente; se o problema persistir, acione o suporte." });
   }
 }
 

@@ -107,6 +107,7 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 - [ ] Indicar página ou trecho de origem de cada informação importante quando possível.
 - [ ] Não inventar extrações ausentes e não apresentar a análise como aconselhamento jurídico definitivo.
 - [ ] Exibir estados distintos de aguardando, concluído, falha, arquivo indisponível e limite/cota esgotada; apresentar custos/limites de IA de forma transparente.
+- [x] Em falhas transitórias do provedor de IA (HTTP 429/5xx), repetir a solicitação com espera limitada; se persistir, informar indisponibilidade temporária sem atribuir o erro ao acesso ao edital. Evidência: retry limitado a três tentativas com backoff e suporte a `Retry-After`, auditoria guarda status/tentativas; quatro testes unitários e `pnpm build` passaram.
 
 ## 11. Compatibilidade comercial e assistente
 

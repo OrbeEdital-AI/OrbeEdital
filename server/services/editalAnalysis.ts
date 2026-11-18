@@ -3,6 +3,7 @@ import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
 import { auditLogs, companyMembers, opportunities } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { generateGeminiContent, GeminiApiError } from "./geminiApi";
 
 
 type AnalysisResult = {
@@ -374,32 +375,14 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
 
     const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
+    const payload = await generateGeminiContent(model, apiKey, {
         systemInstruction: { parts: [{ text: systemInstruction }] },
         contents: [{ role: "user", parts }],
         generationConfig: {
           responseMimeType: "application/json",
           maxOutputTokens: 3500,
         },
-      }),
-      signal: AbortSignal.timeout(90_000),
-    });
-
-    if (!response.ok) {
-      const providerError = await response.json().catch(() => null) as { error?: { message?: string } } | null;
-      throw new Error(`Gemini API failed with HTTP ${response.status}: ${providerError?.error?.message || "provider request rejected"}`);
-    }
-
-    const payload = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
-    };
+      });
     tokenUsage = payload.usageMetadata ?? {};
     const answer = payload.candidates?.[0]?.content?.parts
       ?.map(part => part.text || "")
@@ -464,9 +447,17 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       documentSizeBytes,
       elapsedMs: Date.now() - startedAt,
       error: message.slice(0, 300),
+      providerStatus: error instanceof GeminiApiError ? error.status : null,
+      providerAttempts: error instanceof GeminiApiError ? error.attempts : null,
     });
     if (error instanceof TRPCError) throw error;
     console.error("[edital-analysis] failed", message);
-    throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível analisar o edital agora. Confira se o documento oficial está acessível e tente novamente." });
+    if (error instanceof GeminiApiError && [429, 500, 502, 503, 504].includes(error.status ?? -1)) {
+      throw new TRPCError({
+        code: "BAD_GATEWAY",
+        message: "O serviço de IA está temporariamente sobrecarregado. Tentamos novamente automaticamente, mas ele continua indisponível. Aguarde alguns instantes e tente de novo.",
+      });
+    }
+    throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível concluir a análise agora. Tente novamente; se o problema persistir, acione o suporte." });
   }
 }
