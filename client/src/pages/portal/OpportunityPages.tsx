@@ -656,7 +656,7 @@ export function OpportunityDetailPage() {
           <button
             type="button"
             disabled={editalAnalysis.isPending}
-            onClick={() => { const force = Boolean(editalAnalysis.data); editalAnalysis.reset(); editalAnalysis.mutate({ id: item.id, force }); }}
+            onClick={() => { editalAnalysis.reset(); editalAnalysis.mutate({ id: item.id, force: true }); }}
             className="inline-flex items-center gap-2 rounded-lg bg-[#102B4E] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
           >
             <Sparkles size={16} />
@@ -687,11 +687,11 @@ export function OpportunityDetailPage() {
                 </ul>
               </div>
             )}
-            {(editalAnalysis.data.analysis.documentChecklist?.length > 0 || editalAnalysis.data.analysis.qualificationRequirements?.length > 0) && (
+            {(editalAnalysis.data.analysis.documentChecklist?.length > 0) && (
               <div className="rounded-lg border border-cyan-200 bg-white p-4">
                 <h4 className="text-sm font-semibold text-[#102B4E]">Preparação documental · checklist interativo</h4>
                 <p className="mt-1 text-xs text-slate-500">Proposta e habilitação em uma única lista, sem duplicações. Progresso salvo neste navegador.</p>
-                <p className="mt-2 text-xs font-semibold text-cyan-900">{Array.from(new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements])).filter((entry: string) => checkedDocuments[entry]).length} de {new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements]).size} concluídos</p>
+                <p className="mt-2 text-xs font-semibold text-cyan-900">{Array.from(new Set(editalAnalysis.data.analysis.documentChecklist)).filter((entry: string) => checkedDocuments[entry]).length} de {new Set(editalAnalysis.data.analysis.documentChecklist).size} concluídos</p>
                 <div className="mt-3 space-y-2">
                   {Array.from(new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements])).map((entry: string, index: number) => (
                     <label key={index} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
