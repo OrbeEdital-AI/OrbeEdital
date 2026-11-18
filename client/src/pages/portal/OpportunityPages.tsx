@@ -511,14 +511,18 @@ export function OpportunityList({
 export function OpportunityDetailPage() {
   const [, params] = useRoute("/app/opportunities/:id");
   const id = params?.id;
-  const [checkedDocuments, setCheckedDocuments] = useState<Record<string, boolean>>({});
+  const [checkedDocuments, setCheckedDocuments] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("orbe-edital-checklist:" + id) || "{}"); } catch { return {}; }
+  });
+  const [checklistReadyForId, setChecklistReadyForId] = useState(id);
   useEffect(() => {
     try { setCheckedDocuments(JSON.parse(localStorage.getItem("orbe-edital-checklist:" + id) || "{}")); }
     catch { setCheckedDocuments({}); }
+    setChecklistReadyForId(id);
   }, [id]);
   useEffect(() => {
-    if (id) try { localStorage.setItem("orbe-edital-checklist:" + id, JSON.stringify(checkedDocuments)); } catch { /* Storage unavailable. */ }
-  }, [id, checkedDocuments]);
+    if (id && checklistReadyForId === id) try { localStorage.setItem("orbe-edital-checklist:" + id, JSON.stringify(checkedDocuments)); } catch { /* Storage unavailable. */ }
+  }, [id, checkedDocuments, checklistReadyForId]);
   const query = trpc.opportunities.detail.useQuery(
     { id: id ?? "" },
     { enabled: Boolean(id), retry: false }
@@ -652,7 +656,7 @@ export function OpportunityDetailPage() {
           <button
             type="button"
             disabled={editalAnalysis.isPending}
-            onClick={() => editalAnalysis.mutate({ id: item.id })}
+            onClick={() => editalAnalysis.mutate({ id: item.id, force: Boolean(editalAnalysis.data) })}
             className="inline-flex items-center gap-2 rounded-lg bg-[#102B4E] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
           >
             <Sparkles size={16} />
