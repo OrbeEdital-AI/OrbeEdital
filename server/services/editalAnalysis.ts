@@ -349,7 +349,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     .from(auditLogs).where(and(eq(auditLogs.actorUserId, userId), eq(auditLogs.entityId, opportunityId), eq(auditLogs.action, "orbe_ai.edital_analysis.completed")))
     .orderBy(desc(auditLogs.createdAt)).limit(1);
   const cached = saved?.details && typeof saved.details === "object" ? (saved.details as Record<string, unknown>).result : null;
-  if (!force && cached && typeof cached === "object" && "analysis" in cached) return cached as Awaited<ReturnType<typeof analyzeOpportunityEdital>>;
+  if (!force && cached && typeof cached === "object" && "analysis" in cached && (cached as { analysis?: { documentAnalyzed?: boolean } }).analysis?.documentAnalyzed === true) return cached as Awaited<ReturnType<typeof analyzeOpportunityEdital>>;
 
   // Compras.gov.br republishes PNCP procurement records. Its source key may be an
   // internal idCompra, so discover the official PNCP attachment list from raw metadata too.
