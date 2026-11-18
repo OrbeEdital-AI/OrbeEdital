@@ -478,6 +478,7 @@ export default function Portal() {
                 cards={cards}
                 recent={(summary.data?.recent ?? []) as AnyOpportunity[]}
                 favorites={(favorites.data ?? []) as AnyOpportunity[]}
+                recommendations={recommendations.data}
                 favoriteChanges={favoriteChanges.data ?? []}
                 savedSearches={dashboardSavedSearches.data ?? []}
                 onRetry={() => summary.refetch()}
