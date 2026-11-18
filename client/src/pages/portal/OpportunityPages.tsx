@@ -95,159 +95,98 @@ function formatPncpHistoryDate(value: string) {
 }
 
 export function Dashboard({
-  summary,
-  loading,
-  error,
-  cards,
-  recent,
-  onRetry,
+  summary, loading, error, cards, recent, favorites = [], onRetry,
 }: {
   summary: any;
   loading: boolean;
   error?: string;
   cards: { label: string; value: number; icon: any; color: string }[];
   recent: AnyOpportunity[];
+  favorites?: AnyOpportunity[];
   onRetry: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
+  const [term, setTerm] = useState("");
+  const [uf, setUf] = useState("");
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  if (loading) return <Loading label="Carregando indicadores do PostgreSQL…" />;
+  if (loading) return <Loading label="Carregando indicadores…" />;
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
-  const sourceStatus = (status: string) => ({
-    active: "Conectada",
-    error: "Com atenção",
-    disabled: "Pausada",
-    pending: "Aguardando",
-  } as Record<string, string>)[status] ?? "Aguardando";
+
+  const deadline = (item: AnyOpportunity) => item.proposalDeadline ? new Date(item.proposalDeadline).getTime() : Infinity;
+  const today = new Date(now);
+  const endToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
+  const nextWeek = now.getTime() + 7 * 86400000;
+  const urgentFavorites = favorites.filter(item => deadline(item) >= now.getTime() && deadline(item) <= nextWeek).sort((a,b) => deadline(a)-deadline(b));
+  const recentFavorites = favorites.filter(item => item.lastSyncedAt && new Date(item.lastSyncedAt).getTime() > now.getTime() - 86400000);
+  const metric = (key: string) => cards.find(c => c.label.toLowerCase().includes(key))?.value;
+  const metrics = [
+    { label: "Encerram hoje", value: metric("encerram hoje"), icon: CalendarDays },
+    { label: "Encerram em 7 dias", value: metric("7 dias"), icon: Activity },
+    { label: "Novas em 24 horas", value: metric("24 horas"), icon: Sparkles },
+    { label: "Favoritos com prazo próximo", value: urgentFavorites.length, icon: Heart },
+  ];
+  const states = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+  const sources = summary?.sources ?? [];
+  const lastUpdate = sources.map((s: any) => s.lastRunAt ? new Date(s.lastRunAt).getTime() : 0).filter((t: number) => Number.isFinite(t) && t > 0);
+  const lastSync = lastUpdate.length ? new Date(Math.max(...lastUpdate)) : null;
+  const searchUrl = "/app/opportunities?" + new URLSearchParams({ ...(term.trim() ? { query: term.trim() } : {}), ...(uf ? { state: uf } : {}) }).toString();
 
   return (
-    <div className="space-y-7 rounded-2xl bg-gradient-to-br from-[#e8f2fa] via-[#edf5f8] to-[#dcecf1] p-3 sm:p-5">
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#102B4E] via-[#123d65] to-[#087eaa] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-8">
-        <div className="pointer-events-none absolute -right-12 -top-20 h-64 w-64 rounded-full border-[32px] border-white/5" />
-        <div className="pointer-events-none absolute -bottom-28 right-24 h-64 w-64 rounded-full border-[28px] border-white/5" />
-        <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
-          <div className="max-w-2xl">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100">Seu painel de oportunidades</p>
-            <h2 className="orbe-welcome-heading text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {brazilGreeting(now)}! Vamos encontrar novos negócios?
-            </h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">
-              Acompanhe licitações, prazos e novas publicações em um só lugar.
-              Encontre oportunidades alinhadas ao perfil da sua empresa.
-            </p>
-          </div>
-          <Link
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#102B4E] shadow-sm transition hover:bg-cyan-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#123d65]"
-            href="/app/opportunities"
-          >
-            <Search size={17} />
-            Explorar oportunidades
-          </Link>
+    <div className="space-y-6 rounded-2xl bg-gradient-to-br from-[#e8f2fa] via-[#edf5f8] to-[#dcecf1] p-3 sm:p-5">
+      <section className="rounded-2xl bg-gradient-to-br from-[#102B4E] via-[#123d65] to-[#087eaa] px-5 py-6 text-white sm:px-8">
+        <p className="text-xs font-semibold uppercase tracking-widest text-cyan-100">Seu painel de oportunidades</p>
+        <h2 className="orbe-welcome-heading mt-2 text-2xl font-bold text-white sm:text-3xl">{brazilGreeting(now)}! O que merece sua atenção hoje?</h2>
+        <p className="mt-2 text-sm text-blue-100">Pesquise, acompanhe prazos e descubra oportunidades para sua empresa.</p>
+        <form className="mt-5 grid gap-2 rounded-xl bg-white p-3 text-slate-900 sm:grid-cols-[1fr_125px_auto]" onSubmit={e => { e.preventDefault(); window.location.assign(searchUrl); }}>
+          <label className="sr-only" htmlFor="dashboard-query">Termos da pesquisa</label>
+          <input id="dashboard-query" value={term} onChange={e => setTerm(e.target.value)} placeholder="Produto, serviço, órgão ou palavra-chave" className="min-w-0 rounded-lg border border-slate-300 px-3 py-2.5 text-sm" />
+          <label className="sr-only" htmlFor="dashboard-state">Estado</label>
+          <select id="dashboard-state" value={uf} onChange={e => setUf(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2.5 text-sm">
+            <option value="">Todo o Brasil</option>
+            {states.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button type="submit" className="rounded-lg bg-[#102B4E] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#173b65]">Buscar</button>
+        </form>
+        <Link href="/app/opportunities" className="mt-3 inline-block text-xs font-semibold text-cyan-100 underline">Abrir busca completa</Link>
+      </section>
+
+      <section aria-labelledby="dashboard-priorities">
+        <h3 id="dashboard-priorities" className="mb-3 font-bold text-[#102B4E]">Prazos e indicadores</h3>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map(m => <article key={m.label} className="rounded-xl border border-[#cbdce8] bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2"><p className="text-sm text-slate-600">{m.label}</p><m.icon size={19} className="text-cyan-800" /></div>
+            <p className="mt-3 text-3xl font-bold text-[#102B4E]">{m.value == null ? "—" : m.value.toLocaleString("pt-BR")}</p>
+          </article>)}
         </div>
       </section>
 
-      <section aria-labelledby="overview-metrics">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <h3 id="overview-metrics" className="text-base font-bold text-[#102B4E]">Resumo do mercado</h3>
-            <p className="mt-1 text-xs text-slate-500">Indicadores dos registros disponíveis no OrbeEdital</p>
-          </div>
-          <span className="hidden text-xs text-slate-400 sm:inline">Atualizado conforme as coletas das fontes</span>
+      <section className="rounded-2xl border border-[#c5d9e7] bg-white p-5 shadow-sm" aria-labelledby="dashboard-actions">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="dashboard-actions" className="font-bold text-[#102B4E]">Prioridades para você</h3>
+          <Link href="/app/agenda" className="text-sm font-semibold text-cyan-800">Abrir agenda →</Link>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {cards.map((card, index) => (
-            <article
-              key={card.label}
-              className={`group rounded-xl border bg-gradient-to-br from-[#f7fbff] to-[#e7f1f7] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${index === 0 ? "border-cyan-300 ring-1 ring-cyan-200" : "border-[#cbdce8]"}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-slate-600">{card.label}</p>
-                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${card.color}`}>
-                  <card.icon size={19} />
-                </span>
-              </div>
-              <p className="mt-3 text-3xl font-bold tracking-tight text-[#102B4E]">
-                {card.value.toLocaleString("pt-BR")}
-              </p>
-            </article>
-          ))}
-        </div>
+        {urgentFavorites.length ? <div className="mt-3 space-y-2">{urgentFavorites.slice(0,5).map(item =>
+          <Link key={item.id} href={`/app/opportunities/${item.id}`} className="flex flex-wrap justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100">
+            <span className="font-semibold text-[#102B4E]">{item.title}</span><span className="text-amber-900">Prazo: {date(item.proposalDeadline)}</span>
+          </Link>)}</div> : <p className="mt-3 text-sm text-slate-600">Nenhum favorito com prazo nos próximos 7 dias. Salve oportunidades para acompanhar seus vencimentos aqui.</p>}
+        {recentFavorites.length > 0 && <p className="mt-3 text-xs text-slate-500">{recentFavorites.length} favorito(s) sincronizado(s) nas últimas 24 horas. Consulte o histórico de cada oportunidade para confirmar alterações oficiais.</p>}
+        <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold"><Link href="/app/favorites" className="text-cyan-800">Meus favoritos →</Link><Link href="/app/notifications" className="text-cyan-800">Notificações →</Link></div>
       </section>
 
-      <section className="rounded-2xl border border-[#c5d9e7] bg-gradient-to-br from-[#e4f0f7] to-[#f2f7fa] p-5 shadow-sm sm:p-6" aria-labelledby="sources-heading">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-50 text-cyan-800">
-              <Database size={19} />
-            </span>
-            <div>
-              <h3 id="sources-heading" className="font-bold text-[#102B4E]">Bases de oportunidades</h3>
-              <p className="mt-0.5 text-xs text-slate-500">Veja de onde vêm os registros disponíveis</p>
-            </div>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-            {(summary?.sources ?? []).length} fontes conectadas
-          </span>
+      <section className="overflow-hidden rounded-2xl border border-[#c5d9e7] bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+          <div><h3 className="font-bold text-[#102B4E]">Oportunidades para sua empresa</h3><p className="mt-1 text-xs text-slate-500">Enquanto o perfil de recomendação é integrado, exibimos publicações recentes, sem afirmar compatibilidade automática.</p></div>
+          <Link href="/app/opportunities" className="text-sm font-semibold text-cyan-800">Ver todas →</Link>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {(summary?.sources ?? []).map((s: any) => (
-            <article key={s.code} className="rounded-xl border border-[#cbdce8] bg-[#f5f9fc] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-[#102B4E]">
-                    {s.code === "pncp" ? "PNCP" : "Compras.gov.br"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {s.lastRunAt ? `Última coleta em ${date(s.lastRunAt)}` : "Nenhuma coleta registrada"}
-                  </p>
-                </div>
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${s.status === "active" ? "bg-emerald-50 text-emerald-800" : s.status === "error" ? "bg-rose-50 text-rose-700" : "bg-slate-200 text-slate-600"}`}>
-                  {s.status === "error" ? <CircleAlert size={13} /> : <CheckCircle2 size={13} />}
-                  {sourceStatus(s.status)}
-                </span>
-              </div>
-              <div className="mt-4 flex items-end justify-between border-t border-slate-200 pt-3">
-                <div>
-                  <p className="text-2xl font-bold tabular-nums text-[#102B4E]">
-                    {Number(s.importedCount ?? 0).toLocaleString("pt-BR")}
-                  </p>
-                  <p className="text-xs text-slate-500">oportunidades importadas</p>
-                </div>
-                {Number(s.errorCount ?? 0) > 0 && (
-                  <p className="text-xs font-medium text-rose-700">{Number(s.errorCount).toLocaleString("pt-BR")} falhas registradas</p>
-                )}
-              </div>
-            </article>
-          ))}
-          {!(summary?.sources ?? []).length && (
-            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">As informações das fontes ainda não estão disponíveis.</p>
-          )}
-        </div>
+        <OpportunityList items={recent.slice(0,5)} loading={false} empty="Nenhuma oportunidade disponível no momento." compact />
       </section>
-
-      <section className="overflow-hidden rounded-2xl border border-[#c5d9e7] bg-[#eaf3f8] shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
-          <div>
-            <h3 className="font-bold text-[#102B4E]">Oportunidades recentes</h3>
-            <p className="mt-1 text-xs text-slate-500">Publicações mais recentes nas bases consultadas</p>
-          </div>
-          <Link
-            className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50"
-            href="/app/opportunities"
-          >
-            Ver todas <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-        <OpportunityList
-          items={recent}
-          loading={false}
-          empty="Ainda não há oportunidades coletadas. Volte em breve para conferir novas publicações."
-          compact
-        />
-      </section>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-600">
+        <span>Base nacional: {(metric("abertas") ?? metric("abert"))?.toLocaleString("pt-BR") ?? "—"} oportunidades abertas</span>
+        <span>Última sincronização registrada: {lastSync ? dateTime(lastSync) : "não informada"}</span>
+      </div>
     </div>
   );
 }
