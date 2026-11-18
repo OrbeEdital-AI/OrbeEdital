@@ -185,10 +185,11 @@ function getOfficialPdfs(
   const candidates = [
     ...discovered,
     ...(Array.isArray(opportunity.documents) ? opportunity.documents : []),
-    { url: opportunity.noticeUrl, name: "Edital" },
+    // A PNCP /app/editais/... page is HTML, not a downloadable PDF.
+    ...(opportunity.noticeUrl && !/\/app\/editais\//.test(opportunity.noticeUrl) ? [{ url: opportunity.noticeUrl, name: "Edital" }] : []),
   ];
   const seen = new Set<string>();
-  const documents: Array<{ url: string; name: string; kind: string }> = [];
+  const documents: Array<{ url: string; name: string; kind: string; alternateUrls: string[] }> = [];
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate as Record<string, unknown>;
@@ -225,7 +226,10 @@ function getOfficialPdfs(
         : /termo de referência|projeto básico|estudo técnico/i.test(documentType) ? "referência técnica"
         : /anexo|planilha|modelo|memorial|proposta/i.test(documentType) ? "anexo"
         : /edital|aviso|minuta/i.test(documentType) ? "edital/aviso" : "anexo/documento complementar";
-      documents.push({ url, name, kind });
+      const alternateUrls = [record.downloadUrl, record.urlArquivo, record.url, record.uri, record.link, record.href]
+        .filter((value): value is string => typeof value === "string" && value !== url)
+        .filter(value => { try { const parsed = new URL(value); return parsed.protocol === "https:" && (parsed.hostname === "gov.br" || parsed.hostname.endsWith(".gov.br")) && !/\/app\/editais\//.test(parsed.pathname); } catch { return false; } });
+      documents.push({ url, name, kind, alternateUrls });
     } catch {
       // Ignore malformed document URLs supplied by external procurement sources.
     }
@@ -338,17 +342,32 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     const maxAggregateBytes = 40 * 1024 * 1024;
     for (const document of pdfs.slice(0, 4)) {
       try {
-        const pdfResponse = await fetch(document.url, {
-          headers: { Accept: "application/pdf" },
-          signal: AbortSignal.timeout(12_000),
-        });
-        if (!pdfResponse.ok) {
-          documentsNotProcessed.push(document.name + " (download HTTP " + pdfResponse.status + ")");
-          continue;
+        let pdfBuffer: Buffer | null = null;
+        const downloadErrors: string[] = [];
+        for (const candidateUrl of [document.url, ...document.alternateUrls]) {
+          try {
+            const pdfResponse = await fetch(candidateUrl, {
+              headers: { Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.5" },
+              signal: AbortSignal.timeout(12_000),
+            });
+            if (!pdfResponse.ok) {
+              downloadErrors.push("HTTP " + pdfResponse.status);
+              continue;
+            }
+            const contentType = pdfResponse.headers.get("content-type") || "não informado";
+            const bytes = Buffer.from(await pdfResponse.arrayBuffer());
+            if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
+              downloadErrors.push("resposta não PDF (tipo: " + contentType.slice(0, 70) + "; bytes: " + bytes.length + ")");
+              continue;
+            }
+            pdfBuffer = bytes;
+            break;
+          } catch (error) {
+            downloadErrors.push(error instanceof Error ? error.message.slice(0, 100) : "falha de rede");
+          }
         }
-        const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-        if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
-          documentsNotProcessed.push(document.name + " (arquivo não é um PDF válido)");
+        if (!pdfBuffer) {
+          documentsNotProcessed.push(document.name + " (não foi possível obter PDF: " + [...new Set(downloadErrors)].join("; ") + ")");
           continue;
         }
         if (documentSizeBytes + pdfBuffer.length > maxAggregateBytes) {
@@ -372,7 +391,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     }
     if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais não processados nesta análise rápida`);
     if (pdfs.length && !documentsAnalyzed.length) {
-      documentsNotProcessed.push("Nenhum PDF oficial pôde ser baixado e validado; análise restrita aos metadados disponíveis");
+      console.warn("[edital-analysis] no official PDF processed", { opportunityId, errors: documentsNotProcessed });
     }
 
     const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
