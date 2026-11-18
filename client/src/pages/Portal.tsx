@@ -105,6 +105,8 @@ export default function Portal() {
     enabled: !!auth.user && emailVerified,
     retry: false,
   });
+  const recommendations = trpc.dashboard.recommendations.useQuery(undefined, { enabled: !!auth.user && emailVerified && path === "/app" });
+  const favoriteChanges = trpc.dashboard.favoriteChanges.useQuery(undefined, { enabled: !!auth.user && emailVerified && path === "/app" });
   const handleExplicitSearch = async () => { await recordSearch.mutateAsync(); };
   const searchQuery = trpc.opportunities.search.useQuery(
     {
@@ -477,6 +479,8 @@ export default function Portal() {
                 cards={cards}
                 recent={(summary.data?.recent ?? []) as AnyOpportunity[]}
                 favorites={(favorites.data ?? []) as AnyOpportunity[]}
+                recommendations={recommendations.data}
+                favoriteChanges={favoriteChanges.data ?? []}
                 favoriteChanges={favoriteChanges.data ?? []}
                 savedSearches={dashboardSavedSearches.data ?? []}
                 onRetry={() => summary.refetch()}
