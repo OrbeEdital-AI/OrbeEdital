@@ -45,7 +45,8 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
   return null;
 }
 
-function extractDocxText(archive: Buffer): string | null {
+function extractDocxText(archive: Buffer, depth = 0): string | null {
+  if (depth > 2) return null;
   if (archive.length < 22 || archive.subarray(0, 4).toString("hex") !== "504b0304") return null;
   let eocd = -1;
   for (let i = archive.length - 22; i >= Math.max(0, archive.length - 65557); i--) {
@@ -64,14 +65,21 @@ function extractDocxText(archive: Buffer): string | null {
     const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
     const localOffset = archive.readUInt32LE(cursor + 42);
     cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) + archive.readUInt16LE(cursor + 32);
-    if (!/^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/i.test(name) || expanded > 8 * 1024 * 1024 || size > 8 * 1024 * 1024) continue;
+    const wordXml = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/i.test(name);
+    const nestedOffice = /\.(docx|zip)$/i.test(name);
+    if ((!wordXml && !nestedOffice) || expanded > 12 * 1024 * 1024 || size > 12 * 1024 * 1024) continue;
     if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) continue;
     const start = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
     if (start + size > archive.length) continue;
     try {
       const compressed = archive.subarray(start, start + size);
-      const bytes = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 8 * 1024 * 1024 }) : null;
+      const bytes = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 12 * 1024 * 1024 }) : null;
       if (!bytes) continue;
+      if (nestedOffice) {
+        const nested = extractDocxText(bytes, depth + 1);
+        if (nested) chunks.push(nested);
+        continue;
+      }
       const xml = bytes.toString("utf8");
       const text = xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\b[^>]*\/>/g, " ")
         .replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
