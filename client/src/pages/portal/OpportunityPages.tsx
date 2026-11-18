@@ -95,7 +95,7 @@ function formatPncpHistoryDate(value: string) {
 }
 
 export function Dashboard({
-  summary, loading, error, cards, recent, favorites = [], favoriteChanges = [], savedSearches = [], onRetry,
+  summary, loading, error, cards, recent, favorites = [], recommendations, favoriteChanges = [], savedSearches = [], onRetry,
 }: {
   summary: any;
   loading: boolean;
@@ -103,6 +103,7 @@ export function Dashboard({
   cards: { label: string; value: number; icon: any; color: string }[];
   recent: AnyOpportunity[];
   favorites?: AnyOpportunity[];
+  recommendations?: { configured: boolean; items: (AnyOpportunity & { matchReasons: string[]; matchBasis: string; matchScore: number })[] };
   favoriteChanges?: { id: string; opportunityId: string; title: string; happenedAt: Date | string; description: string; origin: string }[];
   savedSearches?: { id: string; name: string; criteria: Record<string, unknown> | null }[];
   onRetry: () => void;
