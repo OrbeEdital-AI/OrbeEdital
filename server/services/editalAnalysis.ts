@@ -453,7 +453,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
           try {
             const pdfResponse = await fetch(candidateUrl, {
               headers: { Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.5" },
-              signal: AbortSignal.timeout(12_000),
+              signal: AbortSignal.timeout(40_000),
             });
             if (!pdfResponse.ok) {
               downloadErrors.push("HTTP " + pdfResponse.status);
@@ -482,7 +482,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
           }
         }
         if (!pdfBuffer && !wordText) {
-          documentsNotProcessed.push(document.name + " (não foi possível obter PDF: " + [...new Set(downloadErrors)].join("; ") + ")");
+          documentsNotProcessed.push(document.name + " (falha no download ou leitura do documento: " + [...new Set(downloadErrors)].join("; ") + ")");
           continue;
         }
         if (documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
@@ -507,6 +507,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     }
     if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais não processados nesta análise rápida`);
     if (pdfs.length && !documentsAnalyzed.length) {
+      const downloadTimedOut = documentsNotProcessed.some(message => /timeout|timed out|abort/i.test(message));
+      if (downloadTimedOut) throw new TRPCError({ code: "GATEWAY_TIMEOUT", message: "O PNCP demorou para entregar o arquivo oficial. O download excedeu o tempo limite; tente novamente. O documento não foi classificado como ilegível." });
       console.warn("[edital-analysis] no official PDF processed", { opportunityId, errors: documentsNotProcessed });
       throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF ou DOCX legível pôde ser extraído. A análise não foi gerada apenas com metadados." });
     }
