@@ -334,11 +334,11 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     }];
 
     const maxAggregateBytes = 40 * 1024 * 1024;
-    for (const document of pdfs) {
+    for (const document of pdfs.slice(0, 4)) {
       try {
         const pdfResponse = await fetch(document.url, {
           headers: { Accept: "application/pdf" },
-          signal: AbortSignal.timeout(20_000),
+          signal: AbortSignal.timeout(12_000),
         });
         if (!pdfResponse.ok) {
           documentsNotProcessed.push(document.name + " (download HTTP " + pdfResponse.status + ")");
@@ -368,33 +368,42 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
         documentsNotProcessed.push(document.name + " (falha ao baixar: " + (error instanceof Error ? error.message : "erro desconhecido") + ")");
       }
     }
+    if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais não processados nesta análise rápida`);
     if (pdfs.length && !documentsAnalyzed.length) {
       throw new Error("Nenhum dos PDFs oficiais localizados pôde ser baixado e validado");
     }
 
     const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 3500,
-        },
-      }),
-      signal: AbortSignal.timeout(90_000),
-    });
-
-    if (!response.ok) {
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [{ role: "user", parts }],
+            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 3500 },
+          }),
+          signal: AbortSignal.timeout(35_000),
+        });
+      } catch (error) {
+        if (attempt === 0) continue;
+        throw new TRPCError({ code: "GATEWAY_TIMEOUT", message: "A análise demorou mais que o esperado. O serviço de IA está lento; tente novamente em instantes." });
+      }
+      if (response.ok) break;
+      if ((response.status === 429 || response.status === 503) && attempt === 0) {
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        continue;
+      }
       const providerError = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+      if (response.status === 429 || response.status === 503) {
+        throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "O serviço de IA está temporariamente sobrecarregado. Aguarde um momento e tente novamente." });
+      }
       throw new Error(`Gemini API failed with HTTP ${response.status}: ${providerError?.error?.message || "provider request rejected"}`);
     }
+    if (!response?.ok) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "O serviço de IA não respondeu. Tente novamente em instantes." });
 
     const payload = await response.json() as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -467,6 +476,6 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     });
     if (error instanceof TRPCError) throw error;
     console.error("[edital-analysis] failed", message);
-    throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível analisar o edital agora. Confira se o documento oficial está acessível e tente novamente." });
+    throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível concluir a análise. O serviço de IA ou o processamento dos documentos apresentou uma falha. Tente novamente." });
   }
 }
