@@ -45,6 +45,43 @@ function extractPdfFromZip(archive: Buffer, depth = 0): { name: string; bytes: B
   return null;
 }
 
+function extractDocxText(archive: Buffer): string | null {
+  if (archive.length < 22 || archive.subarray(0, 4).toString("hex") !== "504b0304") return null;
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= Math.max(0, archive.length - 65557); i--) {
+    if (archive.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+  const entries = Math.min(archive.readUInt16LE(eocd + 10), 250);
+  let cursor = archive.readUInt32LE(eocd + 16);
+  const chunks: string[] = [];
+  for (let i = 0; i < entries; i++) {
+    if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 0x02014b50) break;
+    const method = archive.readUInt16LE(cursor + 10);
+    const size = archive.readUInt32LE(cursor + 20);
+    const expanded = archive.readUInt32LE(cursor + 24);
+    const nameLength = archive.readUInt16LE(cursor + 28);
+    const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    const localOffset = archive.readUInt32LE(cursor + 42);
+    cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) + archive.readUInt16LE(cursor + 32);
+    if (!/^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/i.test(name) || expanded > 8 * 1024 * 1024 || size > 8 * 1024 * 1024) continue;
+    if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 0x04034b50) continue;
+    const start = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
+    if (start + size > archive.length) continue;
+    try {
+      const compressed = archive.subarray(start, start + size);
+      const bytes = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 8 * 1024 * 1024 }) : null;
+      if (!bytes) continue;
+      const xml = bytes.toString("utf8");
+      const text = xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\b[^>]*\/>/g, " ")
+        .replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+      if (text.trim()) chunks.push(text);
+    } catch { /* Ignore invalid Word XML. */ }
+  }
+  return chunks.length ? chunks.join("\n").slice(0, 180000) : null;
+}
+
 import { getOpportunityDetail } from "./opportunities";
 import { getDb } from "../db";
 import { auditLogs, companyMembers, opportunities } from "../../drizzle/schema";
@@ -397,6 +434,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     for (const document of pdfs.slice(0, 4)) {
       try {
         let pdfBuffer: Buffer | null = null;
+        let wordText: string | null = null;
         const downloadErrors: string[] = [];
         for (const candidateUrl of [document.url, ...document.alternateUrls]) {
           try {
@@ -418,6 +456,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
                 pdfBuffer = extracted.bytes;
                 console.info("[edital-analysis] PDF extracted from official ZIP", { opportunityId, filename: extracted.name, bytes: pdfBuffer.length });
               } else {
+                wordText = extractDocxText(bytes);
+                if (wordText) break;
                 const signature = bytes.subarray(0, 8).toString("hex");
                 downloadErrors.push("arquivo não PDF (tipo: " + contentType.slice(0, 70) + "; bytes: " + bytes.length + "; assinatura: " + signature + ")");
                 continue;
@@ -428,25 +468,26 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
             downloadErrors.push(error instanceof Error ? error.message.slice(0, 100) : "falha de rede");
           }
         }
-        if (!pdfBuffer) {
+        if (!pdfBuffer && !wordText) {
           documentsNotProcessed.push(document.name + " (não foi possível obter PDF: " + [...new Set(downloadErrors)].join("; ") + ")");
           continue;
         }
-        if (documentSizeBytes + pdfBuffer.length > maxAggregateBytes) {
+        if (documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
           documentsNotProcessed.push(document.name + " (limite total de 40 MB por análise atingido)");
           continue;
         }
-        documentSizeBytes += pdfBuffer.length;
+        documentSizeBytes += pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "");
         documentsAnalyzed.push(document.name);
         parts.push({
           text: "Documento oficial: " + document.name + ". Categoria: " + document.kind + ".",
         });
-        parts.push({
+        if (pdfBuffer) parts.push({
           inlineData: {
             mimeType: "application/pdf",
             data: pdfBuffer.toString("base64"),
           },
         });
+        else parts.push({ text: "Texto extraído do documento Word oficial (DOCX; não há paginação confiável):\\n" + wordText });
       } catch (error) {
         documentsNotProcessed.push(document.name + " (falha ao baixar: " + (error instanceof Error ? error.message : "erro desconhecido") + ")");
       }
@@ -454,10 +495,10 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais não processados nesta análise rápida`);
     if (pdfs.length && !documentsAnalyzed.length) {
       console.warn("[edital-analysis] no official PDF processed", { opportunityId, errors: documentsNotProcessed });
-      throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF pôde ser extraído. A análise não foi gerada apenas com metadados." });
+      throw new TRPCError({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF ou DOCX legível pôde ser extraído. A análise não foi gerada apenas com metadados." });
     }
 
-    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
+    const systemInstruction = "Você é um analista técnico de licitações públicas brasileiras. Analise exclusivamente o conteúdo fornecido. Não invente datas, valores, documentos, páginas, artigos ou exigências. Diferencie informação encontrada no documento de metadados da oportunidade. REGRA CRÍTICA DE DATAS: em pncpOfficialDates, publicationAt é a divulgação no PNCP; proposalReceiptStartsAt é o INÍCIO do recebimento de propostas; proposalReceiptEndsAt é o FIM do recebimento de propostas. O fim do recebimento não é o início, e nenhum desses campos deve ser confundido automaticamente com a sessão pública. Compare somente eventos equivalentes: início com início, fim com fim e sessão pública com sessão pública. Nunca compare o início do recebimento com a data da sessão para declarar divergência. Se o fim do recebimento e a sessão pública tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada prioritária para os campos proposalStartAt e proposalDeadline; preserve o horário de Brasília indicado e não aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sessão pública. Se houver divergência real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se não localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revisão humana, nunca como conclusão jurídica. Para cada evidência, forneça o nome do documento de origem, página somente se estiver visível e um trecho curto fiel ao documento. Responda apenas JSON válido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum documento oficial legível foi anexado, deixe documentAnalyzed=false e explique a limitação em missingInformation. Não trate metadados como se fossem conteúdo lido do edital.";
 
     let response: Response | undefined;
     const fallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || null;
