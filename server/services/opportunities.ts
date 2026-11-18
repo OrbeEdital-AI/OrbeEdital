@@ -314,6 +314,13 @@ export async function getDashboardSummary(user: SafeUser) {
     closingSoon: (closingToday[0]?.n ?? 0) + (closing1to3[0]?.n ?? 0) + (closing4to7[0]?.n ?? 0),
     closing1to3: closing1to3[0]?.n ?? 0,
     closing4to7: closing4to7[0]?.n ?? 0,
+    dashboardFilters: {
+      today: { deadlineFrom: now.toISOString(), deadlineTo: today.end.toISOString() },
+      days1to3: { deadlineFrom: today.end.toISOString(), deadlineTo: days1to3End.toISOString() },
+      days4to7: { deadlineFrom: days1to3End.toISOString(), deadlineTo: nextWeek.toISOString() },
+      new24h: { createdFrom: day.toISOString() },
+      favoriteUrgent: { deadlineFrom: now.toISOString(), deadlineTo: nextWeek.toISOString() },
+    },
     new24h: fresh[0]?.n ?? 0,
     withoutDeadline: withoutDeadline[0]?.n ?? 0,
     estimatedValue: value[0]?.n ?? "0",
@@ -381,7 +388,7 @@ export async function getFavoriteChanges(userId: string) {
     const before = row.previousValues ?? {};
     const after = row.newValues ?? {};
     const changed = Object.keys(after).filter(key =>
-      Object.hasOwn(changeLabels, key) && JSON.stringify(before[key]) !== JSON.stringify(after[key])
+      Object.prototype.hasOwnProperty.call(changeLabels, key) && JSON.stringify(before[key]) !== JSON.stringify(after[key])
     );
     if (!changed.length) return [];
     return [{
