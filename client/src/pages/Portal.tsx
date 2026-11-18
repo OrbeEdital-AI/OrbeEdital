@@ -61,7 +61,7 @@ export default function Portal() {
       return;
     }
     const params = new URLSearchParams(locationSearch);
-    if (params.get("savedSearch") !== "1") {
+    if (params.get("savedSearch") !== "1" && !params.has("query") && !params.has("state") && !params.has("source")) {
       setRestoredSearchUrl(locationSearch);
       return;
     }
@@ -78,7 +78,7 @@ export default function Portal() {
     setPage(1);
     setRestoredSearchUrl(locationSearch);
 
-    // A abertura de uma pesquisa salva é uma consulta efetiva e entra no uso mensal.
+    // Pesquisas iniciadas pela página inicial também são consultas efetivas.
     recordSearch.mutateAsync().catch(error => {
       toast.error(error instanceof Error ? error.message : "Não foi possível registrar a pesquisa.");
     });
@@ -120,7 +120,7 @@ export default function Portal() {
     }
   );
   const favorites = trpc.favorites.list.useQuery(undefined, {
-    enabled: !!auth.user && emailVerified && path === "/app/favorites",
+    enabled: !!auth.user && emailVerified && (path === "/app/favorites" || path === "/app"),
   });
   const logout = trpc.auth.logout.useMutation({
     onSuccess: async () => {
@@ -491,6 +491,7 @@ export default function Portal() {
                 error={summary.error?.message}
                 cards={cards}
                 recent={(summary.data?.recent ?? []) as AnyOpportunity[]}
+                favorites={(favorites.data ?? []) as AnyOpportunity[]}
                 onRetry={() => summary.refetch()}
               />
             </Route>
