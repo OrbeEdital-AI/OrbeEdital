@@ -54,9 +54,9 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 ## 6. Atualização automática, fila e logs de coleta
 
 - [ ] Criar serviço de monitoramento periódico que consulte fontes, identifique novas publicações e atualize licitações existentes.
-- [ ] Detectar mudança de datas, alterações em editais, processos suspensos, revogados, anulados ou encerrados, e registrar histórico de modificações.
+- [x] Detectar mudança de datas, alterações em editais, processos suspensos, revogados, anulados ou encerrados, e registrar histórico de modificações. Evidência: `comparableChanges` grava diferenças dos campos visíveis; a consulta incremental dos itens oficiais do PNCP compara snapshots e registra inclusão, remoção e alteração em `opportunity_history`, exibidos com valores anterior/atual na tela da oportunidade.
 - [x] Evitar duplicidade, armazenar data/hora da última sincronização e registrar erros de integração.
-- [x] Contar e registrar no histórico cada mudança em campo visível da oportunidade, incluindo órgão/unidade, localização, modalidade, sessão, documentos e última atualização oficial; atualizações apenas de `rawData` ou `lastSyncedAt` não devem inflar o contador público `updated`. Evidência: `comparableChanges` compara os campos exibidos com igualdade profunda e tem testes para localização, datas e refresh técnico.
+- [x] Contar e registrar no histórico cada mudança em campo visível da oportunidade ou item do edital, incluindo órgão/unidade, localização, modalidade, sessão, documentos, última atualização oficial, descrição, quantidade, unidade e valores de item; atualizações apenas de `rawData` ou `lastSyncedAt` não devem inflar o contador público `updated`. Evidência: `comparableChanges` e `compareOpportunityItems` registram somente diferenças efetivas, com testes para campos, datas, itens inalterados, alterados, incluídos e removidos.
 - [ ] Criar fila de processamento para evitar sobrecarga das fontes e permitir configuração da frequência de atualização para cada conector.
 - [ ] Fazer tarefas idempotentes e reprocessáveis, com controle de tentativas/erros, para que retries não criem registros duplicados.
 - [x] Disponibilizar sincronização manual autorizada no painel.

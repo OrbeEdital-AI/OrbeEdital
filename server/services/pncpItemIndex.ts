@@ -1,6 +1,7 @@
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
-import { connectors, opportunities, opportunityItems } from "../../drizzle/schema";
+import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { connectors, opportunities, opportunityHistory, opportunityItems } from "../../drizzle/schema";
 import { getDb } from "../db";
+import { compareOpportunityItems, summarizeOpportunityItemChanges, type OpportunityItemSnapshot } from "./opportunityItemHistory";
 
 type ItemOpportunity = {
   id: string;
@@ -47,6 +48,7 @@ export async function indexOpportunityItems(row: ItemOpportunity) {
     const item = value as Record<string, unknown>;
     const description = [item.descricao, item.descricaoDetalhada, item.descricaoComplementar].find((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)?.trim();
     if (!description) return [];
+    const sourceItemKey = item.numeroItem ?? item.itemId ?? item.id ?? item.identificadorItem;
     const numeric = (...keys: string[]) => {
       for (const key of keys) {
         const value = item[key];
@@ -67,15 +69,43 @@ export async function indexOpportunityItems(row: ItemOpportunity) {
       estimatedUnitValue: numeric("valorUnitarioEstimado"),
       estimatedTotalValue: numeric("valorTotal", "valorTotalEstimado"),
       specifications: [item.especificacao, item.descricaoDetalhada, item.descricaoComplementar].filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0 && entry.trim() !== description).join("\n") || null,
+      sourceItemKey: sourceItemKey == null ? null : String(sourceItemKey),
     }];
   });
   const db = getDb();
-  if (mapped.length) {
-    await db.transaction(async tx => {
+  const existing = await db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, row.id));
+  const toSnapshot = (item: typeof existing[number] | typeof mapped[number]): OpportunityItemSnapshot => ({
+    sourceItemKey: item.sourceItemKey,
+    itemNumber: item.itemNumber,
+    description: item.description,
+    catalogCode: item.catalogCode,
+    catalogSystem: item.catalogSystem,
+    quantity: item.quantity,
+    unit: item.unit,
+    estimatedUnitValue: item.estimatedUnitValue,
+    estimatedTotalValue: item.estimatedTotalValue,
+    specifications: item.specifications,
+  });
+  const changes = existing.length && mapped.length ? compareOpportunityItems(existing.map(toSnapshot), mapped.map(toSnapshot)) : null;
+  const summary = changes ? summarizeOpportunityItemChanges(changes) : null;
+  await db.transaction(async tx => {
+    if (mapped.length && (changes?.altered.length || changes?.added.length || changes?.removed.length)) {
       await tx.delete(opportunityItems).where(eq(opportunityItems.opportunityId, row.id));
       for (let offset = 0; offset < mapped.length; offset += 100) await tx.insert(opportunityItems).values(mapped.slice(offset, offset + 100));
-    });
-  }
+    } else if (mapped.length && !existing.length) {
+      for (let offset = 0; offset < mapped.length; offset += 100) await tx.insert(opportunityItems).values(mapped.slice(offset, offset + 100));
+    }
+    await tx.update(opportunities).set({ itemsSyncedAt: new Date() }).where(eq(opportunities.id, row.id));
+    if (summary && changes) {
+      await tx.insert(opportunityHistory).values({
+        opportunityId: row.id,
+        eventType: "source_items_update",
+        summary,
+        previousValues: { items: { altered: changes.altered.map(item => ({ itemNumber: item.itemNumber, description: item.description, fields: Object.fromEntries(Object.entries(item.changes).map(([field, values]) => [field, values.previous])) })), removed: changes.removed.map(({ itemNumber, description }) => ({ itemNumber, description })) } },
+        newValues: { items: { altered: changes.altered.map(item => ({ itemNumber: item.itemNumber, description: item.description, fields: Object.fromEntries(Object.entries(item.changes).map(([field, values]) => [field, values.next])) })), added: changes.added.map(({ itemNumber, description }) => ({ itemNumber, description })) } },
+      });
+    }
+  });
   return db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, row.id));
 }
 
@@ -86,9 +116,13 @@ export async function indexPncpItems(limit = 160) {
   if (!connector) return { scanned: 0, indexed: 0, failures: 0 };
   const config = connector.configuration ?? {};
   const cursor = typeof config.itemsCursor === "string" ? config.itemsCursor : "";
+  const staleItems = or(
+    and(sql`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`, sql`${opportunities.itemsSyncedAt} is null`),
+    and(sql`${opportunities.lastSourceUpdateAt} is not null`, or(sql`${opportunities.itemsSyncedAt} is null`, gt(opportunities.lastSourceUpdateAt, opportunities.itemsSyncedAt))),
+  );
   const rows = await db.select({ id: opportunities.id, agencyCnpj: opportunities.agencyCnpj, year: opportunities.year, controlNumber: opportunities.controlNumber, rawData: opportunities.rawData })
     .from(opportunities)
-    .where(and(inArray(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray(connectors.code, ["pncp", "compras.gov.br"]))), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), sql`not exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id})`))
+    .where(and(inArray(opportunities.connectorId, db.select({ id: connectors.id }).from(connectors).where(inArray(connectors.code, ["pncp", "compras.gov.br"]))), gt(opportunities.id, cursor || "00000000-0000-0000-0000-000000000000"), staleItems))
     .orderBy(asc(opportunities.id)).limit(Math.min(Math.max(limit, 1), 180));
   let indexed = 0, failures = 0;
   for (let offset = 0; offset < rows.length; offset += 12) {
