@@ -148,29 +148,43 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
     : [...new Set(input.modalityCodes?.length ? input.modalityCodes : [6])];
   const queryModalities: Array<number | undefined> = mode === "open" ? [undefined] : modalityCodes;
   const pageSize = input.pageSize ?? 50;
-  // When no explicit page is requested, continue the previous open-proposals
-  // scan rather than restarting from page 1 on every scheduled execution.
-  // Explicit startPage still takes precedence for manual recovery and cron shards.
+  const now = new Date();
+  const from = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  // Continue a bounded snapshot only when the query dimensions match.
+  // This avoids confusing the publication cursor with the open-proposals cursor.
   let effectiveStartPage = input.startPage ?? 1;
-  if (sourceCode === "pncp" && mode === "open" && input.startPage === undefined) {
-    const [previous] = await db.select({ metadata: syncRuns.metadata })
+  let publicationFrom = dateOnly(from, true);
+  let publicationTo = dateOnly(now, true);
+  if (sourceCode === "pncp" && input.startPage === undefined && !allPages) {
+    const recentRuns = await db.select({ metadata: syncRuns.metadata })
       .from(syncRuns)
       .where(and(eq(syncRuns.connectorId, source.id), eq(syncRuns.status, "completed")))
-      .orderBy(sql`started_at desc`).limit(1);
-    const metadata = previous?.metadata as Record<string, unknown> | null | undefined;
-    if (metadata?.mode === "open") {
-      const previousLast = Number(metadata.lastPage);
-      const previousTotal = Number(metadata.reportedTotalPages);
-      if (Number.isInteger(previousLast) && previousLast > 0 && Number.isInteger(previousTotal) && previousTotal > 0) {
-        effectiveStartPage = previousLast >= previousTotal ? 1 : previousLast + 1;
+      .orderBy(sql`started_at desc`).limit(30);
+    const matching = recentRuns.map(run => run.metadata as Record<string, unknown> | null)
+      .find(meta => meta?.mode === mode && meta?.daysBack === daysBack &&
+        meta?.pageSize === pageSize && meta?.maxPages === maxPages &&
+        JSON.stringify(meta?.modalityCodes) === JSON.stringify(modalityCodes) &&
+        typeof meta?.lastPage === "number" && typeof meta?.reportedTotalPages === "number");
+    if (matching) {
+      const lastPage = Number(matching.lastPage);
+      const totalPages = Number(matching.reportedTotalPages);
+      if (lastPage > 0 && lastPage < totalPages) {
+        effectiveStartPage = lastPage + 1;
+        if (mode === "publication" &&
+            typeof matching.publicationFrom === "string" &&
+            typeof matching.publicationTo === "string") {
+          publicationFrom = matching.publicationFrom;
+          publicationTo = matching.publicationTo;
+        } else if (mode === "publication") {
+          // Legacy run had no fixed window; restart instead of mixing date ranges.
+          effectiveStartPage = 1;
+        }
       }
     }
   }
-  const now = new Date();
-  const from = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
   const runStartedAt = new Date();
   const queryConcurrency = sourceCode === "compras.gov.br" ? 3 : 1;
-  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage };
+  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage, publicationFrom, publicationTo };
   const [run] = await db.insert(syncRuns).values({ connectorId: source.id, status: "running", startedAt: runStartedAt, metadata: runMetadata }).returning();
   await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: new Date() }).where(eq(connectors.id, source.id));
 
@@ -192,7 +206,7 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
           const pages = sourceCode === "pncp"
             ? mode === "open"
               ? await searchPncpOpen({ dataFinal: dateOnly(now, true), page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
-              : await searchPncp({ dataInicial: dateOnly(from, true), dataFinal: dateOnly(now, true), codigoModalidadeContratacao: modalityCode!, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
+              : await searchPncp({ dataInicial: publicationFrom, dataFinal: publicationTo, codigoModalidadeContratacao: modalityCode!, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
             : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode!, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
           return { modalityCode, pages, error: null as unknown };
         } catch (error) {
