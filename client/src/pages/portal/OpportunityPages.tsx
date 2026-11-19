@@ -673,7 +673,7 @@ export function OpportunityDetailPage() {
             </div>
             {editalAnalysis.data.analysis.documentsAnalyzed?.length > 0 && (
               <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-                <h4 className="text-sm font-semibold text-emerald-900">Documentos efetivamente analisados</h4>
+                <h4 className="text-sm font-semibold text-emerald-900">Documentos enviados para análise pela IA</h4>
                 <ul className="mt-1 list-disc pl-5 text-xs text-emerald-900">
                   {editalAnalysis.data.analysis.documentsAnalyzed.map((name: string, index: number) => <li key={index}>{name}</li>)}
                 </ul>
@@ -690,10 +690,10 @@ export function OpportunityDetailPage() {
             {(editalAnalysis.data.analysis.documentChecklist?.length > 0) && (
               <div className="rounded-lg border border-cyan-200 bg-white p-4">
                 <h4 className="text-sm font-semibold text-[#102B4E]">Preparação documental · checklist interativo</h4>
-                <p className="mt-1 text-xs text-slate-500">Proposta e habilitação em uma única lista, sem duplicações. Progresso salvo neste navegador.</p>
+                <p className="mt-1 text-xs text-slate-500">Documentos e entregáveis da proposta. As exigências de habilitação aparecem na seção própria. Progresso salvo neste navegador.</p>
                 <p className="mt-2 text-xs font-semibold text-cyan-900">{Array.from(new Set(editalAnalysis.data.analysis.documentChecklist)).filter((entry: string) => checkedDocuments[entry]).length} de {new Set(editalAnalysis.data.analysis.documentChecklist).size} concluídos</p>
                 <div className="mt-3 space-y-2">
-                  {Array.from(new Set([...editalAnalysis.data.analysis.documentChecklist, ...editalAnalysis.data.analysis.qualificationRequirements])).map((entry: string, index: number) => (
+                  {Array.from(new Set(editalAnalysis.data.analysis.documentChecklist)).map((entry: string, index: number) => (
                     <label key={index} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
                       <input type="checkbox" className="mt-1 accent-cyan-700" checked={Boolean(checkedDocuments[entry])} onChange={event => setCheckedDocuments(previous => ({ ...previous, [entry]: event.target.checked }))} />
                       <span className={checkedDocuments[entry] ? "text-slate-400 line-through" : ""}>{entry}</span>
@@ -726,6 +726,15 @@ export function OpportunityDetailPage() {
                 </ul>
               </div>
             ))}
+            {editalAnalysis.data.analysis.documentsAnalyzed?.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <p className="font-semibold">Rastreabilidade documental</p>
+                <p className="mt-1">Arquivos enviados à IA não garantem que todas as exigências tenham sido verificadas. Confira as evidências por documento e página antes de utilizar o resultado.</p>
+                {editalAnalysis.data.analysis.documentsAnalyzed.filter((name: string) => !editalAnalysis.data.analysis.evidence.some((item: { document?: string | null }) => item.document && (item.document.toLowerCase().includes(name.replace(/\\.pdf$/i, "").toLowerCase()) || name.toLowerCase().includes(item.document.toLowerCase())))).length > 0 && (
+                  <p className="mt-1 font-medium">Sem evidências exibidas: {editalAnalysis.data.analysis.documentsAnalyzed.filter((name: string) => !editalAnalysis.data.analysis.evidence.some((item: { document?: string | null }) => item.document && (item.document.toLowerCase().includes(name.replace(/\\.pdf$/i, "").toLowerCase()) || name.toLowerCase().includes(item.document.toLowerCase())))).join("; ")}</p>
+                )}
+              </div>
+            )}
             {editalAnalysis.data.analysis.evidence.length > 0 && (
               <div>
                 <h4 className="text-sm font-semibold text-[#102B4E]">Evidências encontradas no documento</h4>
