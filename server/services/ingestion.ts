@@ -144,9 +144,9 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
   }
 
   const daysBack = Math.min(120, Math.max(1, input.daysBack ?? 7));
-  if (input.cnpj && !/^\\d{14}$/.test(input.cnpj)) throw new Error("CNPJ deve conter 14 dígitos.");
+  if (input.cnpj && !/^\d{14}$/.test(input.cnpj)) throw new Error("CNPJ deve conter 14 dígitos.");
   if ((input.publicationFrom || input.publicationTo) && (!input.cnpj || sourceCode !== "pncp" || mode !== "publication")) throw new Error("Período específico exige recuperação PNCP por CNPJ.");
-  if ([input.publicationFrom, input.publicationTo].some(value => value && !/^\\d{8}$/.test(value))) throw new Error("Datas devem usar yyyyMMdd.");
+  if ([input.publicationFrom, input.publicationTo].some(value => value && !/^\d{8}$/.test(value))) throw new Error("Datas devem usar yyyyMMdd.");
   const allPages = input.allPages === true;
   const maxPages = allPages ? MAX_PAGE_LIMIT : Math.min(MAX_PAGE_LIMIT, Math.max(1, input.maxPages ?? 1));
   const modalityCodes = mode === "open"
