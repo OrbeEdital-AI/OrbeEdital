@@ -536,6 +536,8 @@ export const appRouter = router({
         candidates: [
           { name: "TCE-RS — LicitaCon", url: "https://dados.tce.rs.gov.br/", access: "Arquivos CSV públicos; não é API REST confirmada", priority: "alta", status: "avaliar", notes: "Avaliar atualizações diárias, oportunidades abertas e deduplicação com PNCP." },
           { name: "Portal da Transparência — CGU", url: "https://api.portaldatransparencia.gov.br/", access: "API documentada; requer chave de acesso", priority: "média", status: "avaliar acesso", notes: "Verificar elegibilidade gratuita e sobreposição com Compras.gov.br." },
+          { name: "TCE-PE — Dados Abertos / LICON", url: "https://sistemas.tce.pe.gov.br/DadosAbertos/Exemplo!listar", access: "API pública JSON/XML com métodos LicitacaoUG, LicitacoesDetalhes e LicitacoesDocumentos", priority: "alta", status: "avaliar", notes: "Cobertura estadual e municipal de Pernambuco; verificar atualização, prazos e quais processos continuam abertos antes de importar." },
+          { name: "SECC Sergipe — Licitações", url: "https://portal.cge.se.gov.br/secc/transparencia/LGPDeGovernoDigital/DadosAbertos", access: "API pública sem cadastro, exportação de licitações em JSON/CSV", priority: "alta", status: "avaliar", notes: "Validar escopo dos órgãos, filtros de data, atualidade e situações abertas antes de integrar." },
           { name: "Portal Brasileiro de Dados Abertos", url: "https://dados.gov.br/", access: "Catálogo público de bases e APIs; não fornece diretamente licitações", priority: "alta", status: "descoberta", notes: "Usar no OrbeRadar para descobrir fontes municipais e estaduais." },
         ],
       })),
