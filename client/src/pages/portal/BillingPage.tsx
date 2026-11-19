@@ -59,6 +59,16 @@ export function BillingPage() {
   if (plans.error) return <ErrorState message={plans.error.message} onRetry={() => plans.refetch()} />;
   if (usage.error) return <ErrorState message={usage.error.message} onRetry={() => usage.refetch()} />;
 
+  const planList = plans.data ?? [];
+  const essential = planList.find(plan => plan.code === "essencial");
+  const professional = planList.find(plan => plan.code === "profissional");
+  const quotaRows = [
+    { label: "Pesquisas por mês", key: "maxSearchesPerMonth" as const },
+    { label: "Favoritos por empresa", key: "maxFavorites" as const },
+    { label: "Pesquisas salvas por empresa", key: "maxSavedSearches" as const },
+  ];
+  const quotaText = (value: number | undefined) => value === undefined ? "Não informado" : value === 0 ? "Sem limite numérico" : value.toLocaleString("pt-BR");
+  const planQuota = (plan: typeof essential, key: typeof quotaRows[number]["key"]) => plan?.limits?.[key] === undefined ? undefined : Number(plan.limits[key]);
   const current = usage.data?.plan;
 
   const counters = usage.data?.usage;
@@ -100,6 +110,26 @@ export function BillingPage() {
         </section>
       )}
 
+      {essential && professional && <section className="rounded-xl border bg-white p-5 shadow-sm" aria-labelledby="comparison-title">
+        <h3 id="comparison-title" className="text-lg font-bold text-[#102B4E]">Comparação rápida dos planos</h3>
+        <p className="mt-1 text-xs text-slate-500">Valores e cotas exibidos conforme o cadastro atual. As cotas abaixo são compartilhadas pela empresa, exceto o chat da IA.</p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[440px] text-left text-sm">
+            <thead><tr className="border-b text-slate-600"><th scope="col" className="py-3 pr-3">Recurso</th><th scope="col" className="p-3">Essencial</th><th scope="col" className="p-3">Profissional</th></tr></thead>
+            <tbody>
+              {quotaRows.map(row => <tr key={row.key} className="border-b"><th scope="row" className="py-3 pr-3 font-medium">{row.label}</th><td className="p-3">{quotaText(planQuota(essential, row.key))}</td><td className="p-3 font-semibold">{quotaText(planQuota(professional, row.key))}</td></tr>)}
+              {[
+                ["PNCP, Compras.gov.br e filtros", "Incluído", "Incluído"],
+                ["Análise de edital com IA", "Disponível", "Disponível"],
+                ["Radar e busca assistida por IA", "Não incluído", "Incluído"],
+                ["Chat Orbe IA", "Não incluído", "60 mensagens/usuário/dia"],
+                ["Atendimento", "Padrão", "Prioritário"],
+              ].map(row => <tr key={row[0]} className="border-b"><th scope="row" className="py-3 pr-3 font-medium">{row[0]}</th><td className="p-3">{row[1]}</td><td className="p-3 font-semibold">{row[2]}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+        {quotaRows.some(row => { const low = planQuota(essential, row.key); const high = planQuota(professional, row.key); return low !== undefined && high !== undefined && low > 0 && high > low; }) && <p className="mt-3 text-sm text-cyan-900">Diferença do Profissional: {quotaRows.map(row => { const low = planQuota(essential, row.key); const high = planQuota(professional, row.key); return low !== undefined && high !== undefined && low > 0 && high > low ? `+${(high - low).toLocaleString("pt-BR")} ${row.label.toLowerCase()}` : null; }).filter(Boolean).join(" · ")}.</p>}
+      </section>}
       <section className="grid gap-4 md:grid-cols-2">
         {(plans.data ?? []).map(plan => {
           const isCurrent = current?.code === plan.code;
@@ -125,12 +155,12 @@ export function BillingPage() {
                 <div><h4 className="font-bold text-[#102B4E]">Suporte</h4><p className="mt-2 text-slate-700">✓ Atendimento pelo portal {isProfessional ? "com prioridade alta" : "com prioridade padrão"}</p></div>
                 <div><h4 className="font-bold text-[#102B4E]">Limites de uso</h4>
                   {[
-                    { label: "Pesquisas por mês", value: Number(planLimits.maxSearchesPerMonth ?? 0) },
-                    { label: "Favoritos", value: Number(planLimits.maxFavorites ?? 0) },
-                    { label: "Pesquisas salvas", value: Number(planLimits.maxSavedSearches ?? 0) },
-                  ].map(item => <p key={item.label} className="mt-2 flex justify-between gap-3 text-slate-700"><span>{item.label}</span><strong className="tabular-nums">{item.value === 0 ? "Sem limite cadastrado" : item.value.toLocaleString("pt-BR")}</strong></p>)}
+                    { label: "Pesquisas por mês", value: planLimits.maxSearchesPerMonth === undefined ? undefined : Number(planLimits.maxSearchesPerMonth) },
+                    { label: "Favoritos", value: planLimits.maxFavorites === undefined ? undefined : Number(planLimits.maxFavorites) },
+                    { label: "Pesquisas salvas", value: planLimits.maxSavedSearches === undefined ? undefined : Number(planLimits.maxSavedSearches) },
+                  ].map(item => <p key={item.label} className="mt-2 flex justify-between gap-3 text-slate-700"><span>{item.label}</span><strong className="tabular-nums">{quotaText(item.value)}</strong></p>)}
                   <p className="mt-2 text-xs text-slate-500">Pesquisas, favoritos e pesquisas salvas: cotas compartilhadas pela empresa. Chat: limite diário individual por usuário.</p>
-                  {isProfessional && <p className="mt-2 text-xs font-semibold text-cyan-800">Em relação ao Essencial cadastrado: +1.200 pesquisas/mês, +250 favoritos e +25 pesquisas salvas, quando vigentes as cotas de 300/50/5 e 1.500/300/30.</p>}
+
                 </div>
               </div>
               <div className="mt-6 rounded-lg border border-slate-200 p-3">
