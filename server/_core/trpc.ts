@@ -52,5 +52,6 @@ function requireRoles(roles: readonly string[]) {
 
 export const adminProcedure = t.procedure.use(requireRoles(["superadmin", "admin", "source_operator", "support", "finance"]));
 export const sourceOperatorProcedure = t.procedure.use(requireRoles(["superadmin", "admin", "source_operator"]));
+export const supportOperatorProcedure = t.procedure.use(requireRoles(["superadmin", "admin", "support"]));
 export const financeProcedure = t.procedure.use(requireRoles(["superadmin", "admin", "finance"]));
 export const superadminProcedure = t.procedure.use(requireRoles(["superadmin"]));
