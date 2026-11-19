@@ -10,13 +10,37 @@ function field(row: Record<string, unknown>, key: string): string | null {
   const value = row[key];
   return value === null || value === undefined || String(value).trim() === "" ? null : String(value).trim();
 }
-export async function probeTcePe(year: number, timeoutMs = 15000): Promise<{
+export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
   notices: TcePeNotice[]; count: number; truncated: boolean; status: string; endpoint: string;
 }> {
   if (!Number.isInteger(year) || year < 2011 || year > new Date().getFullYear() + 1) throw new Error("Invalid year");
   const url = new URL(ENDPOINT);
   url.searchParams.set("ANOPROCESSO", String(year));
-  const response = await fetch(url, {headers: {Accept: "application/json"}, signal: AbortSignal.timeout(timeoutMs)});
+  // Keep the total request bounded by the serverless execution window.
+  // A transient upstream timeout gets one retry, with a shared deadline.
+  const deadline = Date.now() + timeoutMs;
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1000) break;
+    try {
+      response = await fetch(url, {
+        headers: {Accept: "application/json", "Accept-Encoding": "gzip, deflate"},
+        signal: AbortSignal.timeout(remaining),
+        cache: "no-store",
+      });
+      if (response.status >= 500 && attempt === 0) continue;
+      break;
+    } catch (error) {
+      const isTimeout = error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError" || /timeout|aborted/i.test(error.message));
+      if (!isTimeout) throw error;
+      if (attempt === 1 || deadline - Date.now() < 1000) {
+        throw new Error("TCE-PE não respondeu dentro do limite de tempo. A consulta anual pode ser grande; tente novamente mais tarde.");
+      }
+    }
+  }
+  if (!response) throw new Error("TCE-PE não respondeu dentro do limite de tempo.");
   if (!response.ok) throw new Error(`TCE-PE HTTP ${response.status}`);
   const json: unknown = await response.json();
   if (!json || typeof json !== "object" || !("resposta" in json)) throw new Error("Unexpected TCE-PE response");
