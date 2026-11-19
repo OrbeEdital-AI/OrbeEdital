@@ -90,10 +90,15 @@ export default function Portal() {
   const setQuery = (value: string) => { setQueryState(value); setPage(1); };
   const setSearchState = (value: string) => { setState(value); setPage(1); };
   const setSearchSource = (value: "" | "pncp" | "compras.gov.br") => { setSource(value); setPage(1); };
+  const subscriptionAccess = trpc.billing.access.useQuery(undefined, {
+    enabled: !!auth.user && emailVerified,
+    retry: 1,
+    refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false,
+  });
   const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
   const verifyPayment = trpc.billing.verifyPayment.useMutation({
     onSuccess: async result => {
-      await planUsage.refetch();
+      await Promise.all([planUsage.refetch(), subscriptionAccess.refetch()]);
       if (result.activated > 0) toast.success("Pagamento confirmado. Seu acesso está sendo liberado.");
       else toast.info("Consulta concluída. Ainda não encontramos uma cobrança aprovada.");
     },
@@ -246,10 +251,22 @@ export default function Portal() {
   }
 
   const privilegedUser = ["superadmin", "admin", "source_operator", "support", "finance"].includes(me?.role ?? "");
-  if (emailVerified && !privilegedUser && planUsage.isLoading) {
-    return <div className="grid min-h-screen place-items-center text-slate-500">Verificando sua assinatura…</div>;
+  if (emailVerified && !privilegedUser && subscriptionAccess.isPending) {
+    return <div className="grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-600">
+      <div className="text-center"><div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-cyan-700 border-t-transparent" role="status" aria-label="Carregando" />
+        <p className="font-medium">Verificando sua assinatura…</p>
+        <p className="mt-2 text-sm text-slate-500">Aguarde enquanto confirmamos seu acesso.</p>
+      </div>
+    </div>;
   }
-  if (emailVerified && !privilegedUser && !planUsage.data?.hasSubscription) {
+  if (emailVerified && !privilegedUser && subscriptionAccess.isError) {
+    return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><section className="max-w-md rounded-xl border bg-white p-6 text-center">
+      <h1 className="text-lg font-semibold text-[#102B4E]">Não foi possível verificar sua assinatura</h1>
+      <p className="mt-2 text-sm text-slate-600">Sua conta não foi bloqueada. O serviço de verificação não respondeu. Tente novamente.</p>
+      <button type="button" onClick={() => subscriptionAccess.refetch()} className="mt-4 rounded-lg bg-[#102B4E] px-5 py-2.5 font-semibold text-white">Tentar novamente</button>
+    </section></main>;
+  }
+  if (emailVerified && !privilegedUser && !subscriptionAccess.data?.hasSubscription) {
     const returnedFromCheckout = new URLSearchParams(window.location.search).get("checkout") === "return";
     return (
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
