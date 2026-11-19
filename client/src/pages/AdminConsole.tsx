@@ -1,3 +1,4 @@
+import { AdminPagination } from "./portal/common";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -76,11 +77,12 @@ function AccessDenied() {
 function CustomerDirectory() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [detailsUserId, setDetailsUserId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const query = trpc.adminUsers.list.useQuery(
-    { query: search.trim() || undefined, page, pageSize: 25 },
+    { query: search.trim() || undefined, page, pageSize },
     { retry: false, placeholderData: previous => previous }
   );
   const data = query.data;
@@ -244,10 +246,7 @@ function CustomerDirectory() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t px-5 py-3">
-              <span className="text-xs text-slate-500">Página {data?.page ?? page} de {Math.max(1, data?.pageCount ?? 1)} · 25 por página</span>
-              <div className="flex gap-2"><button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">Anterior</button><button disabled={page >= (data?.pageCount ?? 1)} onClick={() => setPage(value => value + 1)} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">Próxima</button></div>
-            </div>
+            <AdminPagination total={data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
           </>}
       </div>
       {editingCustomer && (
