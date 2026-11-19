@@ -20,6 +20,8 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
   // Keep the total request bounded by the serverless execution window.
   // A transient upstream timeout gets one retry, with a shared deadline.
   const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  let lastFailure = "sem resposta";
   let response: Response | undefined;
   for (let attempt = 0; attempt < 2; attempt++) {
     const remaining = deadline - Date.now();
@@ -30,20 +32,39 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
         signal: AbortSignal.timeout(remaining),
         cache: "no-store",
       });
-      if (response.status >= 500 && attempt === 0) continue;
+      if (response.status >= 500 && attempt === 0) { lastFailure = `HTTP ${response.status}`; await response.body?.cancel(); continue; }
       break;
     } catch (error) {
       const isTimeout = error instanceof Error &&
         (error.name === "TimeoutError" || error.name === "AbortError" || /timeout|aborted/i.test(error.message));
-      if (!isTimeout) throw error;
+      if (!isTimeout) {
+        const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        throw new Error(`TCE-PE: falha de conexão antes de receber dados (${reason}).`);
+      }
+      lastFailure = error instanceof Error ? error.name : "timeout";
       if (attempt === 1 || deadline - Date.now() < 1000) {
-        throw new Error("TCE-PE não respondeu dentro do limite de tempo. O servidor pode estar indisponível ou restringir acessos fora do Brasil.");
+        throw new Error(`TCE-PE: nenhum cabeçalho recebido em ${Date.now() - startedAt} ms (${lastFailure}). Possível bloqueio de rede ou indisponibilidade da origem; não é possível confirmar a causa somente pelo timeout.`);
       }
     }
   }
-  if (!response) throw new Error("TCE-PE não respondeu dentro do limite de tempo.");
+  if (!response) throw new Error(`TCE-PE: sem resposta HTTP após ${Date.now() - startedAt} ms (${lastFailure}).`);
   if (!response.ok) throw new Error(`TCE-PE HTTP ${response.status}`);
-  const json: unknown = await response.json();
+  // Parsing/transfer can also stall even after headers arrive. Keep a separate bounded deadline.
+  const remainingForBody = deadline - Date.now();
+  if (remainingForBody < 1000) throw new Error(`TCE-PE: cabeçalhos recebidos (HTTP ${response.status}), mas não restou tempo para transferir os dados.`);
+  let json: unknown;
+  try {
+    json = await Promise.race([
+      response.json(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("body_timeout")), remainingForBody)),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === "body_timeout") {
+      await response.body?.cancel().catch(() => undefined);
+      throw new Error(`TCE-PE: conexão estabelecida (HTTP ${response.status}), mas a transferência dos dados excedeu ${timeoutMs} ms.`);
+    }
+    throw error;
+  }
   if (!json || typeof json !== "object" || !("resposta" in json)) throw new Error("Unexpected TCE-PE response");
   const envelope = (json as {resposta?: unknown}).resposta;
   if (!envelope || typeof envelope !== "object") throw new Error("Missing TCE-PE envelope");
