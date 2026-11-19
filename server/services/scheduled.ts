@@ -116,7 +116,44 @@ async function syncScheduledSource(source: typeof connectors.$inferSelect) {
       configuration: { ...configuration, nextPncpPage },
       updatedAt: new Date(),
     }).where(eq(connectors.id, source.id));
-    return { ...result, pageWindow: { startPage, endPage: result.lastPage, totalPages, nextPncpPage } };
+    // The open-proposals endpoint does not include every recently published notice:
+    // tenders with a future proposal opening date can be absent. Run an independent,
+    // resumable publication sweep so these notices are discovered automatically.
+    // A separate cursor prevents the publication sweep from affecting the open cursor.
+    const publicationModalities = [6, 8, 9, 4, 5, 7, 12, 13];
+    const publicationIndexRaw = Number(configuration.publicationModalityIndex ?? 0);
+    const publicationIndex = Number.isInteger(publicationIndexRaw) && publicationIndexRaw >= 0
+      ? publicationIndexRaw % publicationModalities.length : 0;
+    const publicationModality = publicationModalities[publicationIndex];
+    const publicationPageRaw = Number(configuration.nextPublicationPage ?? 1);
+    const publicationPage = Number.isInteger(publicationPageRaw) && publicationPageRaw > 0 ? publicationPageRaw : 1;
+    let publication: Record<string, unknown>;
+    try {
+      const sweep = await syncConnector("pncp", {
+        mode: "publication",
+        daysBack: 30,
+        modalityCodes: [publicationModality],
+        startPage: publicationPage,
+        maxPages: 8,
+        pageSize: 50,
+      });
+      const publicationTotal = sweep.reportedTotalPages ?? sweep.lastPage;
+      const completedModality = sweep.lastPage >= publicationTotal;
+      await getDb().update(connectors).set({
+        configuration: {
+          ...configuration, nextPncpPage,
+          nextPublicationPage: completedModality ? 1 : sweep.lastPage + 1,
+          publicationModalityIndex: completedModality ? (publicationIndex + 1) % publicationModalities.length : publicationIndex,
+        },
+        updatedAt: new Date(),
+      }).where(eq(connectors.id, source.id));
+      publication = { status: "completed", modality: publicationModality, ...sweep };
+    } catch (error) {
+      publication = { status: "failed", modality: publicationModality,
+        error: error instanceof Error ? error.message.slice(0, 240) : "Unknown error" };
+    }
+    return { ...result, pageWindow: { startPage, endPage: result.lastPage, totalPages, nextPncpPage }, publication };
+
   }
   return syncConnector("compras.gov.br", {
     daysBack: 7,
