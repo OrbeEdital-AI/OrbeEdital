@@ -330,19 +330,37 @@ function CustomerDirectory() {
 }
 
 function PermissionsPage() {
-  const roles = [
-    ["superadmin", "Administrador Geral", "Acesso total ao painel administrativo e aos módulos protegidos."],
-    ["admin", "Administrador", "Operação administrativa, fontes e financeiro, conforme as regras do servidor."],
-    ["source_operator", "Operador de fontes", "Sincronização e configuração das fontes oficiais."],
-    ["finance", "Financeiro", "Consulta dos indicadores e registros financeiros."],
-    ["support", "Suporte", "Papel previsto no modelo de acesso; ações específicas dependem de endpoints próprios."],
-    ["user", "Cliente", "Acesso somente aos recursos da própria conta e empresa."],
+  // Matrix reflects the procedure middleware in server/_core/trpc.ts and
+  // the actual router declarations, not the visibility of menu items.
+  const columns = [
+    { key: "superadmin", title: "Superadmin" },
+    { key: "admin", title: "Admin" },
+    { key: "source_operator", title: "Fontes" },
+    { key: "finance", title: "Financeiro" },
+    { key: "support", title: "Suporte" },
+    { key: "user", title: "Cliente" },
+  ] as const;
+  type Role = typeof columns[number]["key"];
+  const rows: { name: string; endpoint: string; allowed: readonly Role[]; note?: string }[] = [
+    { name: "Consultar painel e fontes", endpoint: "admin.overview / admin.sources.*", allowed: ["superadmin", "admin", "source_operator"], note: "Inclui sincronizar, configurar e recuperar PNCP." },
+    { name: "Financeiro e estornos", endpoint: "admin.finance / admin.refundPayment / admin.reconcileRefund", allowed: ["superadmin", "admin", "finance"] },
+    { name: "Fila e respostas de suporte", endpoint: "support.adminQueue / adminMessages / adminReply / adminUpdate", allowed: ["superadmin"], note: "O papel suporte ainda não tem autorização nesses endpoints; não equivale a permissão de atendimento." },
+    { name: "Clientes, papéis e sessões", endpoint: "adminUsers.*", allowed: ["superadmin"], note: "Alteração de papel revoga sessões. Promoção a superadmin não está disponível pelo painel." },
+    { name: "Preços e configurações globais", endpoint: "admin.planPricing / admin.settings", allowed: ["superadmin"] },
+    { name: "OrbeRadar administrativo", endpoint: "admin.radar*", allowed: ["superadmin"] },
+    { name: "Portal do cliente", endpoint: "account / opportunities / billing", allowed: ["user", "superadmin", "admin", "source_operator", "finance", "support"], note: "Os recursos dependem da autenticação, assinatura e verificações específicas de cada endpoint; papéis internos possuem exceção de assinatura." },
   ];
   return <section className="rounded-xl border bg-white p-5">
-    <h2 className="font-semibold text-[#102B4E]">Matriz de papéis do sistema</h2>
-    <p className="mt-1 text-sm text-slate-500">As permissões são conferidas no backend em cada operação. Esta tela é informativa; não permite elevar privilégios pela interface.</p>
-    <div className="mt-5 divide-y">{roles.map(([key, title, detail]) => <div key={key} className="flex flex-col gap-1 py-4 sm:flex-row sm:items-start sm:gap-5"><span className="w-40 shrink-0 text-xs font-bold uppercase tracking-wide text-cyan-800">{key}</span><div><p className="font-semibold">{title}</p><p className="mt-1 text-sm text-slate-500">{detail}</p></div></div>)}</div>
-    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">A promoção do Administrador Geral continuará sendo feita por procedimento controlado, após cadastro e confirmação do e-mail. Nenhum usuário pode conceder superadmin a si próprio.</div>
+    <h2 className="font-semibold text-[#102B4E]">Matriz de permissões efetivas</h2>
+    <p className="mt-1 text-sm text-slate-600">Referência dos controles aplicados no servidor. A visualização de um menu não concede autorização para executar uma operação.</p>
+    <div className="mt-5 overflow-x-auto">
+      <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+        <thead><tr className="border-b bg-slate-50"><th scope="col" className="px-3 py-3">Operação</th>{columns.map(col => <th key={col.key} scope="col" className="px-2 py-3 text-center text-xs font-bold">{col.title}</th>)}</tr></thead>
+        <tbody>{rows.map(row => <tr key={row.name} className="border-b align-top"><th scope="row" className="px-3 py-3 font-semibold text-[#102B4E]">{row.name}<p className="mt-1 font-mono text-[11px] font-normal text-slate-500">{row.endpoint}</p>{row.note && <p className="mt-1 text-xs font-normal text-slate-600">{row.note}</p>}</th>{columns.map(col => <td key={col.key} className="px-2 py-3 text-center"><span className={row.allowed.includes(col.key) ? "font-bold text-emerald-700" : "font-semibold text-slate-400"} aria-label={row.allowed.includes(col.key) ? "Permitido" : "Não autorizado"}>{row.allowed.includes(col.key) ? "✓" : "—"}</span></td>)}</tr>)}</tbody>
+      </table>
+    </div>
+    <p className="mt-3 text-xs text-slate-600">✓ Papel autorizado pela regra geral do endpoint; — sem autorização. Cada operação ainda exige sessão válida, e-mail confirmado e conta não suspensa. Esta tabela é informativa e deve ser revisada quando as regras do backend mudarem.</p>
+    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> o papel <strong>support</strong> existe, mas a fila administrativa de suporte exige <strong>superadmin</strong> no backend atual. Não conceda esse papel presumindo acesso à fila. A elevação a superadmin exige procedimento separado.</div>
   </section>;
 }
 
