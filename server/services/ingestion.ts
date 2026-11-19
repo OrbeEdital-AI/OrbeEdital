@@ -450,11 +450,33 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
     // independentemente da data original de publicação. A paginação desse
     // segundo percurso mantém cursor próprio (mode=open) entre execuções.
     if (sourceCode === "pncp" && mode === "publication" && !input.cnpj && !input.publicationFrom && !input.publicationTo) {
+      // A coleta complementar é independente: falhas ficam registradas no histórico
+      // da coleta principal, sem apagar licitações já importadas com sucesso.
+      let supplemental: Record<string, unknown>;
       try {
-        await syncConnector("pncp", { mode: "open", daysBack, maxPages, pageSize });
+        const openResult = await syncConnector("pncp", { mode: "open", daysBack, maxPages, pageSize });
+        supplemental = {
+          status: "completed", runId: openResult.runId, fetched: openResult.fetched,
+          inserted: openResult.inserted, updated: openResult.updated,
+          pagesFetched: openResult.pagesFetched,
+          incompleteCoverage: openResult.reportedTotalPages !== null && openResult.lastPage < openResult.reportedTotalPages,
+        };
       } catch (openError) {
-        // Falhas no percurso complementar não invalidam os dados já importados.
-        console.error("[ingestion] PNCP open-proposals supplemental sync failed", openError instanceof Error ? openError.message : "unknown");
+        const reason = openError instanceof Error ? openError.message.slice(0, 250) : "Falha desconhecida";
+        supplemental = { status: "failed", reason };
+        console.error("[ingestion] PNCP open-proposals supplemental sync failed", reason);
+      }
+      await db.update(syncRuns).set({
+        metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: finalPage,
+          reportedTotalPages: finalTotalPages, incompleteCoverage,
+          nextPage: incompleteCoverage ? finalPage + 1 : 1,
+          reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null,
+          skipped, supplementalOpenProposals: supplemental },
+      }).where(eq(syncRuns.id, run.id));
+      // A consulta complementar pode ter atualizado a situação da fonte; restaurar
+      // o resultado da coleta principal apenas quando ambas terminaram bem.
+      if (supplemental.status === "completed") {
+        await db.update(connectors).set({ status: "active", lastError: null, updatedAt: new Date() }).where(eq(connectors.id, source.id));
       }
     }
     return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
