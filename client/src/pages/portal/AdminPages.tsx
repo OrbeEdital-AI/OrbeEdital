@@ -494,9 +494,13 @@ export function AdminOverview({ isAdmin, onOpenSources, role = "superadmin" }: {
   const recentSuccesses = data.recentRuns.filter(({ run }: any) => run.status === "completed");
   const recentNew = recentSuccesses.reduce((sum: number, { run }: any) => sum + Number(run.insertedCount ?? 0), 0);
   const recentFailures = data.recentRuns.filter(({ run }: any) => run.status === "failed").length;
+  // Indicadores cadastrais e comerciais são exclusivos da visão do superadministrador.
+  // A proteção efetiva dos dados também deve ser aplicada na resposta do servidor.
   const metrics = [
-    { label: "Clientes cadastrados", value: data.users },
-    { label: "Assinaturas ativas", value: data.activeSubscribers },
+    ...(role === "superadmin" ? [
+      { label: "Clientes cadastrados", value: data.users },
+      { label: "Assinaturas ativas", value: data.activeSubscribers },
+    ] : []),
     { label: "Oportunidades no catálogo", value: data.opportunities },
     { label: "Fontes em operação", value: activeSources.length },
   ];
