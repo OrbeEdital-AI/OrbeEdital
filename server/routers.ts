@@ -1,3 +1,4 @@
+import { probeTcePe } from "./connectors/tce-pe";
 import { runRadarAutomatic } from "./services/orberadar-automatic";
 import { listRadarReview, setRadarReview, verifyRadarCandidate } from "./services/orberadar-review";
 import { persistRadarRun } from "./services/orberadar-staging";
@@ -457,6 +458,10 @@ export const appRouter = router({
       }),
     }),
 
+    radarTcePePilot: superadminProcedure.input(z.object({year:z.number().int().min(2011).max(2030)})).mutation(async ({input}) => {
+      const result = await probeTcePe(input.year);
+      return { ...result, notices: result.notices.slice(0, 100), displayed: Math.min(result.notices.length, 100), totalExtracted: result.notices.length };
+    }),
     radarMgDiscovery: superadminProcedure.mutation(async () => runRadarAutomatic("amm-mg")),
     radarVerify: superadminProcedure.input(z.object({id:z.string().uuid(),deadline:z.string().datetime({offset:true}),evidence:z.string().trim().min(15).max(2000)})).mutation(({input})=>verifyRadarCandidate(input.id,input.deadline,input.evidence)),
     radarReview: superadminProcedure.query(()=>listRadarReview()),
