@@ -424,6 +424,10 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
     return source.status === "error" || !Number.isFinite(last) ||
       now - last > Math.max(8 * 60 * 60 * 1000, (Number.isFinite(frequency) ? frequency : 0) * 2000);
   });
+  const recentRuns = data.recentRuns.slice(0, 5);
+  const recentSuccesses = data.recentRuns.filter(({ run }: any) => run.status === "completed");
+  const recentNew = recentSuccesses.reduce((sum: number, { run }: any) => sum + Number(run.insertedCount ?? 0), 0);
+  const recentFailures = data.recentRuns.filter(({ run }: any) => run.status === "failed").length;
   const metrics = [
     { label: "Clientes cadastrados", value: data.users },
     { label: "Assinaturas ativas", value: data.activeSubscribers },
