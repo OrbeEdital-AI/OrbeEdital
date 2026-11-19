@@ -164,3 +164,30 @@ export function statusLabel(status: string) {
     )[status] ?? status
   );
 }
+
+/** Estados administrativos compartilhados: texto e cor sempre representam a mesma situação. */
+export function AdminStatusBadge({ status }: { status: string | null | undefined }) {
+  const normalized = String(status ?? "unknown").toLowerCase();
+  const states: Record<string, { label: string; className: string }> = {
+    approved: { label: "Pago", className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+    completed: { label: "Concluído", className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+    success: { label: "Concluído", className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+    active: { label: "Ativo", className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+    pending: { label: "Pendente", className: "bg-amber-50 text-amber-900 border-amber-200" },
+    running: { label: "Em andamento", className: "bg-sky-50 text-sky-800 border-sky-200" },
+    processing: { label: "Processando", className: "bg-sky-50 text-sky-800 border-sky-200" },
+    failed: { label: "Com falha", className: "bg-rose-50 text-rose-800 border-rose-200" },
+    error: { label: "Com falha", className: "bg-rose-50 text-rose-800 border-rose-200" },
+    cancelled: { label: "Cancelado", className: "bg-slate-100 text-slate-700 border-slate-200" },
+    canceled: { label: "Cancelado", className: "bg-slate-100 text-slate-700 border-slate-200" },
+    refunded: { label: "Estornado", className: "bg-slate-100 text-slate-700 border-slate-200" },
+    disabled: { label: "Desabilitado", className: "bg-slate-100 text-slate-500 border-slate-200" },
+    paused: { label: "Pausado", className: "bg-slate-100 text-slate-500 border-slate-200" },
+  };
+  const state = states[normalized] ?? { label: status || "Não informado", className: "bg-slate-100 text-slate-600 border-slate-200" };
+  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${state.className}`}>{state.label}</span>;
+}
+
+export function EmptyState({ message }: { message: string }) {
+  return <p role="status" className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">{message}</p>;
+}
