@@ -84,6 +84,7 @@ Cada resultado é marcado como concluído somente após evidência de sua entreg
 - [ ] Filtros de modalidade: pregão eletrônico, pregão presencial, concorrência, dispensa, inexigibilidade, credenciamento, leilão, concurso, chamamento público e outros.
 - [ ] Filtros de situação: publicada, recebendo propostas, em andamento, sessão agendada, suspensa, em julgamento, homologada, adjudicada, revogada, anulada e encerrada.
 - [x] Mapear `Divulgada no PNCP` para `Publicada no PNCP`; quando a API fornecer uma situação, não exibir `Situação não informada`. Evidência: teste do normalizador e projeção de leitura dos três registros oficiais.
+- [x] Exibir nos cards e no detalhe o estado oficial com rótulo em português, e mostrar “Prazo prorrogado” como sinalizador independente quando a fonte trouxer essa indicação, inclusive junto a “Anulada”; não inferir prorrogação somente pela data atual do prazo. Evidência: badges compartilhados no card e detalhe, status `annulled` traduzido como “Anulada”; 8 testes do normalizador passaram, renderização estática confirmou os dois badges juntos e `pnpm build` passou.
 - [ ] Filtros por valor mínimo, valor máximo e faixas de valores.
 - [ ] Filtros por data de publicação, data de abertura, prazo final de propostas e período personalizado.
 - [ ] Pesquisa por palavra-chave, nome de produto, descrição de serviço, número do processo, nome do órgão, CNPJ, código CATMAT, código CATSER e código CNAE quando aplicável.

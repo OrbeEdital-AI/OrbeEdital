@@ -1025,7 +1025,7 @@ async function verifyRadarCandidate(id, deadline, evidence) {
 // server/routers.ts
 import { parse as parseCookieHeader2 } from "cookie";
 import { TRPCError as TRPCError7 } from "@trpc/server";
-import { and as and12, count as count5, desc as desc9, eq as eq14, gte as gte3, inArray as inArray10, isNotNull, lt as lt3, or as or8, sql as sql6, sum as sum2 } from "drizzle-orm";
+import { and as and13, count as count5, desc as desc10, eq as eq14, gte as gte3, inArray as inArray10, isNotNull as isNotNull2, lt as lt3, or as or8, sql as sql6, sum as sum2 } from "drizzle-orm";
 import { z as z5 } from "zod";
 
 // server/services/authActions.ts
@@ -2724,6 +2724,12 @@ async function getCompanyCounts(companyId, userIds) {
     savedSearches: Number(savedRows[0]?.total ?? 0)
   };
 }
+async function getSubscriptionAccess(userId) {
+  const companyId = await getCompanyId(userId);
+  if (!companyId) return { hasSubscription: false };
+  const plan = await getActivePlan(companyId);
+  return { hasSubscription: Boolean(plan) };
+}
 async function getPlanUsageSummary(userId) {
   const db = getDb();
   const companyId = await getCompanyId(userId);
@@ -2803,9 +2809,31 @@ async function ensureCanSaveSearch(userId) {
 }
 
 // server/services/opportunities.ts
-import { and as and9, asc as asc2, count as count3, desc as desc7, eq as eq10, gte, ilike as ilike2, inArray as inArray7, isNull, lt as lt2, lte, or as or5, sql as sql4, sum } from "drizzle-orm";
+import { and as and9, asc as asc2, count as count3, desc as desc7, eq as eq10, gte, ilike as ilike2, inArray as inArray7, isNotNull, isNull, lt as lt2, lte, or as or5, sql as sql4, sum } from "drizzle-orm";
 
 // server/connectors/presentation.ts
+var STATUS_FIELDS = [
+  "situacaoCompraNomePncp",
+  "situacaoCompraNome",
+  "situacaoNome",
+  "status",
+  "statusCompra",
+  "statusProcesso",
+  "statusLicitacao",
+  "situacao",
+  "situacaoLicitacao",
+  "nomeSituacao"
+];
+var EVENT_LIST_FIELDS = ["eventos", "historico", "history", "timeline"];
+var EVENT_TEXT_FIELDS = [
+  "nomeEvento",
+  "tipoEvento",
+  "nome",
+  "titulo",
+  "status",
+  "descricao",
+  "justificativa"
+];
 function asRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -2819,6 +2847,22 @@ function integerValue(value) {
   if (!text3 || !/^\d+$/.test(text3)) return null;
   const parsed = Number(text3);
   return Number.isSafeInteger(parsed) ? parsed : null;
+}
+function normalizeStatusText(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function recordTexts(record, keys) {
+  return keys.map((key) => textValue(record[key])).filter((value) => value !== null);
+}
+function statusTexts(raw) {
+  return recordTexts(raw, STATUS_FIELDS);
+}
+function eventTexts(raw) {
+  return EVENT_LIST_FIELDS.flatMap((field) => {
+    const entries = raw[field];
+    if (!Array.isArray(entries)) return [];
+    return entries.flatMap((entry) => recordTexts(asRecord(entry), EVENT_TEXT_FIELDS));
+  });
 }
 function buildPncpDetailUrl(input) {
   const raw = input.raw;
@@ -2835,26 +2879,24 @@ function buildPncpDetailUrl(input) {
   if (!cnpj || !year || year < 2e3 || year > 2100 || !sequence || sequence < 1) return null;
   return `https://pncp.gov.br/app/editais/${cnpj}/${year}/${sequence}`;
 }
-function normalizeProcurementStatus(rawValue, fallback = "unknown") {
+function hasDeadlineExtension(rawValue) {
   const raw = asRecord(rawValue);
-  const text3 = [
-    raw.situacaoCompraNomePncp,
-    raw.situacaoCompraNome,
-    raw.situacaoNome,
-    raw.status
-  ].map(textValue).find((value) => value !== null);
-  if (!text3) return fallback;
-  const normalized = text3.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return [...statusTexts(raw), ...eventTexts(raw)].some((text3) => normalizeStatusText(text3).includes("prorrog"));
+}
+function normalizeProcurementStatus(rawValue, fallback = "unknown") {
+  const texts = statusTexts(asRecord(rawValue));
+  if (!texts.length) return fallback;
+  const normalized = texts.map(normalizeStatusText).join(" ");
   if (normalized.includes("suspens")) return "suspended";
-  if (normalized.includes("revog")) return "revoked";
-  if (normalized.includes("anulad")) return "annulled";
+  if (normalized.includes("revog") || normalized.includes("revok")) return "revoked";
+  if (normalized.includes("anul") || normalized.includes("annul")) return "annulled";
   if (normalized.includes("homolog")) return "homologated";
-  if (normalized.includes("adjudic")) return "awarded";
-  if (normalized.includes("julg")) return "judging";
-  if (normalized.includes("receb") || normalized.includes("proposta")) return "receiving_proposals";
-  if (normalized.includes("abert") || normalized.includes("andamento")) return "open";
-  if (normalized.includes("encerr") || normalized.includes("finaliz")) return "closed";
-  if (normalized.includes("divulg") || normalized.includes("publicad")) return "published";
+  if (normalized.includes("adjudic") || normalized.includes("award")) return "awarded";
+  if (normalized.includes("julg") || normalized.includes("judg")) return "judging";
+  if (normalized.includes("receb") || normalized.includes("proposta") || normalized.includes("proposal")) return "receiving_proposals";
+  if (normalized.includes("abert") || normalized.includes("andamento") || normalized.includes("open") || normalized.includes("in_progress")) return "open";
+  if (normalized.includes("encerr") || normalized.includes("finaliz") || normalized.includes("closed")) return "closed";
+  if (normalized.includes("divulg") || normalized.includes("publicad") || normalized.includes("published")) return "published";
   return "unknown";
 }
 
@@ -3147,7 +3189,8 @@ function presentOpportunity(opportunity) {
   return {
     ...publicOpportunity,
     sourceUrl: buildPncpDetailUrl({ agencyCnpj: opportunity.agencyCnpj, raw }),
-    status: normalizeProcurementStatus(raw, opportunity.status)
+    status: normalizeProcurementStatus(raw, opportunity.status),
+    deadlineExtended: hasDeadlineExtension(raw)
   };
 }
 async function ensureBuiltInConnectors() {
@@ -3158,6 +3201,11 @@ async function ensureBuiltInConnectors() {
       set: { name: source.name, baseUrl: source.baseUrl, integrationType: source.integrationType, updatedAt: /* @__PURE__ */ new Date() }
     });
   }
+}
+var SEARCH_ACCENTED = "\xE1\xE0\xE2\xE3\xE4\xE5\xE9\xE8\xEA\xEB\xED\xEC\xEE\xEF\xF3\xF2\xF4\xF5\xF6\xFA\xF9\xFB\xFC\xE7\xF1";
+var SEARCH_PLAIN = "aaaaaaeeeeiiiiooooouuuucn";
+function normalizedSearchField(field) {
+  return sql4`translate(lower(coalesce(${field}, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`;
 }
 function buildFilters(filters) {
   const clauses = [];
@@ -3185,13 +3233,13 @@ function buildFilters(filters) {
       const matches = options.flatMap((option) => {
         const like = "%" + option.replace(/[%_]/g, "\\$&") + "%";
         return [
-          ilike2(opportunities.title, like),
-          ilike2(opportunities.description, like),
-          ilike2(opportunities.agencyName, like),
-          ilike2(opportunities.processNumber, like),
-          ilike2(opportunities.procurementNumber, like),
-          ilike2(opportunities.agencyCnpj, like),
-          sql4`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`
+          sql4`${normalizedSearchField(opportunities.title)} like ${like}`,
+          sql4`${normalizedSearchField(opportunities.description)} like ${like}`,
+          sql4`${normalizedSearchField(opportunities.agencyName)} like ${like}`,
+          sql4`${normalizedSearchField(opportunities.processNumber)} like ${like}`,
+          sql4`${normalizedSearchField(opportunities.procurementNumber)} like ${like}`,
+          sql4`${normalizedSearchField(opportunities.agencyCnpj)} like ${like}`,
+          sql4`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.specifications, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.catalog_code, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like}))`
         ];
       });
       clauses.push(or5(...matches));
@@ -3205,8 +3253,9 @@ function buildFilters(filters) {
   if (filters.maxValue !== void 0) clauses.push(lte(opportunities.estimatedValue, String(filters.maxValue)));
   if (filters.publishedFrom) clauses.push(gte(opportunities.publicationDate, new Date(filters.publishedFrom)));
   if (filters.publishedTo) clauses.push(lte(opportunities.publicationDate, new Date(filters.publishedTo)));
+  if (filters.createdFrom) clauses.push(gte(opportunities.createdAt, new Date(filters.createdFrom)));
   if (filters.deadlineFrom) clauses.push(gte(opportunities.proposalDeadline, new Date(filters.deadlineFrom)));
-  if (filters.deadlineTo) clauses.push(lte(opportunities.proposalDeadline, new Date(filters.deadlineTo)));
+  if (filters.deadlineTo) clauses.push(lt2(opportunities.proposalDeadline, new Date(filters.deadlineTo)));
   if (filters.source) clauses.push(eq10(connectors.code, filters.source));
   if (filters.onlyOpen) {
     clauses.push(gte(opportunities.proposalDeadline, /* @__PURE__ */ new Date()));
@@ -3248,7 +3297,7 @@ async function getOpportunityDetail(id, userId) {
   const pncpBacked = row.sourceCode === "pncp" || row.opportunity.sourceUrl?.startsWith("https://pncp.gov.br/app/editais/") === true || buildPncpHistoryUrl(pncpHistoryInput) !== null;
   const [storedItems, history, saved, pncpHistory] = await Promise.all([
     db.select().from(opportunityItems).where(eq10(opportunityItems.opportunityId, id)),
-    pncpBacked ? Promise.resolve([]) : db.select().from(opportunityHistory).where(eq10(opportunityHistory.opportunityId, id)).orderBy(desc7(opportunityHistory.happenedAt)).limit(30),
+    db.select().from(opportunityHistory).where(eq10(opportunityHistory.opportunityId, id)).orderBy(desc7(opportunityHistory.happenedAt)).limit(30),
     db.select({ id: favorites.id }).from(favorites).where(and9(eq10(favorites.userId, userId), eq10(favorites.opportunityId, id))).limit(1),
     pncpBacked ? fetchPncpHistory(pncpHistoryInput).catch(() => null) : Promise.resolve(void 0)
   ]);
@@ -3289,14 +3338,16 @@ async function getDashboardSummary(user) {
   const db = getDb();
   const now = /* @__PURE__ */ new Date();
   const today = brazilDayBounds(now);
+  const days1to3End = new Date(today.end.getTime() + 3 * 24 * 60 * 60 * 1e3);
   const nextWeek = new Date(today.end.getTime() + 7 * 24 * 60 * 60 * 1e3);
   const day = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
-  const [all, open, closingToday, closingSoon, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
+  const [all, open, closingToday, closing1to3, closing4to7, fresh, withoutDeadline, value, savedCount, byState, byModality, sourceRows] = await Promise.all([
     db.select({ n: count3() }).from(opportunities),
     db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, now), inArray7(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, today.start), lt2(opportunities.proposalDeadline, today.end), inArray7(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, now), lt2(opportunities.proposalDeadline, nextWeek), inArray7(opportunities.status, OPEN_STATUSES))),
-    db.select({ n: count3() }).from(opportunities).where(gte(opportunities.createdAt, day)),
+    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, now), lt2(opportunities.proposalDeadline, today.end), inArray7(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, today.end), lt2(opportunities.proposalDeadline, days1to3End), inArray7(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.proposalDeadline, days1to3End), lt2(opportunities.proposalDeadline, nextWeek), inArray7(opportunities.status, OPEN_STATUSES))),
+    db.select({ n: count3() }).from(opportunities).where(and9(gte(opportunities.createdAt, day), gte(opportunities.proposalDeadline, now), inArray7(opportunities.status, OPEN_STATUSES))),
     db.select({ n: count3() }).from(opportunities).where(isNull(opportunities.proposalDeadline)),
     db.select({ n: sum(opportunities.estimatedValue) }).from(opportunities),
     db.select({ n: count3() }).from(favorites).where(eq10(favorites.userId, user.id)),
@@ -3331,7 +3382,7 @@ async function getDashboardSummary(user) {
   const historicalErrors = historicalErrorResult.rows;
   const latestByConnector = new Map(latestRuns.map((run) => [run.connector_id, run]));
   const historicalByConnector = new Map(historicalErrors.map((row) => [row.connector_id, row]));
-  const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq10(opportunities.connectorId, connectors.id)).orderBy(desc7(opportunities.lastSyncedAt), desc7(opportunities.publicationDate)).limit(6);
+  const recentRows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq10(opportunities.connectorId, connectors.id)).where(and9(gte(opportunities.proposalDeadline, now), inArray7(opportunities.status, OPEN_STATUSES), isNotNull(opportunities.publicationDate))).orderBy(desc7(opportunities.publicationDate), desc7(opportunities.createdAt)).limit(6);
   const recent = recentRows.map((row) => {
     return { ...presentOpportunity(row.opportunity), sourceName: row.sourceName };
   });
@@ -3339,7 +3390,16 @@ async function getDashboardSummary(user) {
     total: all[0]?.n ?? 0,
     open: open[0]?.n ?? 0,
     closingToday: closingToday[0]?.n ?? 0,
-    closingSoon: closingSoon[0]?.n ?? 0,
+    closingSoon: (closingToday[0]?.n ?? 0) + (closing1to3[0]?.n ?? 0) + (closing4to7[0]?.n ?? 0),
+    closing1to3: closing1to3[0]?.n ?? 0,
+    closing4to7: closing4to7[0]?.n ?? 0,
+    dashboardFilters: {
+      today: { deadlineFrom: now.toISOString(), deadlineTo: today.end.toISOString() },
+      days1to3: { deadlineFrom: today.end.toISOString(), deadlineTo: days1to3End.toISOString() },
+      days4to7: { deadlineFrom: days1to3End.toISOString(), deadlineTo: nextWeek.toISOString() },
+      new24h: { createdFrom: day.toISOString() },
+      favoriteUrgent: { deadlineFrom: now.toISOString(), deadlineTo: nextWeek.toISOString() }
+    },
     new24h: fresh[0]?.n ?? 0,
     withoutDeadline: withoutDeadline[0]?.n ?? 0,
     estimatedValue: value[0]?.n ?? "0",
@@ -3369,6 +3429,83 @@ async function getDashboardSummary(user) {
     }),
     recent
   };
+}
+async function getRecommendedOpportunities(userId) {
+  const db = getDb();
+  const [membership] = await db.select({ profile: companyProfiles, state: companies.state, segment: companies.primarySegment }).from(companyMembers).innerJoin(companies, eq10(companies.id, companyMembers.companyId)).leftJoin(companyProfiles, eq10(companyProfiles.companyId, companies.id)).where(eq10(companyMembers.userId, userId)).limit(1);
+  const profile = membership?.profile;
+  const terms = [...new Set([...profile?.products ?? [], ...profile?.services ?? [], ...profile?.keywords ?? [], ...profile?.segments ?? [], membership?.segment ?? ""].map((t2) => t2.trim().toLowerCase()).filter((t2) => t2.length >= 3))].slice(0, 40);
+  if (!terms.length) return { configured: false, items: [] };
+  const [settings] = await db.select({ value: globalSettings.value }).from(globalSettings).where(eq10(globalSettings.key, "recommendations")).limit(1);
+  const config = settings?.value ?? {};
+  if (config.enabled === false) return { configured: true, items: [] };
+  const limit = Math.min(12, Math.max(1, Number(config.maxItems) || 6));
+  const servedStates = (profile?.servedStates ?? []).map((s) => s.toUpperCase());
+  const searchTerms = terms.slice(0, 20);
+  const matches = searchTerms.map((term) => {
+    const like = "%" + term.replace(/[%_]/g, "\\$&") + "%";
+    return or5(
+      ilike2(opportunities.title, like),
+      ilike2(opportunities.description, like),
+      sql4`exists(select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and oi.description ilike ${like})`
+    );
+  });
+  const now = /* @__PURE__ */ new Date();
+  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name }).from(opportunities).innerJoin(connectors, eq10(opportunities.connectorId, connectors.id)).where(and9(gte(opportunities.proposalDeadline, now), inArray7(opportunities.status, OPEN_STATUSES), or5(...matches))).orderBy(desc7(opportunities.publicationDate)).limit(250);
+  const scored = rows.flatMap((row) => {
+    const o = row.opportunity;
+    if (servedStates.length && o.state && !servedStates.includes(o.state.toUpperCase())) return [];
+    const value = Number(o.estimatedValue);
+    if (profile?.minimumValue && Number.isFinite(value) && value < Number(profile.minimumValue)) return [];
+    if (profile?.maximumValue && Number.isFinite(value) && value > Number(profile.maximumValue)) return [];
+    const text3 = [o.title, o.description].filter(Boolean).join(" ").toLowerCase();
+    const matched = terms.filter((t2) => text3.includes(t2));
+    const score = matched.length * 10 + (servedStates.includes(o.state ?? "") ? 4 : 0);
+    return [{ ...presentOpportunity(o), sourceName: row.sourceName, matchReasons: matched.slice(0, 4), matchScore: score, matchBasis: matched.length ? "objeto e descri\xE7\xE3o" : "itens indexados" }];
+  });
+  scored.sort((a, b) => b.matchScore - a.matchScore || new Date(b.publicationDate ?? 0).getTime() - new Date(a.publicationDate ?? 0).getTime());
+  return { configured: true, items: scored.slice(0, limit) };
+}
+async function getFavoriteChanges(userId) {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
+  const rows = await getDb().select({
+    id: opportunityHistory.id,
+    opportunityId: opportunities.id,
+    title: opportunities.title,
+    happenedAt: opportunityHistory.happenedAt,
+    eventType: opportunityHistory.eventType,
+    summary: opportunityHistory.summary,
+    previousValues: opportunityHistory.previousValues,
+    newValues: opportunityHistory.newValues
+  }).from(opportunityHistory).innerJoin(favorites, eq10(favorites.opportunityId, opportunityHistory.opportunityId)).innerJoin(opportunities, eq10(opportunities.id, opportunityHistory.opportunityId)).where(and9(eq10(favorites.userId, userId), gte(opportunityHistory.happenedAt, since))).orderBy(desc7(opportunityHistory.happenedAt)).limit(60);
+  const changeLabels = {
+    documents: "Documentos alterados",
+    proposalDeadline: "Prazo de propostas alterado",
+    openingDate: "Abertura alterada",
+    sessionAt: "Sess\xE3o alterada",
+    title: "Objeto alterado",
+    description: "Descri\xE7\xE3o alterada",
+    estimatedValue: "Valor estimado alterado",
+    status: "Situa\xE7\xE3o alterada",
+    itemCount: "Quantidade de itens alterada",
+    items: "Itens alterados"
+  };
+  return rows.flatMap((row) => {
+    const before = row.previousValues ?? {};
+    const after = row.newValues ?? {};
+    const changed = Object.keys(after).filter(
+      (key) => Object.prototype.hasOwnProperty.call(changeLabels, key) && JSON.stringify(before[key]) !== JSON.stringify(after[key])
+    );
+    if (!changed.length) return [];
+    return [{
+      id: row.id,
+      opportunityId: row.opportunityId,
+      title: row.title,
+      happenedAt: row.happenedAt,
+      description: changed.map((key) => changeLabels[key]).join(" \xB7 "),
+      origin: "Altera\xE7\xE3o registrada na coleta da fonte"
+    }];
+  }).slice(0, 8);
 }
 async function getCompanyIdForUser(userId) {
   const [row] = await getDb().select({ companyId: companyMembers.companyId }).from(companyMembers).where(eq10(companyMembers.userId, userId)).limit(1);
@@ -4285,7 +4422,8 @@ async function fetchPages(endpoint, baseParams, options) {
       },
       requestUrl: url.toString()
     });
-    if (response.status === 204 || data.length === 0 || totalPages !== null && currentPage >= totalPages) break;
+    if (totalPages !== null && currentPage >= totalPages) break;
+    if ((response.status === 204 || data.length === 0) && totalPages === null) break;
   }
   assertAllPagesFetched(pages, allPages, maxPages, SOURCE2);
   return pages;
@@ -4442,6 +4580,24 @@ function comparableChanges(existing, next) {
   }
   return Object.keys(previousValues).length ? { previousValues, newValues } : null;
 }
+function classifySourceUpdate(change) {
+  const previousStatus = change.previousValues.status;
+  const nextStatus = change.newValues.status;
+  const previousDeadline = change.previousValues.proposalDeadline;
+  const nextDeadline = change.newValues.proposalDeadline;
+  const terminalStatuses = /* @__PURE__ */ new Set(["closed", "suspended", "revoked", "annulled", "homologated", "awarded"]);
+  const activeStatuses = /* @__PURE__ */ new Set(["open", "receiving_proposals"]);
+  if (typeof previousStatus === "string" && typeof nextStatus === "string" && terminalStatuses.has(previousStatus) && activeStatuses.has(nextStatus)) {
+    return { eventType: "reopened", summary: "A fonte oficial confirmou a reabertura desta licita\xE7\xE3o." };
+  }
+  if (typeof previousDeadline === "string" && typeof nextDeadline === "string" && Date.parse(nextDeadline) > Date.parse(previousDeadline)) {
+    return { eventType: "deadline_extended", summary: "A fonte oficial prorrogou o prazo desta licita\xE7\xE3o." };
+  }
+  if (typeof nextStatus === "string" && ["suspended", "revoked", "annulled"].includes(nextStatus)) {
+    return { eventType: "status_blocked", summary: "A fonte oficial suspendeu, revogou ou anulou esta licita\xE7\xE3o." };
+  }
+  return { eventType: "source_update", summary: "A fonte oficial atualizou informa\xE7\xF5es desta oportunidade." };
+}
 function dateOnly(date2, compact) {
   const iso = date2.toISOString().slice(0, 10);
   return compact ? iso.replace(/-/g, "") : iso;
@@ -4456,7 +4612,10 @@ async function syncConnector(sourceCode, input = {}) {
   if (mode === "open" && sourceCode !== "pncp") {
     throw new ConnectorError("The open-proposals query is available only in the official PNCP API.", "invalid_input", sourceCode);
   }
-  const daysBack = Math.min(30, Math.max(1, input.daysBack ?? 7));
+  const daysBack = Math.min(120, Math.max(1, input.daysBack ?? 7));
+  if (input.cnpj && !/^\d{14}$/.test(input.cnpj)) throw new Error("CNPJ deve conter 14 d\xEDgitos.");
+  if ((input.publicationFrom || input.publicationTo) && (!input.cnpj || sourceCode !== "pncp" || mode !== "publication")) throw new Error("Per\xEDodo espec\xEDfico exige recupera\xE7\xE3o PNCP por CNPJ.");
+  if ([input.publicationFrom, input.publicationTo].some((value) => value && !/^\d{8}$/.test(value))) throw new Error("Datas devem usar yyyyMMdd.");
   const allPages = input.allPages === true;
   const maxPages = allPages ? MAX_PAGE_LIMIT : Math.min(MAX_PAGE_LIMIT, Math.max(1, input.maxPages ?? 1));
   const modalityCodes = mode === "open" ? [] : [...new Set(input.modalityCodes?.length ? input.modalityCodes : [6])];
@@ -4464,9 +4623,30 @@ async function syncConnector(sourceCode, input = {}) {
   const pageSize = input.pageSize ?? 50;
   const now = /* @__PURE__ */ new Date();
   const from = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1e3);
+  let effectiveStartPage = input.startPage ?? 1;
+  let publicationFrom = input.publicationFrom ?? dateOnly(from, true);
+  let publicationTo = input.publicationTo ?? dateOnly(now, true);
+  if (publicationFrom > publicationTo) throw new Error("Data inicial posterior \xE0 final.");
+  if (sourceCode === "pncp" && input.startPage === void 0 && !allPages && !input.cnpj) {
+    const recentRuns = await db.select({ metadata: syncRuns.metadata }).from(syncRuns).where(and11(eq12(syncRuns.connectorId, source.id), eq12(syncRuns.status, "completed"))).orderBy(sql5`started_at desc`).limit(30);
+    const matching = recentRuns.map((run2) => run2.metadata).find((meta) => meta?.mode === mode && meta?.daysBack === daysBack && meta?.pageSize === pageSize && meta?.maxPages === maxPages && JSON.stringify(meta?.modalityCodes) === JSON.stringify(modalityCodes) && typeof meta?.lastPage === "number" && typeof meta?.reportedTotalPages === "number");
+    if (matching) {
+      const lastPage = Number(matching.lastPage);
+      const totalPages = Number(matching.reportedTotalPages);
+      if (lastPage > 0 && lastPage < totalPages) {
+        effectiveStartPage = lastPage + 1;
+        if (mode === "publication" && typeof matching.publicationFrom === "string" && typeof matching.publicationTo === "string") {
+          publicationFrom = matching.publicationFrom;
+          publicationTo = matching.publicationTo;
+        } else if (mode === "publication") {
+          effectiveStartPage = 1;
+        }
+      }
+    }
+  }
   const runStartedAt = /* @__PURE__ */ new Date();
   const queryConcurrency = sourceCode === "compras.gov.br" ? 3 : 1;
-  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency };
+  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage, publicationFrom, publicationTo, cnpj: input.cnpj ?? null };
   const [run] = await db.insert(syncRuns).values({ connectorId: source.id, status: "running", startedAt: runStartedAt, metadata: runMetadata }).returning();
   await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq12(connectors.id, source.id));
   let fetched = 0;
@@ -4484,7 +4664,7 @@ async function syncConnector(sourceCode, input = {}) {
       const modalityBatch = queryModalities.slice(queryOffset, queryOffset + queryConcurrency);
       const queryResults = await Promise.all(modalityBatch.map(async (modalityCode) => {
         try {
-          const pages = sourceCode === "pncp" ? mode === "open" ? await searchPncpOpen({ dataFinal: dateOnly(now, true), page: input.startPage ?? 1, maxPages, allPages, tamanhoPagina: pageSize }) : await searchPncp({ dataInicial: dateOnly(from, true), dataFinal: dateOnly(now, true), codigoModalidadeContratacao: modalityCode, page: input.startPage ?? 1, maxPages, allPages, tamanhoPagina: pageSize }) : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
+          const pages = sourceCode === "pncp" ? mode === "open" ? await searchPncpOpen({ dataFinal: dateOnly(new Date(now.getTime() + 90 * 24 * 60 * 60 * 1e3), true), cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize }) : await searchPncp({ dataInicial: publicationFrom, dataFinal: publicationTo, codigoModalidadeContratacao: modalityCode, cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize }) : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
           return { modalityCode, pages, error: null };
         } catch (error) {
           return { modalityCode, pages: null, error };
@@ -4583,8 +4763,8 @@ async function syncConnector(sourceCode, input = {}) {
             if (inserts.length || upsertRows.length) {
               const historyRows = pendingUpdates.flatMap(({ existing, change }) => change ? [{
                 opportunityId: existing.id,
-                eventType: "source_update",
-                summary: "A fonte oficial atualizou informa\xE7\xF5es desta oportunidade.",
+                eventType: classifySourceUpdate(change).eventType,
+                summary: classifySourceUpdate(change).summary,
                 previousValues: change.previousValues,
                 newValues: change.newValues
               }] : []);
@@ -4633,7 +4813,30 @@ async function syncConnector(sourceCode, input = {}) {
                     updatedAt: sql5`excluded.updated_at`
                   }
                 });
-                if (historyRows.length) await tx.insert(opportunityHistory).values(historyRows);
+                if (historyRows.length) {
+                  await tx.insert(opportunityHistory).values(historyRows);
+                  const actionable = historyRows.filter((row) => row.eventType === "reopened" || row.eventType === "deadline_extended");
+                  if (actionable.length) {
+                    const watched = await tx.select({
+                      userId: favorites.userId,
+                      opportunityId: favorites.opportunityId
+                    }).from(favorites).where(inArray9(favorites.opportunityId, actionable.map((row) => row.opportunityId)));
+                    const eventByOpportunity = new Map(actionable.map((row) => [row.opportunityId, row]));
+                    const notices = watched.flatMap((watch) => {
+                      const event = eventByOpportunity.get(watch.opportunityId);
+                      if (!event) return [];
+                      return [{
+                        userId: watch.userId,
+                        opportunityId: watch.opportunityId,
+                        type: event.eventType,
+                        title: event.eventType === "reopened" ? "Licita\xE7\xE3o reaberta" : "Prazo de licita\xE7\xE3o prorrogado",
+                        message: event.summary,
+                        href: `/app/opportunities/${watch.opportunityId}`
+                      }];
+                    });
+                    if (notices.length) await tx.insert(notifications).values(notices);
+                  }
+                }
                 return createdRows;
               });
               inserted += createdCount;
@@ -4646,9 +4849,15 @@ async function syncConnector(sourceCode, input = {}) {
       if (queryFailure) throw queryFailure.error;
     }
     const duration = Date.now() - durationStart;
-    await db.update(syncRuns).set({ status: "completed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq12(syncRuns.id, run.id));
+    const finalPage = pageStats.at(-1)?.page ?? effectiveStartPage;
+    const finalTotalPages = pageStats.at(-1)?.totalPages ?? null;
+    const incompleteCoverage = finalTotalPages !== null && finalPage < finalTotalPages;
+    if (incompleteCoverage) {
+      console.warn("[ingestion] partial page coverage", { sourceCode, mode, finalPage, finalTotalPages, nextPage: finalPage + 1 });
+    }
+    await db.update(syncRuns).set({ status: "completed", finishedAt: /* @__PURE__ */ new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: finalPage, reportedTotalPages: finalTotalPages, incompleteCoverage, nextPage: incompleteCoverage ? finalPage + 1 : 1, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq12(syncRuns.id, run.id));
     await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1e3), updatedAt: /* @__PURE__ */ new Date() }).where(eq12(connectors.id, source.id));
-    return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? input.startPage ?? 1, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
+    return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
   } catch (error) {
     const duration = Date.now() - durationStart;
     const errorCode = error instanceof ConnectorError ? `${error.code}${error.status ? `_${error.status}` : ""}` : "sync_failed";
@@ -4660,7 +4869,112 @@ async function syncConnector(sourceCode, input = {}) {
 
 // server/services/editalAnalysis.ts
 import { TRPCError as TRPCError6 } from "@trpc/server";
-import { eq as eq13 } from "drizzle-orm";
+import { inflateRawSync } from "node:zlib";
+import { and as and12, desc as desc9, eq as eq13 } from "drizzle-orm";
+var CP437_HIGH = "\xC7\xFC\xE9\xE2\xE4\xE0\xE5\xE7\xEA\xEB\xE8\xEF\xEE\xEC\xC4\xC5\xC9\xE6\xC6\xF4\xF6\xF2\xFB\xF9\xFF\xD6\xDC\xA2\xA3\xA5\u20A7\u0192\xE1\xED\xF3\xFA\xF1\xD1\xAA\xBA\xBF\u2310\xAC\xBD\xBC\xA1\xAB\xBB\u2591\u2592\u2593\u2502\u2524\xC1\xC2\xC0\xA9\u2563\u2551\u2557\u255D\xA2\xA5\u2510\u2514\u2534\u252C\u251C\u2500\u253C\xE3\xC3\u255A\u2554\u2569\u2566\u2560\u2550\u256C\xA4\xF0\xD0\xCA\xCB\xC8\u0131\xCD\xCE\xCF\u2518\u250C\u2588\u2584\xA6\xCC\u2580\xD3\xDF\xD4\xD2\xF5\xD5\xB5\xFE\xDE\xDA\xDB\xD9\xFD\xDD\xAF\xB4\u2261\xB1\u2017\xBE\xB6\xA7\xF7\xB8\xB0\xA8\xB7\xB9\xB3\xB2\u25A0\xA0";
+function decodeZipName(bytes, utf8) {
+  if (utf8) return bytes.toString("utf8");
+  return Array.from(bytes, (byte) => byte < 128 ? String.fromCharCode(byte) : CP437_HIGH[byte - 128] ?? "?").join("");
+}
+function extractPdfsFromZip(archive, depth = 0) {
+  if (depth > 2 || archive.length < 22 || archive.readUInt32LE(0) !== 67324752) return { files: [], skipped: [] };
+  const tailStart = Math.max(0, archive.length - 65557);
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= tailStart; i--) {
+    if (archive.readUInt32LE(i) === 101010256) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return { files: [], skipped: [] };
+  const entries = Math.min(archive.readUInt16LE(eocd + 10), 200);
+  let cursor = archive.readUInt32LE(eocd + 16);
+  const pdfCandidates = [];
+  const skipped = [];
+  for (let i = 0; i < entries; i++) {
+    if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 33639248) break;
+    const method = archive.readUInt16LE(cursor + 10);
+    const compressedSize = archive.readUInt32LE(cursor + 20);
+    const uncompressedSize = archive.readUInt32LE(cursor + 24);
+    const nameLength = archive.readUInt16LE(cursor + 28);
+    const extraLength = archive.readUInt16LE(cursor + 30);
+    const commentLength = archive.readUInt16LE(cursor + 32);
+    const localOffset = archive.readUInt32LE(cursor + 42);
+    const name = decodeZipName(archive.subarray(cursor + 46, cursor + 46 + nameLength), Boolean(archive.readUInt16LE(cursor + 8) & 2048));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (name.toLowerCase().endsWith(".pdf") && uncompressedSize > 40 * 1024 * 1024) skipped.push(name + " (arquivo maior que 40 MB)");
+    if (uncompressedSize > 40 * 1024 * 1024 || compressedSize > 40 * 1024 * 1024) continue;
+    if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 67324752) continue;
+    const dataStart = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
+    if (dataStart + compressedSize > archive.length) continue;
+    try {
+      const compressed = archive.subarray(dataStart, dataStart + compressedSize);
+      const bytes = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 40 * 1024 * 1024 }) : null;
+      if (!bytes) continue;
+      if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
+        const filename = name.split("/").pop() || "Documento PDF";
+        const priority = /^edital(?:[\s_.-]|$)/i.test(filename) ? 0 : /termo de refer[eê]ncia/i.test(filename) ? 1 : /projeto b[aá]sico/i.test(filename) ? 2 : /contrato|justificativa|estudo t[eé]cnico/i.test(filename) ? 3 : 4;
+        pdfCandidates.push({ name: filename, bytes, priority });
+        continue;
+      }
+      if (/\\.zip$/i.test(name) && bytes.subarray(0, 4).toString("hex") === "504b0304") {
+        const nested = extractPdfsFromZip(bytes, depth + 1);
+        pdfCandidates.push(...nested.files.map((file) => ({ ...file, priority: 3 })));
+        skipped.push(...nested.skipped);
+      }
+    } catch {
+    }
+  }
+  pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
+  skipped.push(...pdfCandidates.slice(12).map((file) => file.name + " (n\xE3o selecionado: limite de doze PDFs por ZIP)"));
+  return { files: pdfCandidates.slice(0, 12).map(({ name, bytes }) => ({ name, bytes })), skipped };
+}
+function extractDocxText(archive, depth = 0) {
+  if (depth > 2) return null;
+  if (archive.length < 22 || archive.subarray(0, 4).toString("hex") !== "504b0304") return null;
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= Math.max(0, archive.length - 65557); i--) {
+    if (archive.readUInt32LE(i) === 101010256) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return null;
+  const entries = Math.min(archive.readUInt16LE(eocd + 10), 250);
+  let cursor = archive.readUInt32LE(eocd + 16);
+  const chunks = [];
+  for (let i = 0; i < entries; i++) {
+    if (cursor + 46 > archive.length || archive.readUInt32LE(cursor) !== 33639248) break;
+    const method = archive.readUInt16LE(cursor + 10);
+    const size = archive.readUInt32LE(cursor + 20);
+    const expanded = archive.readUInt32LE(cursor + 24);
+    const nameLength = archive.readUInt16LE(cursor + 28);
+    const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    const localOffset = archive.readUInt32LE(cursor + 42);
+    cursor += 46 + nameLength + archive.readUInt16LE(cursor + 30) + archive.readUInt16LE(cursor + 32);
+    const wordXml = /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/i.test(name);
+    const nestedOffice = /\.(docx|zip)$/i.test(name);
+    if (!wordXml && !nestedOffice || expanded > 12 * 1024 * 1024 || size > 12 * 1024 * 1024) continue;
+    if (localOffset + 30 > archive.length || archive.readUInt32LE(localOffset) !== 67324752) continue;
+    const start = localOffset + 30 + archive.readUInt16LE(localOffset + 26) + archive.readUInt16LE(localOffset + 28);
+    if (start + size > archive.length) continue;
+    try {
+      const compressed = archive.subarray(start, start + size);
+      const bytes = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: 12 * 1024 * 1024 }) : null;
+      if (!bytes) continue;
+      if (nestedOffice) {
+        const nested = extractDocxText(bytes, depth + 1);
+        if (nested) chunks.push(nested);
+        continue;
+      }
+      const xml = bytes.toString("utf8");
+      const text3 = xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\b[^>]*\/>/g, " ").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+      if (text3.trim()) chunks.push(text3);
+    } catch {
+    }
+  }
+  return chunks.length ? chunks.join("\n").slice(0, 18e4) : null;
+}
 function formatPncpBrazilDate(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   const raw = value.trim();
@@ -4792,14 +5106,15 @@ function getOfficialPdfs(opportunity, discovered = []) {
   const candidates = [
     ...discovered,
     ...Array.isArray(opportunity.documents) ? opportunity.documents : [],
-    { url: opportunity.noticeUrl, name: "Edital" }
+    // A PNCP /app/editais/... page is HTML, not a downloadable PDF.
+    ...opportunity.noticeUrl && !/\/app\/editais\//.test(opportunity.noticeUrl) ? [{ url: opportunity.noticeUrl, name: "Edital" }] : []
   ];
   const seen = /* @__PURE__ */ new Set();
   const documents = [];
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const record = candidate;
-    const rawUrl = [record.url, record.uri, record.link, record.downloadUrl, record.href, record.urlArquivo, record._downloadUrl].find((value) => {
+    const rawUrl = [record._downloadUrl, record.downloadUrl, record.urlArquivo, record.url, record.uri, record.link, record.href].find((value) => {
       if (typeof value !== "string" || !value.trim()) return false;
       try {
         const candidate2 = new URL(value);
@@ -4826,18 +5141,40 @@ function getOfficialPdfs(opportunity, discovered = []) {
       ].filter((value) => typeof value === "string").join(" ").toLocaleLowerCase("pt-BR");
       const mime = String(record.mimeType ?? record.contentType ?? record.tipoArquivo ?? record.extensao ?? "").toLowerCase();
       const relevantType = /edital|termo de referência|termo de refer[eê]ncia|projeto básico|anexo|retifica|esclarecimento|aviso|minuta|planilha|modelo|estudo técnico|memorial|proposta|impugna/i.test(documentType);
-      const isPdf = /\.pdf$/i.test(parsed.pathname) || /\bpdf\b/i.test(documentType) || mime.includes("pdf") || relevantType;
+      const isPncpAttachment = /^\/api\/pncp\/v1\/orgaos\/[^/]+\/compras\/\d{4}\/\d+\/arquivos\/\d+\/?$/.test(parsed.pathname);
+      const isPdf = /\.pdf$/i.test(parsed.pathname) || /\bpdf\b/i.test(documentType) || mime.includes("pdf") || relevantType || isPncpAttachment;
       if (parsed.protocol !== "https:" || !officialHost || !isPdf) continue;
       const url = parsed.toString();
       if (seen.has(url)) continue;
       seen.add(url);
       const kind = /retifica|esclarecimento|impugna/i.test(documentType) ? "retifica\xE7\xE3o/esclarecimento" : /termo de referência|projeto básico|estudo técnico/i.test(documentType) ? "refer\xEAncia t\xE9cnica" : /anexo|planilha|modelo|memorial|proposta/i.test(documentType) ? "anexo" : /edital|aviso|minuta/i.test(documentType) ? "edital/aviso" : "anexo/documento complementar";
-      documents.push({ url, name, kind });
+      const alternateUrls = [record.downloadUrl, record.urlArquivo, record.url, record.uri, record.link, record.href].filter((value) => typeof value === "string" && value !== url).filter((value) => {
+        try {
+          const parsed2 = new URL(value);
+          return parsed2.protocol === "https:" && (parsed2.hostname === "gov.br" || parsed2.hostname.endsWith(".gov.br")) && !/\/app\/editais\//.test(parsed2.pathname);
+        } catch {
+          return false;
+        }
+      });
+      documents.push({ url, name, kind, alternateUrls });
     } catch {
     }
   }
   const priority = (kind) => kind === "retifica\xE7\xE3o/esclarecimento" ? 0 : kind === "edital/aviso" ? 1 : kind === "refer\xEAncia t\xE9cnica" ? 2 : 3;
   return documents.sort((a, b) => priority(a.kind) - priority(b.kind));
+}
+function uniqueRequirements(items) {
+  const normalized = (value) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const result = [];
+  for (const item of items) {
+    const key = normalized(item);
+    if (!key || result.some((previous) => {
+      const other = normalized(previous);
+      return other === key || Math.min(other.length, key.length) > 48 && (other.includes(key) || key.includes(other));
+    })) continue;
+    result.push(item.trim());
+  }
+  return result;
 }
 function parseAnalysis(content) {
   const raw = typeof content === "string" ? content : "";
@@ -4874,10 +5211,10 @@ function parseAnalysis(content) {
     openingDate: nullable("openingDate"),
     sessionAt: nullable("sessionAt"),
     judgmentCriterion: nullable("judgmentCriterion"),
-    qualificationRequirements: strings("qualificationRequirements"),
-    documentChecklist: strings("documentChecklist"),
-    risks: strings("risks"),
-    attentionPoints: strings("attentionPoints"),
+    qualificationRequirements: uniqueRequirements(strings("qualificationRequirements")),
+    documentChecklist: uniqueRequirements(strings("documentChecklist").filter((item) => !/^(?:proibi[cç][aã]o|necessidade de atestar|realiza[cç][aã]o de vistoria|habilita[cç][aã]o jur[ií]dica, fiscal)/i.test(item))),
+    risks: uniqueRequirements(strings("risks")),
+    attentionPoints: uniqueRequirements(strings("attentionPoints")),
     evidence,
     missingInformation: strings("missingInformation"),
     documentAnalyzed: value.documentAnalyzed === true,
@@ -4886,7 +5223,7 @@ function parseAnalysis(content) {
     documentsNotProcessed: strings("documentsNotProcessed")
   };
 }
-async function analyzeOpportunityEdital(opportunityId, userId) {
+async function analyzeOpportunityEdital(opportunityId, userId, force = false) {
   const startedAt = Date.now();
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   let documentSizeBytes = 0;
@@ -4895,8 +5232,12 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
   let tokenUsage = {};
   const opportunity = await getOpportunityDetail(opportunityId, userId);
   if (!opportunity) throw new TRPCError6({ code: "NOT_FOUND", message: "A oportunidade n\xE3o foi encontrada." });
+  const [saved] = await getDb().select({ details: auditLogs.details, createdAt: auditLogs.createdAt }).from(auditLogs).where(and12(eq13(auditLogs.actorUserId, userId), eq13(auditLogs.entityId, opportunityId), eq13(auditLogs.action, "orbe_ai.edital_analysis.completed"))).orderBy(desc9(auditLogs.createdAt)).limit(1);
+  const cached = saved?.details && typeof saved.details === "object" ? saved.details.result : null;
+  if (!force && cached && typeof cached === "object" && "analysis" in cached && cached.analysis?.documentAnalyzed === true) return cached;
   const discoveredDocuments = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode) ? await discoverPncpDocuments(opportunityId) : [];
   const pdfs = getOfficialPdfs(opportunity, discoveredDocuments);
+  console.info("[edital-analysis] official attachment discovery", { opportunityId, discoveredCount: discoveredDocuments.length, candidateCount: pdfs.length });
   const pncpDates = ["pncp", "compras.gov.br"].includes(opportunity.sourceCode) ? await getPncpDateMetadata(opportunityId) : null;
   const metadata = {
     title: opportunity.title,
@@ -4927,68 +5268,197 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
       text: "Analise esta oportunidade e todos os documentos PDF oficiais anexados nesta solicita\xE7\xE3o. Metadados estruturados n\xE3o equivalem \xE0 leitura do edital. Cada arquivo ser\xE1 identificado pelo nome e tipo; cite a p\xE1gina e o documento de origem nas evid\xEAncias.\\n" + JSON.stringify({ metadata, documentosOficiaisLocalizados: pdfs.map((doc) => ({ nome: doc.name, tipo: doc.kind })) })
     }];
     const maxAggregateBytes = 40 * 1024 * 1024;
-    for (const document of pdfs) {
+    const complementaryParts = [{ text: "Analise apenas os documentos t\xE9cnicos complementares anexados. Retorne JSON com as mesmas chaves da an\xE1lise principal. N\xE3o invente exig\xEAncias; cite nome do documento e p\xE1gina nas evid\xEAncias." }];
+    const complementaryNames = [];
+    for (const document of pdfs.slice(0, 4)) {
       try {
-        const pdfResponse = await fetch(document.url, {
-          headers: { Accept: "application/pdf" },
-          signal: AbortSignal.timeout(2e4)
-        });
-        if (!pdfResponse.ok) {
-          documentsNotProcessed.push(document.name + " (download HTTP " + pdfResponse.status + ")");
+        let pdfBuffer = null;
+        let zipPdfFiles = [];
+        let wordText = null;
+        const downloadErrors = [];
+        for (const candidateUrl of [document.url, ...document.alternateUrls]) {
+          try {
+            const pdfResponse = await fetch(candidateUrl, {
+              headers: { Accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.5" },
+              signal: AbortSignal.timeout(4e4)
+            });
+            if (!pdfResponse.ok) {
+              downloadErrors.push("HTTP " + pdfResponse.status);
+              continue;
+            }
+            const contentType = pdfResponse.headers.get("content-type") || "n\xE3o informado";
+            const bytes = Buffer.from(await pdfResponse.arrayBuffer());
+            if (bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
+              pdfBuffer = bytes;
+            } else {
+              const extracted = extractPdfsFromZip(bytes);
+              if (extracted.files.length) {
+                zipPdfFiles = extracted.files;
+                documentsNotProcessed.push(...extracted.skipped);
+                pdfBuffer = extracted.files[0].bytes;
+                console.info("[edital-analysis] PDFs extracted from official ZIP", { opportunityId, filenames: extracted.files.map((file) => file.name) });
+              } else {
+                wordText = extractDocxText(bytes);
+                if (wordText) break;
+                const signature = bytes.subarray(0, 8).toString("hex");
+                downloadErrors.push("arquivo n\xE3o PDF (tipo: " + contentType.slice(0, 70) + "; bytes: " + bytes.length + "; assinatura: " + signature + ")");
+                continue;
+              }
+            }
+            break;
+          } catch (error) {
+            downloadErrors.push(error instanceof Error ? error.message.slice(0, 100) : "falha de rede");
+          }
+        }
+        if (!pdfBuffer && !wordText) {
+          documentsNotProcessed.push(document.name + " (falha no download ou leitura do documento: " + [...new Set(downloadErrors)].join("; ") + ")");
           continue;
         }
-        const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-        if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
-          documentsNotProcessed.push(document.name + " (arquivo n\xE3o \xE9 um PDF v\xE1lido)");
-          continue;
-        }
-        if (documentSizeBytes + pdfBuffer.length > maxAggregateBytes) {
+        if (!zipPdfFiles.length && documentSizeBytes + (pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "")) > maxAggregateBytes) {
           documentsNotProcessed.push(document.name + " (limite total de 40 MB por an\xE1lise atingido)");
           continue;
         }
-        documentSizeBytes += pdfBuffer.length;
+        if (zipPdfFiles.length) {
+          for (const file of zipPdfFiles) {
+            if (documentSizeBytes + file.bytes.length > maxAggregateBytes) {
+              documentsNotProcessed.push(file.name + " (limite de 40 MB atingido)");
+              continue;
+            }
+            documentSizeBytes += file.bytes.length;
+            documentsAnalyzed.push(file.name);
+            const targetParts = documentsAnalyzed.length <= 6 ? parts : complementaryParts;
+            if (targetParts === complementaryParts) complementaryNames.push(file.name);
+            targetParts.push({ text: "Documento oficial extra\xEDdo de " + document.name + ": " + file.name + ". Cite este nome nas evid\xEAncias." });
+            targetParts.push({ inlineData: { mimeType: "application/pdf", data: file.bytes.toString("base64") } });
+          }
+          continue;
+        }
+        documentSizeBytes += pdfBuffer?.length ?? Buffer.byteLength(wordText ?? "");
         documentsAnalyzed.push(document.name);
         parts.push({
           text: "Documento oficial: " + document.name + ". Categoria: " + document.kind + "."
         });
-        parts.push({
+        if (pdfBuffer) parts.push({
           inlineData: {
             mimeType: "application/pdf",
             data: pdfBuffer.toString("base64")
           }
         });
+        else parts.push({ text: "Texto extra\xEDdo do documento Word oficial (DOCX; n\xE3o h\xE1 pagina\xE7\xE3o confi\xE1vel):\\n" + wordText });
       } catch (error) {
         documentsNotProcessed.push(document.name + " (falha ao baixar: " + (error instanceof Error ? error.message : "erro desconhecido") + ")");
       }
     }
+    if (pdfs.length > 4) documentsNotProcessed.push(`${pdfs.length - 4} documento(s) adicionais n\xE3o processados nesta an\xE1lise r\xE1pida`);
     if (pdfs.length && !documentsAnalyzed.length) {
-      throw new Error("Nenhum dos PDFs oficiais localizados p\xF4de ser baixado e validado");
+      const downloadTimedOut = documentsNotProcessed.some((message) => /timeout|timed out|abort/i.test(message));
+      if (downloadTimedOut) throw new TRPCError6({ code: "GATEWAY_TIMEOUT", message: "O PNCP demorou para entregar o arquivo oficial. O download excedeu o tempo limite; tente novamente. O documento n\xE3o foi classificado como ileg\xEDvel." });
+      console.warn("[edital-analysis] no official PDF processed", { opportunityId, errors: documentsNotProcessed });
+      throw new TRPCError6({ code: "UNPROCESSABLE_CONTENT", message: "Os documentos oficiais foram localizados, mas nenhum PDF ou DOCX leg\xEDvel p\xF4de ser extra\xEDdo. A an\xE1lise n\xE3o foi gerada apenas com metadados." });
     }
-    const systemInstruction = "Voc\xEA \xE9 um analista t\xE9cnico de licita\xE7\xF5es p\xFAblicas brasileiras. Analise exclusivamente o conte\xFAdo fornecido. N\xE3o invente datas, valores, documentos, p\xE1ginas, artigos ou exig\xEAncias. Diferencie informa\xE7\xE3o encontrada no documento de metadados da oportunidade. REGRA CR\xCDTICA DE DATAS: em pncpOfficialDates, publicationAt \xE9 a divulga\xE7\xE3o no PNCP; proposalReceiptStartsAt \xE9 o IN\xCDCIO do recebimento de propostas; proposalReceiptEndsAt \xE9 o FIM do recebimento de propostas. O fim do recebimento n\xE3o \xE9 o in\xEDcio, e nenhum desses campos deve ser confundido automaticamente com a sess\xE3o p\xFAblica. Compare somente eventos equivalentes: in\xEDcio com in\xEDcio, fim com fim e sess\xE3o p\xFAblica com sess\xE3o p\xFAblica. Nunca compare o in\xEDcio do recebimento com a data da sess\xE3o para declarar diverg\xEAncia. Se o fim do recebimento e a sess\xE3o p\xFAblica tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada priorit\xE1ria para os campos proposalStartAt e proposalDeadline; preserve o hor\xE1rio de Bras\xEDlia indicado e n\xE3o aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sess\xE3o p\xFAblica. Se houver diverg\xEAncia real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se n\xE3o localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revis\xE3o humana, nunca como conclus\xE3o jur\xEDdica. Para cada evid\xEAncia, forne\xE7a o nome do documento de origem, p\xE1gina somente se estiver vis\xEDvel e um trecho curto fiel ao documento. Responda apenas JSON v\xE1lido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. Se nenhum PDF foi anexado, deixe documentAnalyzed=false e explique a limita\xE7\xE3o em missingInformation. N\xE3o trate metadados como se fossem conte\xFAdo lido do edital.";
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 3500
-        }
-      }),
-      signal: AbortSignal.timeout(9e4)
-    });
-    if (!response.ok) {
+    const systemInstruction = "Voc\xEA \xE9 um analista t\xE9cnico de licita\xE7\xF5es p\xFAblicas brasileiras. Analise exclusivamente o conte\xFAdo fornecido. N\xE3o invente datas, valores, documentos, p\xE1ginas, artigos ou exig\xEAncias. Diferencie informa\xE7\xE3o encontrada no documento de metadados da oportunidade. REGRA CR\xCDTICA DE DATAS: em pncpOfficialDates, publicationAt \xE9 a divulga\xE7\xE3o no PNCP; proposalReceiptStartsAt \xE9 o IN\xCDCIO do recebimento de propostas; proposalReceiptEndsAt \xE9 o FIM do recebimento de propostas. O fim do recebimento n\xE3o \xE9 o in\xEDcio, e nenhum desses campos deve ser confundido automaticamente com a sess\xE3o p\xFAblica. Compare somente eventos equivalentes: in\xEDcio com in\xEDcio, fim com fim e sess\xE3o p\xFAblica com sess\xE3o p\xFAblica. Nunca compare o in\xEDcio do recebimento com a data da sess\xE3o para declarar diverg\xEAncia. Se o fim do recebimento e a sess\xE3o p\xFAblica tiverem a mesma data e hora, trate como consistentes. Quando pncpOfficialDates trouxer datas, use-as como fonte estruturada priorit\xE1ria para os campos proposalStartAt e proposalDeadline; preserve o hor\xE1rio de Bras\xEDlia indicado e n\xE3o aplique deslocamento UTC. openingDate deve representar somente a data de abertura indicada no documento, e sessionAt somente a sess\xE3o p\xFAblica. Se houver diverg\xEAncia real entre o mesmo evento nos metadados e no edital, registre ambos em attentionPoints e missingInformation. Se n\xE3o localizar algo, use null ou lista vazia e inclua em missingInformation. Datas sem fuso devem ser reproduzidas como aparecem. Aponte riscos como pontos para revis\xE3o humana, nunca como conclus\xE3o jur\xEDdica. Para cada evid\xEAncia, forne\xE7a o nome do documento de origem, p\xE1gina somente se estiver vis\xEDvel e um trecho curto fiel ao documento. Responda apenas JSON v\xE1lido com as chaves: executiveSummary, object, modality, estimatedValue, proposalStartAt, proposalDeadline, openingDate, sessionAt, judgmentCriterion, qualificationRequirements, documentChecklist, risks, attentionPoints, evidence (objetos topic,page,excerpt,document), missingInformation, documentAnalyzed, documentName. O documentChecklist deve conter apenas documentos ou entreg\xE1veis que o licitante deve preparar, n\xE3o repetir regras de habilita\xE7\xE3o nem riscos. N\xE3o inclua requisitos t\xE9cnicos gen\xE9ricos como documentos separados. Em risks, descreva risco concreto, consequ\xEAncia e fundamento do documento; n\xE3o invente gravidade. Se nenhum documento oficial leg\xEDvel foi anexado, deixe documentAnalyzed=false e explique a limita\xE7\xE3o em missingInformation. N\xE3o trate metadados como se fossem conte\xFAdo lido do edital.";
+    let response;
+    const fallbackModel = process.env.GEMINI_FALLBACK_MODEL?.trim() || null;
+    let activeModel = model;
+    for (let attempt = 0; attempt < (fallbackModel && fallbackModel !== model ? 3 : 2); attempt++) {
+      activeModel = attempt === 2 && fallbackModel ? fallbackModel : model;
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [{ role: "user", parts }],
+            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 3500 }
+          }),
+          signal: AbortSignal.timeout(25e3)
+        });
+      } catch (error) {
+        if (attempt < (fallbackModel && fallbackModel !== model ? 2 : 1)) continue;
+        throw new TRPCError6({ code: "GATEWAY_TIMEOUT", message: "A an\xE1lise demorou mais que o esperado. O servi\xE7o de IA est\xE1 lento; tente novamente em instantes." });
+      }
+      if (response.ok) break;
+      if ((response.status === 429 || response.status === 503) && attempt < (fallbackModel && fallbackModel !== model ? 2 : 1)) {
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 1500 : 2500));
+        continue;
+      }
       const providerError = await response.json().catch(() => null);
+      if (response.status === 429 || response.status === 503) {
+        throw new TRPCError6({ code: "SERVICE_UNAVAILABLE", message: "O servi\xE7o de IA est\xE1 temporariamente sobrecarregado. Aguarde um momento e tente novamente." });
+      }
       throw new Error(`Gemini API failed with HTTP ${response.status}: ${providerError?.error?.message || "provider request rejected"}`);
     }
+    if (!response?.ok) throw new TRPCError6({ code: "SERVICE_UNAVAILABLE", message: "O servi\xE7o de IA n\xE3o respondeu. Tente novamente em instantes." });
     const payload = await response.json();
     tokenUsage = payload.usageMetadata ?? {};
     const answer = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
     const analysis = parseAnalysis(answer);
+    if (complementaryNames.length) {
+      const batchSize = 2;
+      for (let start = 0; start < complementaryNames.length; start += batchSize) {
+        const names = complementaryNames.slice(start, start + batchSize);
+        const batchParts = [
+          { text: "Analise SOMENTE estes PDFs t\xE9cnicos: " + names.join("; ") + ". Retorne JSON v\xE1lido com as mesmas chaves da an\xE1lise principal. Extraia exig\xEAncias, riscos e evid\xEAncias com documento e p\xE1gina. N\xE3o invente dados." },
+          ...complementaryParts.slice(1 + start * 2, 1 + (start + names.length) * 2)
+        ];
+        try {
+          let response2;
+          const models = [activeModel, ...fallbackModel && fallbackModel !== activeModel ? [fallbackModel] : []];
+          let failure = "sem resposta";
+          for (let attempt = 0; attempt < models.length; attempt++) {
+            try {
+              response2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models[attempt])}:generateContent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemInstruction }] },
+                  contents: [{ role: "user", parts: batchParts }],
+                  generationConfig: { responseMimeType: "application/json", maxOutputTokens: 1800 }
+                }),
+                signal: AbortSignal.timeout(2e4)
+              });
+              if (response2.ok) break;
+              failure = "HTTP " + response2.status;
+              if (response2.status !== 429 && response2.status !== 503) break;
+            } catch (error) {
+              failure = error instanceof Error ? error.message : "falha de conex\xE3o";
+            }
+            if (attempt < models.length - 1) await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+          if (!response2?.ok) throw new Error(failure);
+          const payload2 = await response2.json();
+          const answer2 = payload2.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+          const supplementary = parseAnalysis(answer2);
+          const meaningful = [...supplementary.qualificationRequirements, ...supplementary.documentChecklist, ...supplementary.risks, ...supplementary.attentionPoints, ...supplementary.evidence];
+          if (!meaningful.length) throw new Error("resposta sem resultados verific\xE1veis");
+          for (const field of ["qualificationRequirements", "documentChecklist", "risks", "attentionPoints"]) {
+            analysis[field] = [.../* @__PURE__ */ new Set([...analysis[field], ...supplementary[field]])];
+          }
+          const evidenceKeys = new Set(analysis.evidence.map((item) => [item.document, item.page, item.topic, item.excerpt].join("|")));
+          for (const item of supplementary.evidence) {
+            const key = [item.document, item.page, item.topic, item.excerpt].join("|");
+            if (!evidenceKeys.has(key)) {
+              analysis.evidence.push(item);
+              evidenceKeys.add(key);
+            }
+          }
+          for (const name of names) {
+            if (!supplementary.evidence.some((item) => item.document && (name.toLowerCase().includes(item.document.toLowerCase()) || item.document.toLowerCase().includes(name.replace(/\\.pdf$/i, "").toLowerCase())))) {
+              analysis.missingInformation.push(name + ": an\xE1lise t\xE9cnica sem cita\xE7\xE3o espec\xEDfica; confira o PDF original.");
+            }
+          }
+        } catch (error) {
+          console.warn("[edital-analysis] complementary batch pending", names.join("; "), error instanceof Error ? error.message : "unknown");
+          documentsAnalyzed = documentsAnalyzed.filter((name) => !names.includes(name));
+          documentsNotProcessed.push(...names.map((name) => name + " (lote t\xE9cnico indispon\xEDvel; tente analisar novamente)"));
+        }
+      }
+    }
+    const qualificationText = new Set(analysis.qualificationRequirements.map((item) => item.trim().toLocaleLowerCase("pt-BR")));
+    const technicalReference = /(?:^|\\b)(?:plantas? (?:el[eé]tricas?|de arquitetura|de implanta[cç][aã]o)|diagramas? (?:uni|multi)filare?s?|projetos? (?:executivos?|de arquitetura|el[eé]tricos?)|planilha de acabamentos e especifica[cç][oõ]es)(?:\\b|$)/i;
+    analysis.documentChecklist = [...new Set(analysis.documentChecklist)].filter(
+      (item) => !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")) && !technicalReference.test(item)
+    );
     if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
     if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
     analysis.attentionPoints = analysis.attentionPoints.filter((point) => {
@@ -5004,6 +5474,29 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
         (point) => !/diverg[eê]ncia.*(proposta|abertura)/i.test(point)
       );
     }
+    const normalizedEvidence = analysis.evidence.map(
+      (item) => [item.topic, item.excerpt].join(" ").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase()
+    );
+    const traceableTerms = [
+      { pattern: /34[,.]90|312[,.]00|telhamento|concretagem/i, label: "Quantitativos e capacidade t\xE9cnica" },
+      { pattern: /engenheiro residente|4 horas di[aá]rias/i, label: "Presen\xE7a de engenheiro residente" },
+      { pattern: /desconto.*linear|linear.*desconto/i, label: "Aplica\xE7\xE3o linear do desconto" },
+      { pattern: /garantia.*(?:5(?:[,.]00)?\\s*%)/i, label: "Garantia contratual de 5%" },
+      { pattern: /(?:garantia adicional|inferior(?:es)? a 85\\s*%|85\\s*%.*garantia)/i, label: "Garantia adicional para propostas abaixo de 85%" }
+    ];
+    const assertions = [...analysis.qualificationRequirements, ...analysis.attentionPoints, ...analysis.risks];
+    for (const rule of traceableTerms) {
+      if (!assertions.some((item) => rule.pattern.test(item))) continue;
+      const hasEvidence = normalizedEvidence.some((item) => rule.pattern.test(item));
+      if (!hasEvidence) analysis.missingInformation.push(rule.label + ": fundamento espec\xEDfico n\xE3o identificado nas evid\xEAncias exibidas; confirmar no documento oficial.");
+    }
+    const hasFivePercentEvidence = analysis.evidence.some((item) => /5(?:[,.]00)?\\s*%/.test(item.excerpt) && /garantia/i.test(item.excerpt + " " + item.topic));
+    if (hasFivePercentEvidence) {
+      analysis.missingInformation = analysis.missingInformation.filter(
+        (item) => !/^Garantias contratuais: fundamento específico/i.test(item) && !/^Garantia contratual de 5%: fundamento específico/i.test(item)
+      );
+    }
+    analysis.missingInformation = [...new Set(analysis.missingInformation)];
     analysis.documentsAnalyzed = documentsAnalyzed;
     analysis.documentsNotProcessed = documentsNotProcessed;
     analysis.documentAnalyzed = documentsAnalyzed.length > 0;
@@ -5011,16 +5504,24 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
     if (!documentsAnalyzed.length) {
       analysis.missingInformation.push("Nenhum PDF oficial foi efetivamente processado; a an\xE1lise se limita aos metadados dispon\xEDveis.");
     }
-    if (documentsNotProcessed.length) {
-      analysis.missingInformation.push("Documentos oficiais localizados, mas n\xE3o processados: " + documentsNotProcessed.join("; "));
-    }
+    analysis.missingInformation = analysis.missingInformation.filter((item) => !/documentos oficiais localizados, mas n[aã]o processados/i.test(item));
+    const result = {
+      opportunityId,
+      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      source: opportunity.sourceName,
+      sourceUrl: opportunity.noticeUrl ?? opportunity.sourceUrl,
+      analysis
+    };
     await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.completed", {
+      result,
       provider: "google_gemini",
-      model,
+      model: activeModel,
       documentAnalyzed: analysis.documentAnalyzed,
       documentName: analysis.documentName,
       documentsAnalyzed,
       documentsNotProcessed,
+      discoveredCount: discoveredDocuments.length,
+      candidateCount: pdfs.length,
       documentSizeBytes,
       promptTokenCount: tokenUsage.promptTokenCount ?? null,
       candidatesTokenCount: tokenUsage.candidatesTokenCount ?? null,
@@ -5028,26 +5529,23 @@ async function analyzeOpportunityEdital(opportunityId, userId) {
       elapsedMs: Date.now() - startedAt,
       sourceCode: opportunity.sourceCode
     });
-    return {
-      opportunityId,
-      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      source: opportunity.sourceName,
-      sourceUrl: opportunity.noticeUrl ?? opportunity.sourceUrl,
-      analysis
-    };
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     await logAnalysisAudit(userId, opportunityId, "orbe_ai.edital_analysis.failed", {
       provider: "google_gemini",
       model,
       documentAnalyzed: false,
+      documentsNotProcessed,
+      discoveredCount: discoveredDocuments.length,
+      candidateCount: pdfs.length,
       documentSizeBytes,
       elapsedMs: Date.now() - startedAt,
       error: message.slice(0, 300)
     });
     if (error instanceof TRPCError6) throw error;
     console.error("[edital-analysis] failed", message);
-    throw new TRPCError6({ code: "BAD_GATEWAY", message: "N\xE3o foi poss\xEDvel analisar o edital agora. Confira se o documento oficial est\xE1 acess\xEDvel e tente novamente." });
+    throw new TRPCError6({ code: "BAD_GATEWAY", message: "N\xE3o foi poss\xEDvel concluir a an\xE1lise. O servi\xE7o de IA ou o processamento dos documentos apresentou uma falha. Tente novamente." });
   }
 }
 
@@ -5077,6 +5575,7 @@ var opportunitySearchSchema = z5.object({
   maxValue: z5.number().nonnegative().max(1e12).optional(),
   publishedFrom: z5.string().datetime().optional(),
   publishedTo: z5.string().datetime().optional(),
+  createdFrom: z5.string().datetime().optional(),
   deadlineFrom: z5.string().datetime().optional(),
   deadlineTo: z5.string().datetime().optional(),
   onlyOpen: z5.boolean().optional(),
@@ -5196,7 +5695,9 @@ var appRouter = router({
     })
   }),
   dashboard: router({
-    summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user))
+    summary: protectedProcedure.query(({ ctx }) => getDashboardSummary(ctx.user)),
+    favoriteChanges: protectedProcedure.query(({ ctx }) => getFavoriteChanges(ctx.user.id)),
+    recommendations: protectedProcedure.query(({ ctx }) => getRecommendedOpportunities(ctx.user.id))
   }),
   opportunities: router({
     search: protectedProcedure.input(opportunitySearchSchema).query(({ input, ctx }) => searchOpportunities(input, ctx.user.id)),
@@ -5216,7 +5717,7 @@ var appRouter = router({
       if (!result) throw new TRPCError7({ code: "NOT_FOUND", message: "A oportunidade n\xE3o foi encontrada." });
       return result;
     }),
-    analyzeEdital: protectedProcedure.input(z5.object({ id: z5.string().uuid() })).mutation(({ input, ctx }) => analyzeOpportunityEdital(input.id, ctx.user.id))
+    analyzeEdital: protectedProcedure.input(z5.object({ id: z5.string().uuid(), force: z5.boolean().optional() })).mutation(({ input, ctx }) => analyzeOpportunityEdital(input.id, ctx.user.id, input.force ?? false))
   }),
   agenda: router({
     list: protectedProcedure.query(async ({ ctx }) => {
@@ -5226,12 +5727,12 @@ var appRouter = router({
       const rows = await db.select({
         opportunity: opportunities,
         sourceName: connectors.name
-      }).from(favorites).innerJoin(opportunities, eq14(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq14(opportunities.connectorId, connectors.id)).where(and12(
+      }).from(favorites).innerJoin(opportunities, eq14(favorites.opportunityId, opportunities.id)).innerJoin(connectors, eq14(opportunities.connectorId, connectors.id)).where(and13(
         eq14(favorites.userId, ctx.user.id),
         or8(
-          and12(gte3(opportunities.proposalDeadline, now), lt3(opportunities.proposalDeadline, horizon)),
-          and12(gte3(opportunities.openingDate, now), lt3(opportunities.openingDate, horizon)),
-          and12(gte3(opportunities.sessionAt, now), lt3(opportunities.sessionAt, horizon))
+          and13(gte3(opportunities.proposalDeadline, now), lt3(opportunities.proposalDeadline, horizon)),
+          and13(gte3(opportunities.openingDate, now), lt3(opportunities.openingDate, horizon)),
+          and13(gte3(opportunities.sessionAt, now), lt3(opportunities.sessionAt, horizon))
         )
       )).orderBy(opportunities.proposalDeadline);
       return rows.map((row) => ({
@@ -5244,7 +5745,7 @@ var appRouter = router({
   notifications: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       const db = getDb();
-      const rows = await db.select().from(notifications).where(eq14(notifications.userId, ctx.user.id)).orderBy(desc9(notifications.createdAt)).limit(100);
+      const rows = await db.select().from(notifications).where(eq14(notifications.userId, ctx.user.id)).orderBy(desc10(notifications.createdAt)).limit(100);
       return {
         items: rows,
         unread: rows.filter((item) => !item.readAt).length
@@ -5253,9 +5754,9 @@ var appRouter = router({
     markRead: protectedProcedure.input(z5.object({ id: z5.string().uuid().optional(), all: z5.boolean().optional() })).mutation(async ({ input, ctx }) => {
       const db = getDb();
       if (input.all) {
-        await db.update(notifications).set({ readAt: /* @__PURE__ */ new Date() }).where(and12(eq14(notifications.userId, ctx.user.id), isNotNull(notifications.id)));
+        await db.update(notifications).set({ readAt: /* @__PURE__ */ new Date() }).where(and13(eq14(notifications.userId, ctx.user.id), isNotNull2(notifications.id)));
       } else if (input.id) {
-        await db.update(notifications).set({ readAt: /* @__PURE__ */ new Date() }).where(and12(eq14(notifications.userId, ctx.user.id), eq14(notifications.id, input.id)));
+        await db.update(notifications).set({ readAt: /* @__PURE__ */ new Date() }).where(and13(eq14(notifications.userId, ctx.user.id), eq14(notifications.id, input.id)));
       } else {
         throw new TRPCError7({ code: "BAD_REQUEST", message: "Informe uma notifica\xE7\xE3o ou solicite marcar todas como lidas." });
       }
@@ -5268,7 +5769,7 @@ var appRouter = router({
       const exists = await getDb().select({ id: opportunities.id }).from(opportunities).where(eq14(opportunities.id, input.opportunityId)).limit(1);
       if (!exists.length) throw new TRPCError7({ code: "NOT_FOUND", message: "A oportunidade n\xE3o foi encontrada." });
       if (ctx.user.role === "user") {
-        const [alreadySaved] = await getDb().select({ id: favorites.id }).from(favorites).where(and12(eq14(favorites.userId, ctx.user.id), eq14(favorites.opportunityId, input.opportunityId))).limit(1);
+        const [alreadySaved] = await getDb().select({ id: favorites.id }).from(favorites).where(and13(eq14(favorites.userId, ctx.user.id), eq14(favorites.opportunityId, input.opportunityId))).limit(1);
         if (!alreadySaved) {
           try {
             await ensureCanAddFavorite(ctx.user.id);
@@ -5290,7 +5791,8 @@ var appRouter = router({
       annualPriceCents: plans.annualPriceCents,
       features: plans.features,
       limits: plans.limits
-    }).from(plans).where(and12(eq14(plans.active, true), inArray10(plans.code, ["essencial", "profissional", "teste-gratis"])))),
+    }).from(plans).where(and13(eq14(plans.active, true), inArray10(plans.code, ["essencial", "profissional", "teste-gratis"])))),
+    access: authenticatedProcedure.query(({ ctx }) => getSubscriptionAccess(ctx.user.id)),
     usage: authenticatedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
     resumePlan: authenticatedProcedure.query(async ({ ctx }) => {
       const db = getDb();
@@ -5302,7 +5804,7 @@ var appRouter = router({
         status: subscriptions.status,
         provider: subscriptions.provider,
         providerSubscriptionId: subscriptions.providerSubscriptionId
-      }).from(subscriptions).innerJoin(plans, eq14(subscriptions.planId, plans.id)).where(eq14(subscriptions.companyId, membership.companyId)).orderBy(desc9(subscriptions.createdAt)).limit(10);
+      }).from(subscriptions).innerJoin(plans, eq14(subscriptions.planId, plans.id)).where(eq14(subscriptions.companyId, membership.companyId)).orderBy(desc10(subscriptions.createdAt)).limit(10);
       const latest = attempts[0];
       const priorTestAttempt = attempts.find((item) => item.code === "teste-gratis" && item.status === "failed");
       if (latest?.code === "essencial" && latest.status === "pending" && latest.provider === "mercadopago" && latest.providerSubscriptionId && priorTestAttempt) {
@@ -5446,7 +5948,7 @@ var appRouter = router({
         return Object.fromEntries(rows.map((row) => [row.key, row.value]));
       }),
       save: superadminProcedure.input(z5.object({
-        key: z5.enum(["branding", "experience"]),
+        key: z5.enum(["branding", "experience", "recommendations"]),
         value: z5.record(z5.string(), z5.unknown())
       })).mutation(async ({ input, ctx }) => {
         const [saved] = await getDb().insert(globalSettings).values({ key: input.key, value: input.value, updatedBy: ctx.user.id, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({ target: globalSettings.key, set: { value: input.value, updatedBy: ctx.user.id, updatedAt: /* @__PURE__ */ new Date() } }).returning();
@@ -5481,15 +5983,32 @@ var appRouter = router({
         const db = getDb();
         const [sources, runs, scheduleEvents] = await Promise.all([
           db.select().from(connectors).orderBy(connectors.name),
-          db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq14(syncRuns.connectorId, connectors.id)).orderBy(desc9(syncRuns.startedAt)).limit(50),
+          db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq14(syncRuns.connectorId, connectors.id)).orderBy(desc10(syncRuns.startedAt)).limit(50),
           db.select({
             action: auditLogs.action,
             entityId: auditLogs.entityId,
             details: auditLogs.details,
             createdAt: auditLogs.createdAt
-          }).from(auditLogs).where(inArray10(auditLogs.action, ["source.schedule.completed", "source.schedule.failed"])).orderBy(desc9(auditLogs.createdAt)).limit(50)
+          }).from(auditLogs).where(inArray10(auditLogs.action, ["source.schedule.completed", "source.schedule.failed"])).orderBy(desc10(auditLogs.createdAt)).limit(50)
         ]);
         return { sources, runs, scheduleEvents };
+      }),
+      recoverPncpByCnpj: sourceOperatorProcedure.input(z5.object({
+        cnpj: z5.string().regex(/^\d{14}$/),
+        publicationFrom: z5.string().regex(/^\d{8}$/),
+        publicationTo: z5.string().regex(/^\d{8}$/),
+        modalityCodes: z5.array(z5.number().int().min(1).max(15)).min(1).max(3).default([6]),
+        maxPages: z5.number().int().min(1).max(10).default(3)
+      })).mutation(async ({ input, ctx }) => {
+        const result = await syncConnector("pncp", { ...input, mode: "publication", pageSize: 50 });
+        await getDb().insert(auditLogs).values({
+          actorUserId: ctx.user.id,
+          action: "source.pncp.recovery",
+          entityType: "connector",
+          entityId: "pncp",
+          details: { ...input, result }
+        });
+        return result;
       }),
       run: sourceOperatorProcedure.input(z5.object({
         sourceCode: z5.enum(["pncp", "compras.gov.br"]),
@@ -5564,7 +6083,7 @@ var appRouter = router({
         return updated;
       })
     }),
-    recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq14(syncRuns.connectorId, connectors.id)).orderBy(desc9(syncRuns.startedAt)).limit(100)),
+    recentRuns: sourceOperatorProcedure.query(() => getDb().select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq14(syncRuns.connectorId, connectors.id)).orderBy(desc10(syncRuns.startedAt)).limit(100)),
     reconcileRefund: financeProcedure.input(z5.object({ paymentId: z5.string().trim().min(1).max(100) })).mutation(async ({ input, ctx }) => {
       try {
         return await reconcileExternallyRefundedPayment(input.paymentId, ctx.user.id);
@@ -5607,7 +6126,7 @@ var appRouter = router({
           companyId: payments.companyId,
           customerName: sql6`(select u.name from company_members cm inner join users u on u.id = cm.user_id where cm.company_id = payments.company_id order by cm.created_at asc limit 1)`,
           customerEmail: sql6`(select u.email from company_members cm inner join users u on u.id = cm.user_id where cm.company_id = payments.company_id order by cm.created_at asc limit 1)`
-        }).from(payments).leftJoin(subscriptions, eq14(payments.subscriptionId, subscriptions.id)).leftJoin(plans, eq14(subscriptions.planId, plans.id)).innerJoin(companies, eq14(payments.companyId, companies.id)).orderBy(desc9(payments.createdAt)).limit(100)
+        }).from(payments).leftJoin(subscriptions, eq14(payments.subscriptionId, subscriptions.id)).leftJoin(plans, eq14(subscriptions.planId, plans.id)).innerJoin(companies, eq14(payments.companyId, companies.id)).orderBy(desc10(payments.createdAt)).limit(100)
       ]);
       const mrrCents = Math.round(activePlans.reduce((total, row) => total + (row.billingInterval === "annual" ? row.annualPriceCents / 12 : row.monthlyPriceCents), 0));
       const byStatus = Object.fromEntries(paymentGroups.map((row) => [row.status, Number(row.amountCents ?? 0)]));
@@ -5633,7 +6152,7 @@ import { parse as parseCookieHeader3 } from "cookie";
 import { eq as eq16, inArray as inArray11 } from "drizzle-orm";
 
 // server/services/deadlineNotifications.ts
-import { and as and13, eq as eq15, gte as gte4, isNotNull as isNotNull2, lt as lt4, or as or9 } from "drizzle-orm";
+import { and as and14, eq as eq15, gte as gte4, isNotNull as isNotNull3, lt as lt4, or as or9 } from "drizzle-orm";
 var TIME_ZONE = "America/Sao_Paulo";
 var REMINDER_OFFSETS = /* @__PURE__ */ new Set([7, 3, 1, 0]);
 function dateKey2(value) {
@@ -5665,9 +6184,9 @@ async function dispatchDeadlineNotifications() {
     openingDate: opportunities.openingDate,
     sessionAt: opportunities.sessionAt
   }).from(favorites).innerJoin(opportunities, eq15(favorites.opportunityId, opportunities.id)).where(or9(
-    and13(isNotNull2(opportunities.proposalDeadline), gte4(opportunities.proposalDeadline, startOfToday), lt4(opportunities.proposalDeadline, horizon)),
-    and13(isNotNull2(opportunities.openingDate), gte4(opportunities.openingDate, startOfToday), lt4(opportunities.openingDate, horizon)),
-    and13(isNotNull2(opportunities.sessionAt), gte4(opportunities.sessionAt, startOfToday), lt4(opportunities.sessionAt, horizon))
+    and14(isNotNull3(opportunities.proposalDeadline), gte4(opportunities.proposalDeadline, startOfToday), lt4(opportunities.proposalDeadline, horizon)),
+    and14(isNotNull3(opportunities.openingDate), gte4(opportunities.openingDate, startOfToday), lt4(opportunities.openingDate, horizon)),
+    and14(isNotNull3(opportunities.sessionAt), gte4(opportunities.sessionAt, startOfToday), lt4(opportunities.sessionAt, horizon))
   ));
   const events = [];
   for (const row of rows) {
@@ -5687,7 +6206,7 @@ async function dispatchDeadlineNotifications() {
     if (!REMINDER_OFFSETS.has(days)) continue;
     const eventDate = dateKey2(event.date);
     const type = `agenda_${event.kind}_${eventDate}_${days}d`;
-    const existing = await db.select({ id: notifications.id }).from(notifications).where(and13(
+    const existing = await db.select({ id: notifications.id }).from(notifications).where(and14(
       eq15(notifications.userId, event.userId),
       eq15(notifications.opportunityId, event.opportunityId),
       eq15(notifications.type, type)
@@ -5707,7 +6226,7 @@ async function dispatchDeadlineNotifications() {
   }
   for (const [userId, userEvents] of upcomingByUser) {
     const type = `agenda_daily_summary_${today}`;
-    const existing = await db.select({ id: notifications.id }).from(notifications).where(and13(eq15(notifications.userId, userId), eq15(notifications.type, type))).limit(1);
+    const existing = await db.select({ id: notifications.id }).from(notifications).where(and14(eq15(notifications.userId, userId), eq15(notifications.type, type))).limit(1);
     if (existing.length) continue;
     const uniqueOpportunities = new Set(userEvents.map((event) => event.opportunityId)).size;
     await db.insert(notifications).values({
