@@ -320,6 +320,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   const [paymentOrder, setPaymentOrder] = useState("newest");
   const [paymentPage, setPaymentPage] = useState(1);
   const [paymentPageSize, setPaymentPageSize] = useState(5);
+  const [refundConfirmation, setRefundConfirmation] = useState<{ paymentId: string; customer: string; company: string; amount: number; kind: "refund" | "reconcile" } | null>(null);
   const utils = trpc.useUtils();
   const refund = trpc.admin.refundPayment.useMutation({
     onSuccess: async result => {
@@ -399,7 +400,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
                   <td className="p-2">{meta.pixQrCode ? "Pix manual" : "Cartão / recorrente"}<div>{payment.paidAt ? date(payment.paidAt) : "Aguardando confirmação"}</div><div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
                   <td className="p-2">{date(payment.contractedAt || payment.createdAt)}</td>
                   <td className="p-2">{payment.renewalAt ? date(payment.renewalAt) : payment.status === "pending" ? "Após confirmação" : "—"}</td>
-                  <td className="p-2">{canRefund ? <><button type="button" disabled={refund.isPending || reconcileRefund.isPending} onClick={() => { if (window.confirm(`Confirma o estorno de ${money(payment.amountCents / 100)}? A assinatura vinculada também será cancelada e não haverá novas renovações.`)) refund.mutate({ paymentId: payment.providerPaymentId }); }} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button><button type="button" disabled={reconcileRefund.isPending || refund.isPending} onClick={() => { if (window.confirm("O estorno já foi feito diretamente no Mercado Pago? O OrbeEdital vai conferir o status remoto e, se estiver integralmente estornado, cancelar todas as assinaturas desta empresa.")) reconcileRefund.mutate({ paymentId: payment.providerPaymentId }); }} className="mt-2 rounded-lg border px-3 py-2 font-semibold disabled:opacity-50">Sincronizar estorno externo</button></> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
+                  <td className="p-2">{canRefund ? <div className="flex flex-col items-start gap-2"><button type="button" disabled={refund.isPending || reconcileRefund.isPending} onClick={() => setRefundConfirmation({ paymentId: payment.providerPaymentId, customer: payment.customerName || payment.customerEmail || "Cliente", company: payment.companyName || "Empresa não informada", amount: payment.amountCents, kind: "refund" })} className="rounded-lg border border-rose-300 px-3 py-2 font-semibold text-rose-700 disabled:opacity-50">Estornar</button><button type="button" disabled={reconcileRefund.isPending || refund.isPending} onClick={() => setRefundConfirmation({ paymentId: payment.providerPaymentId, customer: payment.customerName || payment.customerEmail || "Cliente", company: payment.companyName || "Empresa não informada", amount: payment.amountCents, kind: "reconcile" })} className="rounded-lg border px-3 py-2 font-semibold disabled:opacity-50">Sincronizar estorno externo</button></div> : <span className="text-slate-400">{payment.status === "refunded" ? "Estornado" : "—"}</span>}</td>
                 </tr>;
               })}
             </tbody>
@@ -408,6 +409,22 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
         </div>
         <AdminPagination total={filteredPayments.length} page={paymentPage} pageSize={paymentPageSize} onPageChange={setPaymentPage} onPageSizeChange={size => { setPaymentPageSize(size); setPaymentPage(1); }} />
       </section>
+      {refundConfirmation && <div role="presentation" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={event => { if (event.target === event.currentTarget && !refund.isPending && !reconcileRefund.isPending) setRefundConfirmation(null); }}>
+        <div role="alertdialog" aria-modal="true" aria-labelledby="refund-confirm-title" aria-describedby="refund-confirm-description" className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+          <h2 id="refund-confirm-title" className="text-lg font-bold text-slate-900">{refundConfirmation.kind === "refund" ? "Confirmar estorno de pagamento" : "Conferir estorno realizado no Mercado Pago"}</h2>
+          <div id="refund-confirm-description" className="mt-4 space-y-2 text-sm text-slate-700">
+            <p><strong>Cliente:</strong> {refundConfirmation.customer}</p>
+            <p><strong>Empresa:</strong> {refundConfirmation.company}</p>
+            <p><strong>Valor:</strong> {money(refundConfirmation.amount / 100)}</p>
+            <p><strong>ID do pagamento:</strong> <span className="break-all font-mono">{refundConfirmation.paymentId}</span></p>
+            {refundConfirmation.kind === "refund" ? <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-900">O OrbeEdital solicitará o estorno ao Mercado Pago e cancelará a assinatura vinculada após confirmação. Essa ação pode interromper o acesso e impedir renovações.</p> : <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">Esta ação não solicita um novo estorno. Ela verifica o pagamento no Mercado Pago e, se o estorno integral estiver confirmado, pode cancelar todas as assinaturas vinculadas à empresa e bloquear seu acesso.</p>}
+          </div>
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            <button type="button" autoFocus disabled={refund.isPending || reconcileRefund.isPending} onClick={() => setRefundConfirmation(null)} className="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50">Voltar sem alterar</button>
+            <button type="button" disabled={refund.isPending || reconcileRefund.isPending} onClick={() => { const action = refundConfirmation; if (action.kind === "refund") refund.mutate({ paymentId: action.paymentId }, { onSuccess: () => setRefundConfirmation(null) }); else reconcileRefund.mutate({ paymentId: action.paymentId }, { onSuccess: () => setRefundConfirmation(null) }); }} className="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{refund.isPending || reconcileRefund.isPending ? "Processando…" : refundConfirmation.kind === "refund" ? "Confirmar estorno" : "Verificar e reconciliar"}</button>
+          </div>
+        </div>
+      </div>}
       <section className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Pagamentos por status persistido</h2>
         <div className="mt-3 flex flex-wrap gap-3">
