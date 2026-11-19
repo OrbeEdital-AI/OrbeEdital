@@ -16,6 +16,9 @@ export type SyncInput = {
   pageSize?: number;
   startPage?: number;
   mode?: "publication" | "open";
+  cnpj?: string;
+  publicationFrom?: string; // yyyyMMdd, targeted PNCP recovery
+  publicationTo?: string; // yyyyMMdd
 };
 
 type SourceCode = "pncp" | "compras.gov.br";
@@ -140,7 +143,10 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
     throw new ConnectorError("The open-proposals query is available only in the official PNCP API.", "invalid_input", sourceCode);
   }
 
-  const daysBack = Math.min(30, Math.max(1, input.daysBack ?? 7));
+  const daysBack = Math.min(120, Math.max(1, input.daysBack ?? 7));
+  if (input.cnpj && !/^\\d{14}$/.test(input.cnpj)) throw new Error("CNPJ deve conter 14 dígitos.");
+  if ((input.publicationFrom || input.publicationTo) && (!input.cnpj || sourceCode !== "pncp" || mode !== "publication")) throw new Error("Período específico exige recuperação PNCP por CNPJ.");
+  if ([input.publicationFrom, input.publicationTo].some(value => value && !/^\\d{8}$/.test(value))) throw new Error("Datas devem usar yyyyMMdd.");
   const allPages = input.allPages === true;
   const maxPages = allPages ? MAX_PAGE_LIMIT : Math.min(MAX_PAGE_LIMIT, Math.max(1, input.maxPages ?? 1));
   const modalityCodes = mode === "open"
@@ -153,9 +159,10 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
   // Continue a bounded snapshot only when the query dimensions match.
   // This avoids confusing the publication cursor with the open-proposals cursor.
   let effectiveStartPage = input.startPage ?? 1;
-  let publicationFrom = dateOnly(from, true);
-  let publicationTo = dateOnly(now, true);
-  if (sourceCode === "pncp" && input.startPage === undefined && !allPages) {
+  let publicationFrom = input.publicationFrom ?? dateOnly(from, true);
+  let publicationTo = input.publicationTo ?? dateOnly(now, true);
+  if (publicationFrom > publicationTo) throw new Error("Data inicial posterior à final.");
+  if (sourceCode === "pncp" && input.startPage === undefined && !allPages && !input.cnpj) {
     const recentRuns = await db.select({ metadata: syncRuns.metadata })
       .from(syncRuns)
       .where(and(eq(syncRuns.connectorId, source.id), eq(syncRuns.status, "completed")))
@@ -184,7 +191,7 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
   }
   const runStartedAt = new Date();
   const queryConcurrency = sourceCode === "compras.gov.br" ? 3 : 1;
-  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage, publicationFrom, publicationTo };
+  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage, publicationFrom, publicationTo, cnpj: input.cnpj ?? null };
   const [run] = await db.insert(syncRuns).values({ connectorId: source.id, status: "running", startedAt: runStartedAt, metadata: runMetadata }).returning();
   await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: new Date() }).where(eq(connectors.id, source.id));
 
@@ -205,8 +212,8 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
         try {
           const pages = sourceCode === "pncp"
             ? mode === "open"
-              ? await searchPncpOpen({ dataFinal: dateOnly(now, true), page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
-              : await searchPncp({ dataInicial: publicationFrom, dataFinal: publicationTo, codigoModalidadeContratacao: modalityCode!, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
+              ? await searchPncpOpen({ dataFinal: dateOnly(now, true), cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
+              : await searchPncp({ dataInicial: publicationFrom, dataFinal: publicationTo, codigoModalidadeContratacao: modalityCode!, cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
             : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode!, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
           return { modalityCode, pages, error: null as unknown };
         } catch (error) {
