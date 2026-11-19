@@ -459,7 +459,8 @@ export default function AdminConsole() {
   };
   const me = auth.user as (typeof auth.user & { role?: string; name?: string; email?: string }) | null;
   const allowed = !!me?.role && ["superadmin", "admin", "source_operator", "support", "finance"].includes(me.role);
-  const section = me?.role && canOpenSection(me.role, requestedSection) ? requestedSection : defaultSectionForRole(me?.role ?? "");
+  const section = requestedSection;
+  const sectionAllowed = !!me?.role && canOpenSection(me.role, requestedSection);
 
   useEffect(() => {
     if (!auth.loading && !auth.user) navigate("/app/admin/login");
@@ -471,6 +472,17 @@ export default function AdminConsole() {
 
   if (auth.loading || !auth.user) return <div className="grid min-h-screen place-items-center text-slate-500">Abrindo acesso administrativo…</div>;
   if (!me?.emailVerifiedAt || !allowed) return <AccessDenied />;
+  if (!sectionAllowed) {
+    const destination = defaultSectionForRole(me.role ?? "");
+    return <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
+      <section role="alert" className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+        <ShieldCheck className="mx-auto h-11 w-11 text-amber-700" aria-hidden="true" />
+        <h1 className="mt-4 text-xl font-bold text-[#102B4E]">Área não autorizada</h1>
+        <p className="mt-2 text-sm text-slate-600">Seu perfil não tem permissão para acessar esta seção administrativa. Nenhum conteúdo restrito foi exibido.</p>
+        <button type="button" className="mt-5 rounded-lg bg-[#102B4E] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#17416f]" onClick={() => navigate(destination === "overview" ? "/app/admin" : "/app/admin/" + destination)}>Ir para minha área</button>
+      </section>
+    </main>;
+  }
 
   const logout = async () => { await auth.logout(); navigate("/"); };
   const current = nav.find(item => item.id === section)!;
