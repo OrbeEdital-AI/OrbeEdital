@@ -383,6 +383,20 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
   const activeSources = data.sources.filter((source: any) => source.enabled);
   const inactiveSources = data.sources.filter((source: any) => !source.enabled);
   const failedSources = data.sources.filter((source: any) => source.status === "error");
+  const now = Date.now();
+  const staleSources = activeSources.filter((source: any) => {
+    const last = source.lastRunAt ? new Date(source.lastRunAt).getTime() : NaN;
+    const frequency = Number(source.frequencySeconds);
+    return !Number.isFinite(last) || now - last > Math.max(8 * 60 * 60 * 1000, (Number.isFinite(frequency) ? frequency : 0) * 2000);
+  });
+  const attentionSources = activeSources.filter((source: any) =>
+    source.status === "error" || staleSources.some((stale: any) => stale.code === source.code));
+  const timeSince = (value: string | Date | null | undefined) => {
+    if (!value) return "sem execução registrada";
+    const elapsed = Math.max(0, now - new Date(value).getTime());
+    if (!Number.isFinite(elapsed)) return "horário indisponível";
+    return elapsed < 3600000 ? `${Math.floor(elapsed / 60000)} min` : `${Math.floor(elapsed / 3600000)} h`;
+  };
   const metrics = [
     { label: "Usuários", value: data.users, detail: "contas cadastradas" },
     { label: "Oportunidades", value: data.opportunities, detail: "no catálogo" },
@@ -463,6 +477,28 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
         </div>
       </section>
 
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-[#102B4E]">Saúde operacional das fontes</h3>
+            <p className="mt-1 text-xs text-slate-500">Horários reais registrados pelo servidor; fonte habilitada não significa coleta completa.</p>
+          </div>
+          <button type="button" onClick={onOpenSources} className="rounded-lg border px-3 py-2 text-xs font-semibold text-cyan-800">Gerenciar sincronizações</button>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-xs">
+            <thead className="border-b text-slate-500"><tr><th className="py-2">Fonte</th><th>Última execução</th><th>Tempo decorrido</th><th>Situação</th></tr></thead>
+            <tbody>{data.sources.map((source: any) => (
+              <tr key={source.code} className="border-b last:border-0">
+                <td className="py-3 font-semibold text-slate-700">{source.name}</td>
+                <td>{date(source.lastRunAt)}</td>
+                <td>{timeSince(source.lastRunAt)}</td>
+                <td className={source.status === "error" ? "font-semibold text-rose-700" : staleSources.some((stale: any) => stale.code === source.code) ? "font-semibold text-amber-700" : "text-slate-600"}>{!source.enabled ? "Desabilitada" : source.status === "error" ? "Falha" : staleSources.some((stale: any) => stale.code === source.code) ? "Atrasada" : "Execução recente"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </section>
       <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
         <article className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex items-center justify-between gap-3">
@@ -470,13 +506,13 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
               <h3 className="text-sm font-bold text-[#102B4E]">Pontos de atenção</h3>
               <p className="mt-1 text-xs text-slate-500">Itens que merecem acompanhamento operacional.</p>
             </div>
-            <span className={`rounded-md px-2 py-1 text-xs font-bold ${failedSources.length ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{failedSources.length} alerta(s)</span>
+            <span className={`rounded-md px-2 py-1 text-xs font-bold ${attentionSources.length ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{attentionSources.length} alerta(s)</span>
           </div>
-          {failedSources.length ? (
+          {attentionSources.length ? (
             <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
-              {failedSources.map((source: any) => (
+              {attentionSources.map((source: any) => (
                 <div key={source.code} className="flex items-start justify-between gap-3 py-3">
-                  <div><p className="text-sm font-semibold text-slate-700">{source.name}</p><p className="mt-0.5 text-xs text-slate-500">Há falha ou erro registrado no histórico desta fonte.</p></div>
+                  <div><p className="text-sm font-semibold text-slate-700">{source.name}</p><p className="mt-0.5 text-xs text-slate-500">{source.status === "error" ? "Falha registrada na integração." : "Sincronização atrasada ou não registrada."} Última execução: {date(source.lastRunAt)} ({timeSince(source.lastRunAt)}).</p></div>
                   <button type="button" onClick={onOpenSources} className="shrink-0 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50">Verificar fonte</button>
                 </div>
               ))}
