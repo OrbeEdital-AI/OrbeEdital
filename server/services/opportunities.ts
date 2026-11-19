@@ -87,6 +87,12 @@ export async function ensureBuiltInConnectors() {
   }
 }
 
+const SEARCH_ACCENTED = "áàâãäåéèêëíìîïóòôõöúùûüçñ";
+const SEARCH_PLAIN = "aaaaaaeeeeiiiiooooouuuucn";
+function normalizedSearchField(field: unknown) {
+  return sql`translate(lower(coalesce(${field}, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`;
+}
+
 function buildFilters(filters: OpportunityFilters) {
   const clauses = [];
   const query = filters.query?.trim();
@@ -117,13 +123,13 @@ function buildFilters(filters: OpportunityFilters) {
       const matches = options.flatMap(option => {
         const like = "%" + option.replace(/[%_]/g, "\\$&") + "%";
         return [
-          ilike(opportunities.title, like),
-          ilike(opportunities.description, like),
-          ilike(opportunities.agencyName, like),
-          ilike(opportunities.processNumber, like),
-          ilike(opportunities.procurementNumber, like),
-          ilike(opportunities.agencyCnpj, like),
-          sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (oi.description ilike ${like} or oi.specifications ilike ${like} or oi.catalog_code ilike ${like}))`,
+          sql`${normalizedSearchField(opportunities.title)} like ${like}`,
+          sql`${normalizedSearchField(opportunities.description)} like ${like}`,
+          sql`${normalizedSearchField(opportunities.agencyName)} like ${like}`,
+          sql`${normalizedSearchField(opportunities.processNumber)} like ${like}`,
+          sql`${normalizedSearchField(opportunities.procurementNumber)} like ${like}`,
+          sql`${normalizedSearchField(opportunities.agencyCnpj)} like ${like}`,
+          sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.specifications, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.catalog_code, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like}))`,
         ];
       });
       clauses.push(or(...matches)!);
