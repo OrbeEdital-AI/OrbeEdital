@@ -445,6 +445,18 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
     }
     await db.update(syncRuns).set({ status: "completed", finishedAt: new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: finalPage, reportedTotalPages: finalTotalPages, incompleteCoverage, nextPage: incompleteCoverage ? finalPage + 1 : 1, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq(syncRuns.id, run.id));
     await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1000), updatedAt: new Date() }).where(eq(connectors.id, source.id));
+    // A busca por data de publicação não reencontra licitações antigas reabertas.
+    // Em toda coleta PNCP automática, complementar com propostas abertas,
+    // independentemente da data original de publicação. A paginação desse
+    // segundo percurso mantém cursor próprio (mode=open) entre execuções.
+    if (sourceCode === "pncp" && mode === "publication" && !input.cnpj && !input.publicationFrom && !input.publicationTo) {
+      try {
+        await syncConnector("pncp", { mode: "open", daysBack, maxPages, pageSize });
+      } catch (openError) {
+        // Falhas no percurso complementar não invalidam os dados já importados.
+        console.error("[ingestion] PNCP open-proposals supplemental sync failed", openError instanceof Error ? openError.message : "unknown");
+      }
+    }
     return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
   } catch (error) {
     const duration = Date.now() - durationStart;
