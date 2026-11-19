@@ -551,12 +551,30 @@ function RadarPilotPage() {
  const verify=trpc.admin.radarVerify.useMutation({onSuccess:()=>{setVerification(null);setDeadline("");setEvidence("");void review.refetch();}});
  const change = trpc.admin.radarReviewStatus.useMutation({onSuccess:()=>{void review.refetch();}});
  const run = trpc.admin.radarPilot.useMutation({onSuccess:()=>{void review.refetch();}});
+ const pePilot = trpc.admin.radarTcePePilot.useMutation();
+ const [peYear,setPeYear]=useState(2026);
  const mgDiscovery = trpc.admin.radarMgDiscovery.useMutation({onSuccess:()=>{void review.refetch();}});
  const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
  const [ids,setIds]=useState("");
  const [saveReview,setSaveReview]=useState(false);
  return <section className="space-y-4 rounded-xl border bg-white p-5">
  <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
+ <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+  <h3 className="font-semibold">TCE-PE · Consulta experimental (somente administrador)</h3>
+  <p className="text-sm text-slate-600">Consulta a API do Tribunal de Contas de Pernambuco. Não importa nem publica oportunidades para clientes.</p>
+  <div className="flex flex-wrap items-center gap-2">
+   <label htmlFor="pe-year">Ano</label>
+   <input id="pe-year" type="number" min="2011" max="2030" value={peYear} onChange={e=>setPeYear(Number(e.target.value))} className="w-24 rounded border p-2"/>
+   <button type="button" disabled={pePilot.isPending} onClick={()=>pePilot.mutate({year:peYear})} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">{pePilot.isPending?"Consultando…":"Testar extração TCE-PE"}</button>
+  </div>
+  {pePilot.error && <p role="alert" className="text-sm text-red-700">Falha na API: {pePilot.error.message}</p>}
+  {pePilot.data && <div className="space-y-2 text-sm">
+   <p>Registros extraídos: {pePilot.data.totalExtracted}. Registros exibidos: {pePilot.data.displayed}. Cobertura possivelmente incompleta: {pePilot.data.truncated?"Sim":"Não identificada"}.</p>
+   <div className="max-h-80 overflow-auto"><table className="w-full text-left"><thead><tr><th>Identificador</th><th>Órgão</th><th>Objeto</th><th>Situação</th></tr></thead><tbody>
+   {pePilot.data.notices.map(item=><tr key={item.key} className="border-t"><td>{item.key}</td><td>{item.agency??"—"}</td><td>{item.object??"—"}</td><td>{item.situation??"—"}</td></tr>)}
+   </tbody></table></div>
+  </div>}
+ </div>
  <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
   <h3 className="font-bold text-cyan-950">AMM-MG · Descoberta automática</h3>
   <p className="text-sm text-slate-700">Pesquisa real de pregões, licitações e dispensas dos últimos sete dias, sem códigos. Resultados apenas na revisão privada; nenhuma oportunidade é publicada aos clientes.</p>
