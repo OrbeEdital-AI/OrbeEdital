@@ -14,6 +14,19 @@ import AdminAuditPage from "@/pages/AdminAuditPage";
 import { AdminSupportPage } from "@/pages/SupportPages";
 import { AdminOrbeAIPage } from "@/pages/OrbeAIPage";
 
+
+/** Mensagens compreensíveis sem expor detalhes internos da API ao operador. */
+function adminErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? adminErrorMessage(error) : "";
+  const message = raw.toLowerCase();
+  if (/unauthorized|unauthenticated|não autenticado|sessão expirada|jwt expired/.test(message)) return "Sua sessão expirou. Entre novamente para continuar.";
+  if (/forbidden|permission|permissão|acesso negado/.test(message)) return "Você não tem permissão para realizar esta operação.";
+  if (/timeout|timed out|tempo limite/.test(message)) return "A operação demorou mais que o esperado. Tente novamente.";
+  if (/network|fetch failed|failed to fetch|connection/.test(message)) return "Não foi possível conectar ao serviço. Verifique sua conexão e tente novamente.";
+  if (/rate.limit|too many requests|429/.test(message)) return "Muitas solicitações em pouco tempo. Aguarde um momento e tente novamente.";
+  return "Não foi possível concluir a operação. Tente novamente ou entre em contato com o suporte.";
+}
+
 type Section = "radar" | "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
 
 // Uma única entrada por tela existente: agrupamento por objetivo, sem rotas duplicadas.
@@ -110,7 +123,7 @@ function CustomerDirectory() {
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const updateCustomer = trpc.adminUsers.updateCustomer.useMutation({
     onSuccess: async result => {
@@ -121,7 +134,7 @@ function CustomerDirectory() {
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const updatePlan = trpc.adminUsers.updatePlan.useMutation({
     onSuccess: async result => {
@@ -129,7 +142,7 @@ function CustomerDirectory() {
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const setSuspension = trpc.adminUsers.setSuspension.useMutation({
     onSuccess: async result => {
@@ -137,7 +150,7 @@ function CustomerDirectory() {
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const deleteAccount = trpc.adminUsers.deleteAccount.useMutation({
     onSuccess: async result => {
@@ -145,14 +158,14 @@ function CustomerDirectory() {
       await utils.adminUsers.list.invalidate();
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const revokeSessions = trpc.adminUsers.revokeSessions.useMutation({
     onSuccess: async result => {
       toast.success(result.revokedCount + " sessão(ões) encerrada(s).");
       await utils.adminUsers.audit.invalidate();
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   return (
     <section className="space-y-4">
@@ -168,7 +181,7 @@ function CustomerDirectory() {
       </div>
       <div className="overflow-hidden rounded-xl border bg-white">
         {query.isLoading ? <p className="p-8 text-center text-sm text-slate-500">Carregando usuários…</p> :
-          query.error ? <div className="p-8 text-center"><p className="text-sm text-rose-700">{query.error.message}</p><button onClick={() => query.refetch()} className="mt-3 text-sm font-semibold text-cyan-800">Tentar novamente</button></div> :
+          query.error ? <div className="p-8 text-center"><p className="text-sm text-rose-700">{adminErrorMessage(query.error)}</p><button onClick={() => query.refetch()} className="mt-3 text-sm font-semibold text-cyan-800">Tentar novamente</button></div> :
           <>
             <div className="flex items-center justify-between border-b px-5 py-3 text-sm text-slate-500"><span>{data?.total ?? 0} usuários encontrados</span><button type="button" disabled={query.isFetching} onClick={async () => { const result = await query.refetch(); if (result.isError) toast.error("Não foi possível atualizar a lista de clientes."); else toast.success("Lista de clientes atualizada."); }} className="inline-flex items-center gap-2 font-medium text-cyan-800 disabled:cursor-wait disabled:opacity-50"><RefreshCw size={14} className={query.isFetching ? "animate-spin" : ""}/> {query.isFetching ? "Atualizando…" : "Atualizar"}</button></div>
             <div className="overflow-x-auto">
@@ -389,7 +402,7 @@ function PlanPricingEditor() {
       await utils.billing.plans.invalidate();
       toast.success("Preços atualizados no catálogo.");
     },
-    onError: error => toast.error(error.message),
+    onError: error => toast.error(adminErrorMessage(error)),
   });
   const [drafts, setDrafts] = useState<Record<string, { monthly: string; annual: string }>>({});
   const reais = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
@@ -413,14 +426,14 @@ function PlanPricingEditor() {
       })}
     </div>
     {listing.isLoading && <p className="mt-3 text-sm">Carregando planos…</p>}
-    {listing.error && <p className="mt-3 text-sm text-red-700">{listing.error.message}</p>}
+    {listing.error && <p className="mt-3 text-sm text-red-700">{adminErrorMessage(listing.error)}</p>}
   </div>;
 }
 
 function SettingsPage() {
   const settings = trpc.admin.settings.get.useQuery();
-  const save = trpc.admin.settings.save.useMutation({ onSuccess: () => { settings.refetch(); toast.success("Configuração salva."); }, onError: e => toast.error(e.message) });
-  const announce = trpc.admin.settings.announce.useMutation({ onSuccess: r => { toast.success(`Comunicado enviado para ${r.sent} clientes.`); setTitle(""); setMessage(""); }, onError: e => toast.error(e.message) });
+  const save = trpc.admin.settings.save.useMutation({ onSuccess: () => { settings.refetch(); toast.success("Configuração salva."); }, onError: e => toast.error(adminErrorMessage(e)) });
+  const announce = trpc.admin.settings.announce.useMutation({ onSuccess: r => { toast.success(`Comunicado enviado para ${r.sent} clientes.`); setTitle(""); setMessage(""); }, onError: e => toast.error(adminErrorMessage(e)) });
   const [tab, setTab] = useState<"branding" | "experience" | "notifications" | "plans" | "security" | "audit">("branding");
   const [brandName, setBrandName] = useState("OrbeEdital");
   const [tagline, setTagline] = useState("Oportunidades públicas em um só lugar");
@@ -440,7 +453,7 @@ function SettingsPage() {
     {tab === "security" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Segurança</h3><p className="mt-1 text-sm text-slate-600">Suspensão de contas, encerramento de sessões e controle de papéis já estão disponíveis em Clientes e usuários. Políticas globais de duração de sessão e autenticação ainda não são editáveis para evitar alterações sem efeito garantido.</p><Link href="/app/admin/customers" className="mt-3 inline-flex rounded-lg border px-4 py-2 text-sm font-semibold">Abrir gestão de contas</Link></div>}
     {tab === "audit" && <div className="rounded-xl border bg-white p-5"><h3 className="font-semibold">Auditoria</h3><p className="mt-1 text-sm text-slate-600">As alterações de configurações e os comunicados são registrados com responsável, data e resumo.</p><Link href="/app/admin/audit" className="mt-3 inline-flex rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white">Consultar trilha de auditoria</Link></div>}
     {settings.isLoading && <p className="text-sm text-slate-500">Carregando configurações…</p>}
-    {settings.isError && <p className="text-sm text-rose-600">Não foi possível carregar as configurações: {settings.error.message}</p>}
+    {settings.isError && <p className="text-sm text-rose-600">Não foi possível carregar as configurações: {adminErrorMessage(settings.error)}</p>}
   </section>;
 }
 
@@ -548,7 +561,7 @@ function RadarPilotPage() {
   <h3 className="font-bold text-cyan-950">AMM-MG · Descoberta automática</h3>
   <p className="text-sm text-slate-700">Pesquisa real de pregões, licitações e dispensas dos últimos sete dias, sem códigos. Resultados apenas na revisão privada; nenhuma oportunidade é publicada aos clientes.</p>
   <button type="button" className="rounded-lg bg-cyan-800 px-4 py-2 font-semibold text-white disabled:opacity-50" disabled={mgDiscovery.isPending||run.isPending} onClick={()=>mgDiscovery.mutate()}>{mgDiscovery.isPending?"Testando coleta AMM-MG…":"Testar coleta automática AMM-MG"}</button>
-  {mgDiscovery.error && <p role="alert" className="text-sm text-red-700">Falha na coleta: {mgDiscovery.error.message}</p>}
+  {mgDiscovery.error && <p role="alert" className="text-sm text-red-700">Falha na coleta: {adminErrorMessage(mgDiscovery.error)}</p>}
   {mgDiscovery.data && <p role="status" className="text-sm text-cyan-950">{mgDiscovery.data.status==="busy"?"Outra coleta AMM-MG está em andamento.":"Coleta registrada na revisão privada. Confira candidatos e falhas no histórico abaixo."}</p>}
  </div>
  <select className="rounded border p-2" value={source} onChange={e=>{setSource(e.target.value as "amm-mt"|"amm-mg");run.reset();}} disabled={run.isPending}><option value="amm-mt">AMM-MT — descoberta</option><option value="amm-mg">AMM-MG — matérias por identificador</option></select>
@@ -556,11 +569,11 @@ function RadarPilotPage() {
  <p className="text-sm text-slate-600">{source==="amm-mt"?"Últimos sete dias. Até 12 publicações.":"Consulta de até cinco matérias por código, sem descoberta automática."} Nenhuma oportunidade será publicada na base dos clientes.</p>
  <label className="flex gap-2 items-center"><input type="checkbox" checked={saveReview} disabled={run.isPending} onChange={e=>setSaveReview(e.target.checked)}/> Salvar extração na área privada de revisão</label>
  <button className="rounded-lg bg-cyan-700 px-4 py-2 text-white disabled:opacity-50" disabled={run.isPending} onClick={()=>run.mutate({source,saveReview,ids:source==="amm-mg"?ids.split(/[,\s]+/).filter(Boolean):undefined})}>{run.isPending?"Consultando…":"Extrair avisos — teste"}</button>
- {run.error && <p role="alert" className="text-red-700">{run.error.message}</p>}
+ {run.error && <p role="alert" className="text-red-700">{adminErrorMessage(run.error)}</p>}
  {run.data && <div className="space-y-3"><p>{run.data.saved && <span>Extração armazenada para revisão · </span>}{run.data.notices.length} candidatos encontrados · {run.data.failures.length} falhas</p>
  <p className="text-sm text-slate-500">Todos aguardam revisão. Comparação preliminar com a base estadual correspondente; ausência de coincidência não garante registro inédito.</p>
  {run.data.notices.map(n=><article key={n.publicationId} className="rounded-lg border p-4"><h3 className="font-semibold">{n.object ?? n.title}</h3><p>{n.modality ?? "Licitação"}: {n.procurementNumber ?? "Não identificado"} · Processo: {n.processNumber ?? "Não identificado"}</p><p>{n.deadlineEvidence ?? "Prazo de propostas não identificado"}</p><p className="text-sm text-slate-600">Sessão: {n.sessionEvidence ?? "Não identificada"}</p><p className="text-amber-700 text-sm">Vigência não confirmada — não publicar sem validação.</p>{n.reviewReasons.map(reason=><p key={reason} className="text-sm text-slate-500">{reason}</p>)}<p className="font-semibold">{n.matches.length ? "Possível duplicidade" : "Sem coincidência encontrada"}</p>{n.matches.map(m=><p key={m.id} className="text-sm text-slate-600">{m.reason} — {m.title}</p>)}<a className="text-cyan-700 underline" href={n.url} target="_blank" rel="noreferrer">Publicação oficial</a></article>)}
  {run.data.failures.map((f,i)=><p key={i} className="text-red-700">{f}</p>)}</div>}
- <div className="space-y-3 border-t pt-4"><h2 className="text-lg font-bold">Central de revisão</h2><button className="rounded border px-3 py-2" onClick={()=>void review.refetch()} disabled={review.isFetching}>Atualizar histórico</button>{review.error && <p role="alert">{review.error.message}</p>}{change.error && <p role="alert">{change.error.message}</p>}<h3 className="font-semibold">Últimas extrações</h3>{review.data?.runs.map(r=><p key={r.id}>{r.source} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {r.candidate_count} candidatos</p>)}<h3 className="font-semibold">Candidatos armazenados</h3>{review.data?.candidates.length===0 && <p>Nenhum candidato armazenado.</p>}{review.data?.candidates.map(c=><article key={c.id} className="rounded border p-3 space-y-2"><p className="font-semibold">{c.payload?.object ?? c.payload?.title ?? c.publication_id}</p><p>{c.source} · {c.review_status==="rejected"?"Descartado":c.review_status==="verified"?"Verificado":"Aguardando revisão"}</p><p>{c.payload?.deadlineEvidence ?? "Prazo não identificado"}</p><a href={c.source_url} target="_blank" rel="noreferrer" className="underline">Publicação oficial</a>{c.review_status==="pending" && <button className="ml-3 rounded border px-3 py-1" onClick={()=>{setVerification(c.id);setDeadline("");setEvidence("");verify.reset();}}>Validar</button>}{verification===c.id && <div className="space-y-2"><label className="block">Prazo confirmado (horário de Brasília)<input className="block rounded border p-2" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)}/></label><textarea className="block w-full rounded border p-2" placeholder="Evidência na fonte oficial, prazo e conferência de duplicidade" value={evidence} onChange={e=>setEvidence(e.target.value)} maxLength={2000}/><button className="rounded border px-3 py-1" disabled={verify.isPending||!deadline||evidence.trim().length<15} onClick={()=>verify.mutate({id:c.id,deadline:new Date(deadline+":00-03:00").toISOString(),evidence})}>Confirmar validação sem publicar</button><button className="ml-2" onClick={()=>setVerification(null)}>Cancelar</button>{verify.error && <p role="alert">{verify.error.message}</p>}</div>}{c.review_status!=="verified" && <button className="ml-3 rounded border px-3 py-1" disabled={change.isPending} onClick={()=>change.mutate({id:c.id,status:c.review_status==="rejected"?"pending":"rejected"})}>{c.review_status==="rejected"?"Reabrir revisão":"Descartar"}</button>}</article>)}</div>
+ <div className="space-y-3 border-t pt-4"><h2 className="text-lg font-bold">Central de revisão</h2><button className="rounded border px-3 py-2" onClick={()=>void review.refetch()} disabled={review.isFetching}>Atualizar histórico</button>{review.error && <p role="alert">{adminErrorMessage(review.error)}</p>}{change.error && <p role="alert">{adminErrorMessage(change.error)}</p>}<h3 className="font-semibold">Últimas extrações</h3>{review.data?.runs.map(r=><p key={r.id}>{r.source} · {new Date(r.started_at).toLocaleString("pt-BR")} · {r.status} · {r.candidate_count} candidatos</p>)}<h3 className="font-semibold">Candidatos armazenados</h3>{review.data?.candidates.length===0 && <p>Nenhum candidato armazenado.</p>}{review.data?.candidates.map(c=><article key={c.id} className="rounded border p-3 space-y-2"><p className="font-semibold">{c.payload?.object ?? c.payload?.title ?? c.publication_id}</p><p>{c.source} · {c.review_status==="rejected"?"Descartado":c.review_status==="verified"?"Verificado":"Aguardando revisão"}</p><p>{c.payload?.deadlineEvidence ?? "Prazo não identificado"}</p><a href={c.source_url} target="_blank" rel="noreferrer" className="underline">Publicação oficial</a>{c.review_status==="pending" && <button className="ml-3 rounded border px-3 py-1" onClick={()=>{setVerification(c.id);setDeadline("");setEvidence("");verify.reset();}}>Validar</button>}{verification===c.id && <div className="space-y-2"><label className="block">Prazo confirmado (horário de Brasília)<input className="block rounded border p-2" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)}/></label><textarea className="block w-full rounded border p-2" placeholder="Evidência na fonte oficial, prazo e conferência de duplicidade" value={evidence} onChange={e=>setEvidence(e.target.value)} maxLength={2000}/><button className="rounded border px-3 py-1" disabled={verify.isPending||!deadline||evidence.trim().length<15} onClick={()=>verify.mutate({id:c.id,deadline:new Date(deadline+":00-03:00").toISOString(),evidence})}>Confirmar validação sem publicar</button><button className="ml-2" onClick={()=>setVerification(null)}>Cancelar</button>{verify.error && <p role="alert">{adminErrorMessage(verify.error)}</p>}</div>}{c.review_status!=="verified" && <button className="ml-3 rounded border px-3 py-1" disabled={change.isPending} onClick={()=>change.mutate({id:c.id,status:c.review_status==="rejected"?"pending":"rejected"})}>{c.review_status==="rejected"?"Reabrir revisão":"Descartar"}</button>}</article>)}</div>
  </section>;
 }
