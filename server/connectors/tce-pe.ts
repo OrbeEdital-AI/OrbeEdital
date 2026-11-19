@@ -15,7 +15,8 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
 }> {
   if (!Number.isInteger(year) || year < 2011 || year > new Date().getFullYear() + 1) throw new Error("Invalid year");
   const url = new URL(ENDPOINT);
-  url.searchParams.set("ANOPROCESSO", String(year));
+  // ANOPROCESSO is an output-only field for LicitacaoUG; ANOMODALIDADE is documented as an input filter.
+  url.searchParams.set("ANOMODALIDADE", String(year));
   // Keep the total request bounded by the serverless execution window.
   // A transient upstream timeout gets one retry, with a shared deadline.
   const deadline = Date.now() + timeoutMs;
@@ -36,7 +37,7 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
         (error.name === "TimeoutError" || error.name === "AbortError" || /timeout|aborted/i.test(error.message));
       if (!isTimeout) throw error;
       if (attempt === 1 || deadline - Date.now() < 1000) {
-        throw new Error("TCE-PE não respondeu dentro do limite de tempo. A consulta anual pode ser grande; tente novamente mais tarde.");
+        throw new Error("TCE-PE não respondeu dentro do limite de tempo. O servidor pode estar indisponível ou restringir acessos fora do Brasil.");
       }
     }
   }
