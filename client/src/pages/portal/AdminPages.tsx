@@ -424,14 +424,6 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
     return source.status === "error" || !Number.isFinite(last) ||
       now - last > Math.max(8 * 60 * 60 * 1000, (Number.isFinite(frequency) ? frequency : 0) * 2000);
   });
-  const lastRuns = data.sources.map((source: any) => ({
-    source,
-    run: data.recentRuns.find(({ run }: any) => run.connectorId === source.id)?.run,
-  }));
-  const recentRuns = data.recentRuns.slice(0, 5);
-  const recentSuccesses = data.recentRuns.filter(({ run }: any) => run.status === "completed");
-  const recentNew = recentSuccesses.reduce((sum: number, { run }: any) => sum + Number(run.insertedCount ?? 0), 0);
-  const recentFailures = data.recentRuns.filter(({ run }: any) => run.status === "failed").length;
   const metrics = [
     { label: "Clientes cadastrados", value: data.users },
     { label: "Assinaturas ativas", value: data.activeSubscribers },
@@ -508,28 +500,22 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
 
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-[#102B4E]">Funcionamento da plataforma</h3>
-            <p className="mt-1 text-xs text-slate-500">Resumo das integrações; detalhes técnicos ficam em Fontes e sincronizações.</p>
-          </div>
+          <h3 className="text-sm font-bold text-[#102B4E]">Funcionamento da plataforma</h3>
           <button type="button" onClick={onOpenSources} className="text-xs font-semibold text-cyan-800 hover:underline">Ver detalhes</button>
         </div>
         <div className="mt-3 divide-y divide-slate-100">
-          {lastRuns.map(({ source, run }: any) => {
+          {activeSources.map((source: any) => {
             const hasIssue = sourceIssues.some((issue: any) => issue.code === source.code);
             return (
-              <div key={source.code} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">{source.name}</p>
-                  <p className="mt-1 text-xs text-slate-500">Última execução: {date(source.lastRunAt)}{run ? ` · ${Number(run.insertedCount ?? 0).toLocaleString("pt-BR")} novas oportunidades` : ""}</p>
-                </div>
-                <span className={`text-xs font-semibold ${!source.enabled ? "text-slate-500" : hasIssue ? "text-amber-700" : "text-emerald-700"}`}>
-                  {!source.enabled ? "Pausada" : hasIssue ? "Verificar" : "Em operação"}
+              <div key={source.code} className="flex items-center justify-between gap-3 py-3">
+                <p className="text-sm font-semibold text-slate-800">{source.name}</p>
+                <span className={`shrink-0 text-xs font-semibold ${hasIssue ? "text-rose-700" : "text-emerald-700"}`}>
+                  {hasIssue ? "Com falha" : "Em operação"}
                 </span>
               </div>
             );
           })}
-          {!lastRuns.length && <p className="py-3 text-sm text-slate-500">Nenhuma integração cadastrada.</p>}
+          {!activeSources.length && <p className="py-3 text-sm text-slate-500">Nenhuma fonte em operação.</p>}
         </div>
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
