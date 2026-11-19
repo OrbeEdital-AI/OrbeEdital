@@ -142,6 +142,9 @@ function classifySourceUpdate(change: NonNullable<ReturnType<typeof comparableCh
       Date.parse(nextDeadline) > Date.parse(previousDeadline)) {
     return { eventType: "deadline_extended", summary: "A fonte oficial prorrogou o prazo desta licitação." };
   }
+  if (typeof nextStatus === "string" && ["suspended", "revoked", "annulled"].includes(nextStatus)) {
+    return { eventType: "status_blocked", summary: "A fonte oficial suspendeu, revogou ou anulou esta licitação." };
+  }
   return { eventType: "source_update", summary: "A fonte oficial atualizou informações desta oportunidade." };
 }
 
