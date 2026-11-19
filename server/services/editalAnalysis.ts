@@ -56,8 +56,8 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): { files: Array<{ name: 
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
-  skipped.push(...pdfCandidates.slice(12).map(file => file.name + " (não selecionado: limite de doze PDFs por ZIP)"));
-  return { files: pdfCandidates.slice(0, 12).map(({ name, bytes }) => ({ name, bytes })), skipped };
+  skipped.push(...pdfCandidates.slice(6).map(file => file.name + " (não selecionado: limite de seis PDFs por análise; processamento complementar pendente)"));
+  return { files: pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes })), skipped };
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
