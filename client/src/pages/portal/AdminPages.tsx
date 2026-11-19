@@ -397,6 +397,10 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
     if (!Number.isFinite(elapsed)) return "horário indisponível";
     return elapsed < 3600000 ? `${Math.floor(elapsed / 60000)} min` : `${Math.floor(elapsed / 3600000)} h`;
   };
+  const incompleteRuns = data.recentRuns.filter(({ run }: any) => {
+    const meta = run.metadata as Record<string, unknown> | null;
+    return meta?.incompleteCoverage === true;
+  });
   const metrics = [
     { label: "Usuários", value: data.users, detail: "contas cadastradas" },
     { label: "Oportunidades", value: data.opportunities, detail: "no catálogo" },
@@ -497,6 +501,30 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
               </tr>
             ))}</tbody>
           </table>
+        </div>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h3 className="text-sm font-bold text-[#102B4E]">Atividade recente de extração</h3><p className="mt-1 text-xs text-slate-500">Execuções registradas no banco, da mais recente para a mais antiga.</p></div>
+          <button type="button" onClick={onOpenSources} className="rounded-lg border px-3 py-2 text-xs font-semibold text-cyan-800">Ver todas as execuções</button>
+        </div>
+        {incompleteRuns.length > 0 && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Atenção: {incompleteRuns.length} das últimas {data.recentRuns.length} execuções indicam cobertura parcial. Execução concluída não significa todas as páginas coletadas.
+        </div>}
+        <div className="mt-3 divide-y divide-slate-100">
+          {data.recentRuns.map(({ run, sourceName }: any) => {
+            const meta = (run.metadata ?? {}) as Record<string, unknown>;
+            const pages = Array.isArray(meta.pageStats) ? meta.pageStats as Array<Record<string, unknown>> : [];
+            const totalPages = pages.reduce((max, page) => Math.max(max, Number(page.totalPages) || 0), 0);
+            return <article key={run.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
+              <div><p className="font-semibold text-slate-800">{sourceName} · {run.status === "completed" ? "Concluída" : run.status === "failed" ? "Falhou" : run.status}</p>
+                <p className="mt-1 text-slate-500">{date(run.startedAt)} · {run.insertedCount ?? 0} novos · {run.updatedCount ?? 0} atualizados</p>
+                {meta.incompleteCoverage === true && <p className="mt-1 font-medium text-amber-800">Cobertura parcial{totalPages ? ` · ${totalPages} páginas reportadas pela API` : ""}</p>}
+              </div>
+              <span className={run.status === "failed" ? "font-semibold text-rose-700" : meta.incompleteCoverage === true ? "font-semibold text-amber-700" : "text-slate-500"}>{meta.incompleteCoverage === true ? "Parcial" : run.status === "completed" ? "Concluída" : "Verificar"}</span>
+            </article>;
+          })}
+          {!data.recentRuns.length && <p className="py-4 text-sm text-slate-500">Nenhuma execução registrada.</p>}
         </div>
       </section>
       <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
