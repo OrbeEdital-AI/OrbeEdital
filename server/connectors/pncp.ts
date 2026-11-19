@@ -118,7 +118,11 @@ async function fetchPages(
       },
       requestUrl: url.toString(),
     });
-    if (response.status === 204 || data.length === 0 || (totalPages !== null && currentPage >= totalPages)) break;
+    // The PNCP occasionally returns an empty intermediate page even while
+    // totalPaginas reports additional pages. Do not silently abandon the
+    // remaining shard: continue until the reported final page or page budget.
+    if (totalPages !== null && currentPage >= totalPages) break;
+    if ((response.status === 204 || data.length === 0) && totalPages === null) break;
   }
 
   assertAllPagesFetched(pages, allPages, maxPages, SOURCE);
