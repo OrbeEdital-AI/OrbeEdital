@@ -8,6 +8,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const query = trpc.admin.sources.list.useQuery(undefined, {
     enabled: isAdmin,
   });
+  const candidates = trpc.admin.sources.candidateCatalog.useQuery(undefined, { enabled: isAdmin });
   const utils = trpc.useUtils();
   const run = trpc.admin.sources.run.useMutation({
     onSuccess: async result => {
@@ -70,6 +71,26 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const orderedSources = [...allSources].sort((a, b) => Number(b.enabled) - Number(a.enabled));
   return (
     <>
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold text-[#102B4E]">Fontes em avaliação — acesso administrativo</h2>
+        <p className="mt-1 text-sm text-slate-600">Candidatas para ampliar a cobertura nacional. Não estão integradas nem são exibidas no portal do cliente.</p>
+        {candidates.isLoading && <p className="mt-3 text-sm text-slate-500">Carregando candidatas…</p>}
+        {candidates.error && <p className="mt-3 text-sm text-rose-700">Não foi possível consultar as fontes em avaliação.</p>}
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {candidates.data?.candidates.map(candidate => (
+            <article key={candidate.name} className="rounded-lg border border-slate-200 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold text-[#102B4E]">{candidate.name}</h3>
+                <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">{candidate.status}</span>
+              </div>
+              <p className="mt-2 text-sm text-slate-700">{candidate.access}</p>
+              <p className="mt-1 text-xs text-slate-600">{candidate.notes}</p>
+              <p className="mt-2 text-xs text-slate-500">Prioridade: {candidate.priority}</p>
+              <a href={candidate.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-cyan-800 hover:underline">Consultar fonte <ExternalLink size={13}/></a>
+            </article>
+          ))}
+        </div>
+      </section>
       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
         <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no OrbeEdital, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
       </div>
