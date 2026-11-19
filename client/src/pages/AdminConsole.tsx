@@ -552,6 +552,7 @@ function RadarPilotPage() {
  const change = trpc.admin.radarReviewStatus.useMutation({onSuccess:()=>{void review.refetch();}});
  const run = trpc.admin.radarPilot.useMutation({onSuccess:()=>{void review.refetch();}});
  const pePilot = trpc.admin.radarTcePePilot.useMutation();
+ const sePilot = trpc.admin.radarSergipePilot.useMutation();
  const [peYear,setPeYear]=useState(2026);
  const mgDiscovery = trpc.admin.radarMgDiscovery.useMutation({onSuccess:()=>{void review.refetch();}});
  const [source,setSource]=useState<"amm-mt"|"amm-mg">("amm-mt");
@@ -559,6 +560,20 @@ function RadarPilotPage() {
  const [saveReview,setSaveReview]=useState(false);
  return <section className="space-y-4 rounded-xl border bg-white p-5">
  <h2 className="text-lg font-bold">OrbeRadar · Extração experimental</h2>
+ <div className="space-y-3 rounded-xl border border-emerald-200 p-4">
+  <h3 className="font-semibold">Sergipe · Portal de Transparência (teste experimental)</h3>
+  <p className="text-sm text-slate-600">Consulta diagnóstica à API pública de licitações de Sergipe. Somente superadministrador; não importa, salva nem publica dados para clientes.</p>
+  <button type="button" disabled={sePilot.isPending} onClick={()=>sePilot.mutate()} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">{sePilot.isPending?"Consultando Sergipe…":"Testar extração Sergipe"}</button>
+  {sePilot.error && <p role="alert" className="text-sm text-red-700">Falha na API: {sePilot.error.message}</p>}
+  {sePilot.data && <div className="space-y-2 text-sm">
+    <p>Diagnóstico: {sePilot.data.status} · HTTP {sePilot.data.httpStatus} · {sePilot.data.elapsedMs} ms · {sePilot.data.bytesRead} bytes recebidos.</p>
+    <p>Registros encontrados: {sePilot.data.totalExtracted??"não determinado"}. Exibidos: {sePilot.data.displayed}.</p>
+    {sePilot.data.warning && <p className="text-amber-800">{sePilot.data.warning}</p>}
+    <div className="max-h-80 overflow-auto"><table className="w-full text-left"><thead><tr><th>Identificador</th><th>Órgão</th><th>Objeto</th><th>Situação</th></tr></thead><tbody>
+      {sePilot.data.notices.map((item,index)=><tr key={index} className="border-t"><td>{item.key}</td><td>{item.agency??"—"}</td><td>{item.object??"—"}</td><td>{item.situation??"—"}</td></tr>)}
+    </tbody></table></div>
+  </div>}
+ </div>
  <div className="space-y-3 rounded-xl border border-slate-200 p-4">
   <h3 className="font-semibold">TCE-PE · Consulta experimental (somente administrador)</h3>
   <p className="text-sm text-slate-600">Consulta a API do Tribunal de Contas de Pernambuco. Não importa nem publica oportunidades para clientes.</p>
