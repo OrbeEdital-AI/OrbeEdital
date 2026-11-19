@@ -55,6 +55,7 @@ const sectionRoles: Record<Section, readonly string[]> = {
 const canOpenSection = (role: string, section: Section) => sectionRoles[section].includes(role);
 const defaultSectionForRole = (role: string): Section =>
   role === "support" ? "support" : role === "finance" ? "finance" : "overview";
+const roleLabels: Record<string, string> = { superadmin: "Superadmin", admin: "Administrador", source_operator: "Operador de fontes", finance: "Financeiro", support: "Suporte", user: "Cliente" };
 const sectionDescriptions: Record<Section, string> = {
   overview: "Resumo operacional, indicadores e situação dos módulos da plataforma.",
   customers: "Consulte contas, verificação de e-mail, papéis e sessões dos usuários.",
@@ -459,12 +460,16 @@ export default function AdminConsole() {
   };
   const me = auth.user as (typeof auth.user & { role?: string; name?: string; email?: string }) | null;
   const allowed = !!me?.role && ["superadmin", "admin", "source_operator", "support", "finance"].includes(me.role);
-  const section = requestedSection;
-  const sectionAllowed = !!me?.role && canOpenSection(me.role, requestedSection);
+  const isAdminHome = path === "/app/admin" || path === "/app/admin/";
+  const section = isAdminHome && me?.role ? defaultSectionForRole(me.role) : requestedSection;
+  const sectionAllowed = !!me?.role && canOpenSection(me.role, section);
 
   useEffect(() => {
     if (!auth.loading && !auth.user) navigate("/app/admin/login");
   }, [auth.loading, auth.user, navigate]);
+  useEffect(() => {
+    if (!auth.loading && me?.emailVerifiedAt && allowed && isAdminHome && section !== "overview") navigate("/app/admin/" + section);
+  }, [auth.loading, me?.emailVerifiedAt, allowed, isAdminHome, section, navigate]);
   const greeting = useMemo(() => {
     const hour = Number(new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", hourCycle: "h23", timeZone: "America/Sao_Paulo" }).format(new Date()));
     return hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
@@ -506,7 +511,7 @@ export default function AdminConsole() {
       <header className="relative z-10 border-b border-slate-200/90 bg-white/95 px-4 pb-4 pt-20 sm:px-7 sm:pt-20 lg:sticky lg:top-0 lg:py-4">
         <div className="mx-auto max-w-[1540px]">
           <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-800">OrbeEdital <span className="mx-1 text-slate-300">/</span> Administração <span className="mx-1 text-slate-300">/</span> {current.label}</p><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada</span></div>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · {me.role}</span></div>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · {roleLabels[me.role] ?? "Operador"}</span></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
