@@ -523,9 +523,9 @@ export const appRouter = router({
         return { sources, runs, scheduleEvents };
       }),
       recoverPncpByCnpj: sourceOperatorProcedure.input(z.object({
-        cnpj: z.string().regex(/^\\d{14}$/),
-        publicationFrom: z.string().regex(/^\\d{8}$/),
-        publicationTo: z.string().regex(/^\\d{8}$/),
+        cnpj: z.string().regex(/^\d{14}$/),
+        publicationFrom: z.string().regex(/^\d{8}$/),
+        publicationTo: z.string().regex(/^\d{8}$/),
         modalityCodes: z.array(z.number().int().min(1).max(15)).min(1).max(3).default([6]),
         maxPages: z.number().int().min(1).max(10).default(3),
       })).mutation(async ({ input, ctx }) => {
