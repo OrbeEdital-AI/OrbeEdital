@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { CircleAlert, ExternalLink, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { date, money, Loading, ErrorState, NoPermission, AdminStatusBadge, EmptyState } from "./common";
+import { date, money, Loading, ErrorState, NoPermission, AdminStatusBadge, EmptyState, AdminPagination } from "./common";
 export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const query = trpc.admin.sources.list.useQuery(undefined, {
     enabled: isAdmin,
@@ -27,7 +27,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const [runStatus, setRunStatus] = useState("all");
   const [runOrder, setRunOrder] = useState("newest");
   const [runPage, setRunPage] = useState(1);
-  const runPageSize = 10;
+  const [runPageSize, setRunPageSize] = useState(5);
   const [recoveryCnpj, setRecoveryCnpj] = useState("19459687000156");
   const [recoveryFrom, setRecoveryFrom] = useState("2026-01-01");
   const [recoveryTo, setRecoveryTo] = useState("2026-11-19");
@@ -308,7 +308,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
         ) : (
           <EmptyState message="Nenhuma sincronização registrada." />
         )}
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>Página {runPage} · {query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0} resultados carregados</span><div className="flex gap-2"><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage === 1} onClick={() => setRunPage(p => p - 1)}>Anterior</button><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage * runPageSize >= (query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0)} onClick={() => setRunPage(p => p + 1)}>Próxima</button></div></div>
+        <AdminPagination total={query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0} page={runPage} pageSize={runPageSize} onPageChange={setRunPage} onPageSizeChange={size => { setRunPageSize(size); setRunPage(1); }} />
       </section>
     </>
   );
@@ -319,7 +319,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   const [paymentStatus, setPaymentStatus] = useState("all");
   const [paymentOrder, setPaymentOrder] = useState("newest");
   const [paymentPage, setPaymentPage] = useState(1);
-  const paymentPageSize = 10;
+  const [paymentPageSize, setPaymentPageSize] = useState(5);
   const utils = trpc.useUtils();
   const refund = trpc.admin.refundPayment.useMutation({
     onSuccess: async result => {
@@ -406,6 +406,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
           </table>
           {!d.payments?.length && <p className="py-6 text-center text-sm text-slate-500">Nenhuma contratação ou pagamento registrado.</p>}
         </div>
+        <AdminPagination total={filteredPayments.length} page={paymentPage} pageSize={paymentPageSize} onPageChange={setPaymentPage} onPageSizeChange={size => { setPaymentPageSize(size); setPaymentPage(1); }} />
       </section>
       <section className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Pagamentos por status persistido</h2>
