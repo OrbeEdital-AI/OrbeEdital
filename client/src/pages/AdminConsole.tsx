@@ -15,26 +15,27 @@ import { AdminOrbeAIPage } from "@/pages/OrbeAIPage";
 
 type Section = "radar" | "overview" | "customers" | "sources" | "finance" | "permissions" | "audit" | "settings" | "support" | "ia";
 
+// Uma única entrada por tela existente: agrupamento por objetivo, sem rotas duplicadas.
 const navGroups: { title: string; items: { id: Section; label: string; icon: typeof LayoutDashboard }[] }[] = [
-  { title: "Operação", items: [
+  { title: "Operação de dados", items: [
     { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-    { id: "sources", label: "Fontes e sincronizações", icon: Database },
-    { id: "radar", label: "OrbeRadar", icon: Database },
+    { id: "sources", label: "Fontes, sincronizações e agendamentos", icon: Database },
+    { id: "radar", label: "OrbeRadar", icon: Search },
   ]},
-  { title: "Pessoas e acesso", items: [
-    { id: "customers", label: "Clientes e usuários", icon: Users },
-    { id: "support", label: "Suporte ao cliente", icon: MessageCircle },
-    { id: "permissions", label: "Papéis e permissões", icon: ShieldCheck },
+  { title: "Clientes e suporte", items: [
+    { id: "customers", label: "Clientes e empresas", icon: Users },
+    { id: "permissions", label: "Acesso e permissões", icon: ShieldCheck },
+    { id: "support", label: "Suporte", icon: MessageCircle },
   ]},
-  { title: "Inteligência", items: [
-    { id: "ia", label: "Orbe IA", icon: Sparkles },
+  { title: "Receita", items: [
+    { id: "finance", label: "Assinaturas, pagamentos e planos", icon: Wallet },
   ]},
   { title: "Governança", items: [
     { id: "audit", label: "Auditoria e segurança", icon: History },
   ]},
-  { title: "Gestão", items: [
-    { id: "finance", label: "Planos e financeiro", icon: Wallet },
-    { id: "settings", label: "Configurações gerais", icon: LockKeyhole },
+  { title: "Configuração do produto", items: [
+    { id: "ia", label: "Orbe IA e recomendações", icon: Sparkles },
+    { id: "settings", label: "Configurações e comunicados", icon: LockKeyhole },
   ]},
 ];
 const nav = navGroups.flatMap(group => group.items);
