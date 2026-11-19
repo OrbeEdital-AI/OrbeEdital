@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { CircleAlert, ExternalLink, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { date, money, Loading, ErrorState, NoPermission } from "./common";
+import { date, money, Loading, ErrorState, NoPermission, AdminStatusBadge, EmptyState } from "./common";
 export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const query = trpc.admin.sources.list.useQuery(undefined, {
     enabled: isAdmin,
@@ -295,7 +295,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                 {query.data.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).sort((a: any, b: any) => (runOrder === "newest" ? -1 : 1) * (new Date(a.run.startedAt).getTime() - new Date(b.run.startedAt).getTime())).slice((runPage - 1) * runPageSize, runPage * runPageSize).map((r: any) => (
                   <tr className="border-t" key={r.run.id}>
                     <td className="py-2">{r.sourceName}</td>
-                    <td>{r.run.status}</td>
+                    <td><AdminStatusBadge status={r.run.status} /></td>
                     <td>{date(r.run.startedAt)}</td>
                     <td>{r.run.insertedCount}</td>
                     <td>{r.run.updatedCount}</td>
@@ -306,9 +306,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
             </table>
           </div>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">
-            Nenhuma sincronização registrada.
-          </p>
+          <EmptyState message="Nenhuma sincronização registrada." />
         )}
         <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>Página {runPage} · {query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0} resultados carregados</span><div className="flex gap-2"><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage === 1} onClick={() => setRunPage(p => p - 1)}>Anterior</button><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage * runPageSize >= (query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0)} onClick={() => setRunPage(p => p + 1)}>Próxima</button></div></div>
       </section>
@@ -341,7 +339,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading)
     return <Loading label="Carregando indicadores financeiros…" />;
-  if (query.error) return <ErrorState message={query.error.message} />;
+  if (query.error) return <ErrorState message={query.error.message} onRetry={() => { void query.refetch(); }} />;
   const d = query.data!;
   const filteredPayments = (d.payments ?? []).filter((payment: any) => {
     const text = [payment.customerName, payment.customerEmail, payment.companyName, payment.planName, payment.providerPaymentId].join(" ").toLowerCase();
@@ -397,7 +395,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
                   <td className="p-2"><div className="font-semibold text-slate-800">{payment.customerName || "Cliente"}</div><div className="text-slate-500">{payment.customerEmail || "—"}</div><div className="text-slate-500">{payment.companyName}</div></td>
                   <td className="p-2">{payment.planName || "—"}<div className="text-slate-500">{payment.billingInterval === "annual" ? "Anual" : "Mensal"}</div></td>
                   <td className="p-2 font-semibold">{money(payment.amountCents / 100)}</td>
-                  <td className="p-2">{status}<div className="text-slate-500">Assinatura: {payment.subscriptionStatus || "—"}</div></td>
+                  <td className="p-2"><AdminStatusBadge status={payment.status} /><div className="text-slate-500">Assinatura: {payment.subscriptionStatus || "—"}</div></td>
                   <td className="p-2">{meta.pixQrCode ? "Pix manual" : "Cartão / recorrente"}<div>{payment.paidAt ? date(payment.paidAt) : "Aguardando confirmação"}</div><div className="text-slate-500">{payment.providerPaymentId ? `ID ${payment.providerPaymentId}` : "Sem ID externo"}</div></td>
                   <td className="p-2">{date(payment.contractedAt || payment.createdAt)}</td>
                   <td className="p-2">{payment.renewalAt ? date(payment.renewalAt) : payment.status === "pending" ? "Após confirmação" : "—"}</td>
