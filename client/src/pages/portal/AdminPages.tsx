@@ -23,6 +23,11 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
     onSuccess: () => utils.admin.sources.list.invalidate(),
     onError: e => toast.error(e.message),
   });
+  const [runSearch, setRunSearch] = useState("");
+  const [runStatus, setRunStatus] = useState("all");
+  const [runOrder, setRunOrder] = useState("newest");
+  const [runPage, setRunPage] = useState(1);
+  const runPageSize = 10;
   const [recoveryCnpj, setRecoveryCnpj] = useState("19459687000156");
   const [recoveryFrom, setRecoveryFrom] = useState("2026-01-01");
   const [recoveryTo, setRecoveryTo] = useState("2026-11-19");
@@ -268,6 +273,11 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
       </div>
       <section className="rounded-xl border bg-white p-5">
         <h3 className="font-semibold">Execuções recentes</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <input aria-label="Buscar execuções" placeholder="Buscar fonte" value={runSearch} onChange={e => { setRunSearch(e.target.value); setRunPage(1); }} className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
+          <select aria-label="Filtrar status das execuções" value={runStatus} onChange={e => { setRunStatus(e.target.value); setRunPage(1); }} className="rounded-lg border px-3 py-2 text-sm"><option value="all">Todos os status</option><option value="completed">Concluídas</option><option value="failed">Com falha</option><option value="running">Em andamento</option></select>
+          <select aria-label="Ordenar execuções" value={runOrder} onChange={e => setRunOrder(e.target.value)} className="rounded-lg border px-3 py-2 text-sm"><option value="newest">Mais recentes</option><option value="oldest">Mais antigas</option></select>
+        </div>
         {query.data?.runs.length ? (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[600px] text-left text-sm">
@@ -282,7 +292,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
                 </tr>
               </thead>
               <tbody>
-                {query.data.runs.slice(0, 12).map((r: any) => (
+                {query.data.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).sort((a: any, b: any) => (runOrder === "newest" ? -1 : 1) * (new Date(a.run.startedAt).getTime() - new Date(b.run.startedAt).getTime())).slice((runPage - 1) * runPageSize, runPage * runPageSize).map((r: any) => (
                   <tr className="border-t" key={r.run.id}>
                     <td className="py-2">{r.sourceName}</td>
                     <td>{r.run.status}</td>
@@ -300,12 +310,18 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
             Nenhuma sincronização registrada.
           </p>
         )}
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-600"><span>Página {runPage} · {query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0} resultados carregados</span><div className="flex gap-2"><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage === 1} onClick={() => setRunPage(p => p - 1)}>Anterior</button><button className="rounded border px-3 py-1.5 disabled:opacity-40" disabled={runPage * runPageSize >= (query.data?.runs.filter((r: any) => (runStatus === "all" || r.run.status === runStatus) && String(r.sourceName ?? "").toLowerCase().includes(runSearch.toLowerCase())).length ?? 0)} onClick={() => setRunPage(p => p + 1)}>Próxima</button></div></div>
       </section>
     </>
   );
 }
 
 export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
+  const [paymentSearch, setPaymentSearch] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("all");
+  const [paymentOrder, setPaymentOrder] = useState("newest");
+  const [paymentPage, setPaymentPage] = useState(1);
+  const paymentPageSize = 10;
   const utils = trpc.useUtils();
   const refund = trpc.admin.refundPayment.useMutation({
     onSuccess: async result => {
@@ -327,6 +343,11 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
     return <Loading label="Carregando indicadores financeiros…" />;
   if (query.error) return <ErrorState message={query.error.message} />;
   const d = query.data!;
+  const filteredPayments = (d.payments ?? []).filter((payment: any) => {
+    const text = [payment.customerName, payment.customerEmail, payment.companyName, payment.planName, payment.providerPaymentId].join(" ").toLowerCase();
+    return (paymentStatus === "all" || payment.status === paymentStatus) && text.includes(paymentSearch.toLowerCase());
+  }).sort((a: any, b: any) => (paymentOrder === "newest" ? -1 : 1) * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
+  const visiblePayments = filteredPayments.slice((paymentPage - 1) * paymentPageSize, paymentPage * paymentPageSize);
   const cards = [
     ["Assinaturas ativas", d.activeSubscriptions],
     ["Receita mensal recorrente", money(d.mrrCents / 100)],
@@ -356,13 +377,18 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
           </div>
           <button type="button" onClick={() => query.refetch()} className="rounded-lg border px-3 py-2 text-xs font-semibold">Atualizar</button>
         </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <input aria-label="Buscar pagamentos" placeholder="Buscar cliente, empresa, plano ou ID" value={paymentSearch} onChange={e => { setPaymentSearch(e.target.value); setPaymentPage(1); }} className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
+          <select aria-label="Filtrar pagamentos" value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value); setPaymentPage(1); }} className="rounded-lg border px-3 py-2 text-sm"><option value="all">Todos os status</option><option value="approved">Pagos</option><option value="pending">Pendentes</option><option value="refunded">Estornados</option><option value="cancelled">Cancelados</option></select>
+          <select aria-label="Ordenar pagamentos" value={paymentOrder} onChange={e => setPaymentOrder(e.target.value)} className="rounded-lg border px-3 py-2 text-sm"><option value="newest">Mais recentes</option><option value="oldest">Mais antigos</option></select>
+        </div>
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left text-xs">
             <thead className="border-b text-slate-500">
               <tr><th className="p-2">Cliente / empresa</th><th className="p-2">Plano</th><th className="p-2">Valor</th><th className="p-2">Status</th><th className="p-2">Meio / pagamento</th><th className="p-2">Contratação</th><th className="p-2">Renovação</th><th className="p-2">Ação</th></tr>
             </thead>
             <tbody>
-              {(d.payments ?? []).map((payment: any) => {
+              {visiblePayments.map((payment: any) => {
                 const status = payment.status === "approved" ? "Pago" : payment.status === "pending" ? "Aguardando pagamento" : payment.status === "refunded" ? "Estornado" : payment.status === "cancelled" ? "Cancelado" : payment.status;
                 let meta: any = {};
                 try { meta = JSON.parse(payment.rawStatus || "{}"); } catch { /* optional metadata */ }
