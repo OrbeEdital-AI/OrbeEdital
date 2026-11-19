@@ -506,9 +506,45 @@ export function OpportunityList({
   );
 }
 
+function DetailPagination({ total, page, pageSize, onPageChange, onPageSizeChange, noun }: {
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  noun: string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  return (
+    <nav aria-label={`Paginação de ${noun}`} className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm">
+      <label className="flex items-center gap-2 text-slate-600">
+        Exibir:
+        <select aria-label={`Quantidade de ${noun} por página`} value={pageSize} onChange={event => onPageSizeChange(Number(event.target.value))} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-slate-800">
+          {[5, 10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}
+        </select>
+      </label>
+      <span className="text-slate-600">{total ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, total)} de {total} {noun}</span>
+      <div className="flex items-center gap-2">
+        <label htmlFor={`detail-page-${noun}`} className="text-slate-600">Página:</label>
+        <select id={`detail-page-${noun}`} value={currentPage} onChange={event => onPageChange(Number(event.target.value))} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-slate-800">
+          {Array.from({ length: totalPages }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}
+        </select>
+        <button type="button" aria-label={`Página anterior de ${noun}`} disabled={currentPage === 1} onClick={() => onPageChange(currentPage - 1)} className="rounded-md border border-slate-300 p-1.5 disabled:opacity-40"><ChevronLeft size={16} /></button>
+        <button type="button" aria-label={`Próxima página de ${noun}`} disabled={currentPage === totalPages} onClick={() => onPageChange(currentPage + 1)} className="rounded-md border border-slate-300 p-1.5 disabled:opacity-40"><ChevronRight size={16} /></button>
+      </div>
+    </nav>
+  );
+}
+
 export function OpportunityDetailPage() {
   const [, params] = useRoute("/app/opportunities/:id");
   const id = params?.id;
+  const [itemsPage, setItemsPage] = useState(1);
+  const [itemsPageSize, setItemsPageSize] = useState(5);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(5);
+  useEffect(() => { setItemsPage(1); setHistoryPage(1); }, [id]);
   const [checkedDocuments, setCheckedDocuments] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem("orbe-edital-checklist:" + id) || "{}"); } catch { return {}; }
   });
@@ -550,6 +586,9 @@ export function OpportunityDetailPage() {
   const item = query.data!;
   const pncpHistory = item.pncpHistory;
   const isPncpHistory = pncpHistory !== undefined;
+  const historyEntries = isPncpHistory ? (pncpHistory ?? []) : item.history;
+  const currentItemsPage = Math.min(itemsPage, Math.max(1, Math.ceil(item.items.length / itemsPageSize)));
+  const currentHistoryPage = Math.min(historyPage, Math.max(1, Math.ceil(historyEntries.length / historyPageSize)));
   return (
     <div className="space-y-5">
       <Link
@@ -766,7 +805,7 @@ export function OpportunityDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {item.items.map((row: any) => (
+                {item.items.slice((currentItemsPage - 1) * itemsPageSize, currentItemsPage * itemsPageSize).map((row: any) => (
                   <tr className="border-t" key={row.id}>
                     <td className="py-2">{row.itemNumber ?? "—"}</td>
                     <td>{row.description}</td>
@@ -783,6 +822,7 @@ export function OpportunityDetailPage() {
             A fonte não forneceu itens nesta consulta.
           </p>
         )}
+        {item.items.length > 0 && <DetailPagination total={item.items.length} page={currentItemsPage} pageSize={itemsPageSize} onPageChange={setItemsPage} onPageSizeChange={size => { setItemsPageSize(size); setItemsPage(1); }} noun="itens" />}
       </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="font-semibold text-[#102B4E]">Histórico de atualizações</h3>
@@ -803,7 +843,7 @@ export function OpportunityDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {pncpHistory.map((event: any) => (
+                {pncpHistory.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize).map((event: any) => (
                   <tr className="border-b border-slate-100 align-top last:border-0" key={event.id}>
                     <td className="px-3 py-3 font-medium text-slate-800">{event.event}</td>
                     <td className="max-w-sm break-words px-3 py-3 text-slate-700">{event.name}</td>
@@ -818,7 +858,7 @@ export function OpportunityDetailPage() {
           <p className="mt-3 text-sm text-slate-500">O PNCP ainda não registrou eventos para esta contratação.</p>
         ) : item.history.length ? (
           <ul className="mt-4 space-y-3">
-            {item.history.map((event: any) => {
+            {item.history.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize).map((event: any) => {
               const previousValues = event.previousValues ?? {};
               const newValues = event.newValues ?? {};
               const previousItems = previousValues.items ?? {};
@@ -881,6 +921,7 @@ export function OpportunityDetailPage() {
             Ainda não há histórico de alterações para esta oportunidade.
           </p>
         )}
+        {historyEntries.length > 0 && <DetailPagination total={historyEntries.length} page={currentHistoryPage} pageSize={historyPageSize} onPageChange={setHistoryPage} onPageSizeChange={size => { setHistoryPageSize(size); setHistoryPage(1); }} noun="eventos" />}
       </section>
     </div>
   );
