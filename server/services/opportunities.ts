@@ -199,7 +199,7 @@ export async function getOpportunityDetail(id: string, userId: string) {
     || buildPncpHistoryUrl(pncpHistoryInput) !== null;
   const [storedItems, history, saved, pncpHistory] = await Promise.all([
     db.select().from(opportunityItems).where(eq(opportunityItems.opportunityId, id)),
-    pncpBacked ? Promise.resolve([]) : db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
+    db.select().from(opportunityHistory).where(eq(opportunityHistory.opportunityId, id)).orderBy(desc(opportunityHistory.happenedAt)).limit(30),
     db.select({ id: favorites.id }).from(favorites).where(and(eq(favorites.userId, userId), eq(favorites.opportunityId, id))).limit(1),
     pncpBacked ? fetchPncpHistory(pncpHistoryInput).catch(() => null) : Promise.resolve(undefined),
   ]);
