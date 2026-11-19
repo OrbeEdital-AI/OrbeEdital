@@ -530,6 +530,15 @@ export const appRouter = router({
       };
     }),
     sources: router({
+      candidateCatalog: sourceOperatorProcedure.query(() => ({
+        visibility: "admin_only" as const,
+        reviewedAt: "2026-11-19",
+        candidates: [
+          { name: "TCE-RS — LicitaCon", url: "https://dados.tce.rs.gov.br/", access: "Arquivos CSV públicos; não é API REST confirmada", priority: "alta", status: "avaliar", notes: "Avaliar atualizações diárias, oportunidades abertas e deduplicação com PNCP." },
+          { name: "Portal da Transparência — CGU", url: "https://api.portaldatransparencia.gov.br/", access: "API documentada; requer chave de acesso", priority: "média", status: "avaliar acesso", notes: "Verificar elegibilidade gratuita e sobreposição com Compras.gov.br." },
+          { name: "Portal Brasileiro de Dados Abertos", url: "https://dados.gov.br/", access: "Catálogo público de bases e APIs; não fornece diretamente licitações", priority: "alta", status: "descoberta", notes: "Usar no OrbeRadar para descobrir fontes municipais e estaduais." },
+        ],
+      })),
       list: sourceOperatorProcedure.query(async () => {
         await ensureBuiltInConnectors();
         const db = getDb();
