@@ -111,9 +111,13 @@ export const adminUsersRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "Este e-mail já está cadastrado em outra conta." });
         }
 
-        const [membership] = await tx.select({ companyId: companyMembers.companyId })
+        const memberships = await tx.select({ companyId: companyMembers.companyId })
           .from(companyMembers).where(eq(companyMembers.userId, target.id))
-          .orderBy(companyMembers.createdAt).limit(1);
+          .orderBy(companyMembers.createdAt).limit(2);
+        if (memberships.length > 1) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este cliente possui mais de uma empresa vinculada. Identifique a empresa correta antes de alterar dados empresariais." });
+        }
+        const membership = memberships[0];
         if (input.cnpj && membership) {
           const [duplicateCnpj] = await tx.select({ id: companies.id }).from(companies)
             .where(eq(companies.cnpj, input.cnpj)).limit(1);
@@ -203,9 +207,13 @@ export const adminUsersRouter = router({
         if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
         if (target.role === "superadmin") throw new TRPCError({ code: "FORBIDDEN", message: "Não é permitido alterar o plano de uma conta superadmin." });
 
-        const [membership] = await tx.select({ companyId: companyMembers.companyId })
+        const memberships = await tx.select({ companyId: companyMembers.companyId })
           .from(companyMembers).where(eq(companyMembers.userId, input.userId))
-          .orderBy(companyMembers.createdAt).limit(1);
+          .orderBy(companyMembers.createdAt).limit(2);
+        if (memberships.length > 1) {
+          throw new TRPCError({ code: "CONFLICT", message: "Este cliente possui mais de uma empresa vinculada. Não é seguro alterar o plano sem identificar a empresa correta." });
+        }
+        const membership = memberships[0];
         if (!membership) throw new TRPCError({ code: "NOT_FOUND", message: "Este usuário não possui empresa vinculada." });
 
         const [plan] = await tx.select({ id: plans.id, code: plans.code, name: plans.name })
