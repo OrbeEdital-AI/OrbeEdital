@@ -494,14 +494,15 @@ export const appRouter = router({
     overview: sourceOperatorProcedure.query(async () => {
       await ensureBuiltInConnectors();
       const db = getDb();
-      const [userCount, opportunityCount, sourceRows, activeSubscribers, canceledSubscriptions] = await Promise.all([
+      const [userCount, opportunityCount, sourceRows, activeSubscribers, canceledSubscriptions, recentRuns] = await Promise.all([
         db.select({ n: count() }).from(users),
         db.select({ n: count() }).from(opportunities),
         db.select().from(connectors),
         db.select({ n: count() }).from(subscriptions).where(eq(subscriptions.status, "active")),
         db.select({ n: count() }).from(subscriptions).where(inArray(subscriptions.status, ["cancelled", "canceled"])),
+        db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(8),
       ]);
-      return { users: userCount[0]?.n ?? 0, opportunities: opportunityCount[0]?.n ?? 0, sourceCount: sourceRows.length, sources: sourceRows, activeSubscribers: activeSubscribers[0]?.n ?? 0, canceledSubscriptions: canceledSubscriptions[0]?.n ?? 0 };
+      return { users: userCount[0]?.n ?? 0, opportunities: opportunityCount[0]?.n ?? 0, sourceCount: sourceRows.length, sources: sourceRows, recentRuns, activeSubscribers: activeSubscribers[0]?.n ?? 0, canceledSubscriptions: canceledSubscriptions[0]?.n ?? 0 };
     }),
     sources: router({
       list: sourceOperatorProcedure.query(async () => {
