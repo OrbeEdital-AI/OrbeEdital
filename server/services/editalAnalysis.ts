@@ -601,6 +601,42 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       ?.map(part => part.text || "")
       .join("") || "";
     const analysis = parseAnalysis(answer);
+    // A separate, smaller Gemini request covers technical drawings and attachments.
+    // If the provider is overloaded, preserve the completed main analysis and
+    // explicitly mark the complementary files as pending instead of claiming success.
+    if (complementaryNames.length) {
+      try {
+        const supplementaryResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [{ role: "user", parts: complementaryParts }],
+            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2500 },
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+        if (!supplementaryResponse.ok) throw new Error("HTTP " + supplementaryResponse.status);
+        const supplementaryPayload = await supplementaryResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+        const supplementaryAnswer = supplementaryPayload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+        const supplementary = parseAnalysis(supplementaryAnswer);
+        for (const field of ["qualificationRequirements", "documentChecklist", "risks", "attentionPoints", "missingInformation"] as const) {
+          analysis[field] = [...new Set([...analysis[field], ...supplementary[field]])];
+        }
+        const evidenceKeys = new Set(analysis.evidence.map(item => [item.document, item.page, item.topic, item.excerpt].join("|")));
+        for (const item of supplementary.evidence) {
+          const key = [item.document, item.page, item.topic, item.excerpt].join("|");
+          if (!evidenceKeys.has(key)) { analysis.evidence.push(item); evidenceKeys.add(key); }
+        }
+      } catch (error) {
+        console.warn("[edital-analysis] complementary batch pending", error instanceof Error ? error.message : "unknown");
+        documentsAnalyzed = documentsAnalyzed.filter(name => !complementaryNames.includes(name));
+        documentsNotProcessed.push(...complementaryNames.map(name => name + " (análise complementar indisponível; tente analisar novamente)"));
+      }
+    }
+    // Checklist lists deliverables; qualification text belongs in its own section.
+    const qualificationText = new Set(analysis.qualificationRequirements.map(item => item.trim().toLocaleLowerCase("pt-BR")));
+    analysis.documentChecklist = [...new Set(analysis.documentChecklist)].filter(item => !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")));
     if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
     if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
     // Do not let a legacy openingDate value (often the proposal-receipt start) be reported as a conflict with the public session.
