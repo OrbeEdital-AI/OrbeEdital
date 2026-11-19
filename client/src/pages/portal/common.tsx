@@ -15,6 +15,7 @@ export type AnyOpportunity = {
   lastSyncedAt?: Date | string | null;
   sourceUrl: string | null;
   isFavorite?: boolean;
+  deadlineExtended?: boolean;
 };
 export const money = (value: string | number | null | undefined) => {
   if (value == null || value === "" || !Number.isFinite(Number(value))) return "Valor não informado";
@@ -98,6 +99,51 @@ export function ErrorState({
     </div>
   );
 }
+export function OpportunityStatusBadges({
+  status,
+  deadlineExtended = false,
+}: {
+  status: string;
+  deadlineExtended?: boolean;
+}) {
+  const statusClasses: Record<string, string> = {
+    receiving_proposals: "bg-emerald-50 text-emerald-800",
+    published: "bg-sky-50 text-sky-800",
+    open: "bg-emerald-50 text-emerald-800",
+    in_progress: "bg-emerald-50 text-emerald-800",
+    judging: "bg-violet-50 text-violet-800",
+    homologated: "bg-slate-100 text-slate-800",
+    awarded: "bg-indigo-50 text-indigo-800",
+    suspended: "bg-amber-100 text-amber-900",
+    revoked: "bg-rose-100 text-rose-800",
+    annulled: "bg-rose-100 text-rose-800",
+    closed: "bg-slate-100 text-slate-700",
+    unknown: "bg-slate-100 text-slate-700",
+  };
+  const showStatus = status !== "unknown" || !deadlineExtended;
+
+  return (
+    <>
+      {showStatus && (
+        <span
+          aria-label={`Situação: ${statusLabel(status)}`}
+          className={`inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${statusClasses[status] ?? statusClasses.unknown}`}
+        >
+          {statusLabel(status)}
+        </span>
+      )}
+      {deadlineExtended && (
+        <span
+          aria-label="Prazo prorrogado"
+          title="A fonte informa que o prazo foi prorrogado."
+          className="inline-flex rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800"
+        >
+          Prazo prorrogado
+        </span>
+      )}
+    </>
+  );
+}
 export function statusLabel(status: string) {
   return (
     (
@@ -106,8 +152,13 @@ export function statusLabel(status: string) {
         published: "Publicada no PNCP",
         open: "Aberta",
         in_progress: "Em andamento",
+        judging: "Em julgamento",
+        homologated: "Homologada",
+        awarded: "Adjudicada",
         unknown: "Situação não informada",
         suspended: "Suspensa",
+        revoked: "Revogada",
+        annulled: "Anulada",
         closed: "Encerrada",
       } as Record<string, string>
     )[status] ?? status

@@ -24,7 +24,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import NotFound from "@/pages/NotFound";
-import { brazilGreeting, date, dateTime, money, Loading, ErrorState, statusLabel } from "./common";
+import { brazilGreeting, date, dateTime, money, Loading, ErrorState, OpportunityStatusBadges, statusLabel } from "./common";
 import type { AnyOpportunity } from "./common";
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -439,9 +439,7 @@ export function OpportunityList({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800">
-                  {statusLabel(item.status)}
-                </span>
+                <OpportunityStatusBadges status={item.status} deadlineExtended={item.deadlineExtended} />
                 <span className="text-xs text-slate-500">
                   {item.sourceName ?? "Fonte oficial"}
                 </span>
@@ -563,11 +561,9 @@ export function OpportunityDetailPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-4xl">
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold">
-              {item.status === "unknown"
-                ? "Situação não informada"
-                : item.status}
-            </span>
+            <div className="flex flex-wrap gap-2">
+              <OpportunityStatusBadges status={item.status} deadlineExtended={item.deadlineExtended} />
+            </div>
             <h2 className="mt-3 text-2xl font-bold leading-tight text-[#102B4E]">
               {item.title}
             </h2>

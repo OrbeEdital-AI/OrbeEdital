@@ -13,7 +13,7 @@ import {
   type SafeUser,
 } from "../../drizzle/schema";
 import { getDb } from "../db";
-import { buildPncpDetailUrl, normalizeProcurementStatus } from "../connectors/presentation";
+import { buildPncpDetailUrl, hasDeadlineExtension, normalizeProcurementStatus } from "../connectors/presentation";
 import { indexOpportunityItems } from "./pncpItemIndex";
 import { buildPncpHistoryUrl, fetchPncpHistory } from "./pncpHistory";
 
@@ -74,6 +74,7 @@ function presentOpportunity(opportunity: typeof opportunities.$inferSelect) {
     ...publicOpportunity,
     sourceUrl: buildPncpDetailUrl({ agencyCnpj: opportunity.agencyCnpj, raw }),
     status: normalizeProcurementStatus(raw, opportunity.status),
+    deadlineExtended: hasDeadlineExtension(raw),
   };
 }
 

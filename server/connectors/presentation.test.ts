@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildPncpDetailUrl, normalizeProcurementStatus } from "./presentation";
+import {
+  buildPncpDetailUrl,
+  hasDeadlineExtension,
+  normalizeProcurementStatus,
+} from "./presentation";
 
 describe("PNCP public presentation helpers", () => {
   it("builds a human PNCP page from the direct PNCP payload", () => {
@@ -32,6 +36,26 @@ describe("PNCP public presentation helpers", () => {
   it("maps the official PNCP publication state instead of showing unknown", () => {
     expect(normalizeProcurementStatus({ situacaoCompraNomePncp: "Divulgada no PNCP" })).toBe("published");
     expect(normalizeProcurementStatus({ situacaoCompraNome: "Divulgada no PNCP" })).toBe("published");
+  });
+
+  it("maps annulled notices even when another source field reports an extension", () => {
+    const raw = {
+      situacaoCompraNomePncp: "Edital anulado",
+      status: "PRORROGADA",
+    };
+    expect(normalizeProcurementStatus(raw)).toBe("annulled");
+    expect(hasDeadlineExtension(raw)).toBe(true);
+  });
+
+  it("detects a deadline extension from an explicit history event", () => {
+    expect(hasDeadlineExtension({
+      eventos: [{ nomeEvento: "Prorrogação do prazo para envio de propostas" }],
+    })).toBe(true);
+    expect(normalizeProcurementStatus({ status: "PRORROGADA" })).toBe("unknown");
+  });
+
+  it("does not infer a deadline extension only from a current deadline date", () => {
+    expect(hasDeadlineExtension({ dataEncerramentoProposta: "2026-12-15T23:59:00" })).toBe(false);
   });
 
   it("preserves a safe fallback when the source does not provide a status", () => {
