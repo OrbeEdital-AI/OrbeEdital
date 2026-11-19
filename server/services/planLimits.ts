@@ -67,6 +67,14 @@ async function getCompanyCounts(companyId: string, userIds: string[]) {
   };
 }
 
+// Lightweight login gate: avoid counting favorites and saved searches before rendering.
+export async function getSubscriptionAccess(userId: string) {
+  const companyId = await getCompanyId(userId);
+  if (!companyId) return { hasSubscription: false };
+  const plan = await getActivePlan(companyId);
+  return { hasSubscription: Boolean(plan) };
+}
+
 export async function getPlanUsageSummary(userId: string) {
   const db = getDb();
   const companyId = await getCompanyId(userId);
