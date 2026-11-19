@@ -191,3 +191,29 @@ export function AdminStatusBadge({ status }: { status: string | null | undefined
 export function EmptyState({ message }: { message: string }) {
   return <p role="status" className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-500">{message}</p>;
 }
+
+/** Paginação compartilhada: 5, 10, 20 ou 50 itens por página. */
+export function AdminPagination({ total, page, pageSize, onPageChange, onPageSizeChange }: {
+  total: number; page: number; pageSize: number;
+  onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(1, page), pages);
+  const start = total ? (current - 1) * pageSize + 1 : 0;
+  const end = Math.min(current * pageSize, total);
+  const first = Math.max(1, Math.min(current - 2, pages - 4));
+  const numbers = Array.from({ length: Math.min(5, pages) }, (_, i) => first + i);
+  return <nav aria-label="Paginação da lista" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-600">
+    <div className="flex flex-wrap items-center gap-2"><label htmlFor="admin-page-size">Exibir:</label>
+      <select id="admin-page-size" value={pageSize} onChange={e => onPageSizeChange(Number(e.target.value))} className="rounded-md border bg-white px-2 py-1.5 text-sm">{[5,10,20,50].map(n => <option key={n} value={n}>{n}</option>)}</select>
+      <span>{start}–{end} de {total} itens</span>
+    </div>
+    <div className="flex flex-wrap items-center gap-1"><span className="mr-1">Página:</span>
+      <button type="button" aria-label="Página anterior" disabled={current <= 1} onClick={() => onPageChange(current - 1)} className="rounded border px-2 py-1.5 disabled:opacity-40">‹</button>
+      {first > 1 && <span aria-hidden="true">…</span>}
+      {numbers.map(n => <button key={n} type="button" aria-label={`Página ${n}`} aria-current={n === current ? "page" : undefined} onClick={() => onPageChange(n)} className={`min-w-7 rounded border px-2 py-1.5 ${n === current ? "border-cyan-700 bg-cyan-700 font-bold text-white" : "bg-white hover:bg-slate-50"}`}>{n}</button>)}
+      {first + numbers.length - 1 < pages && <span aria-hidden="true">…</span>}
+      <button type="button" aria-label="Próxima página" disabled={current >= pages} onClick={() => onPageChange(current + 1)} className="rounded border px-2 py-1.5 disabled:opacity-40">›</button>
+    </div>
+  </nav>;
+}
