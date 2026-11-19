@@ -3,7 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { auditLogs, companyMembers, plans, subscriptions, supportMessages, supportTickets, users } from "../drizzle/schema";
 import { getDb } from "./db";
-import { authenticatedProcedure, router, superadminProcedure } from "./_core/trpc";
+import { authenticatedProcedure, router, supportOperatorProcedure } from "./_core/trpc";
 
 const ticketStatus = z.enum(["open", "in_progress", "waiting_customer", "resolved", "closed"]);
 const ticketPriority = z.enum(["normal", "high"]);
@@ -77,7 +77,7 @@ export const supportRouter = router({
     });
   }),
 
-  adminQueue: superadminProcedure.input(z.object({
+  adminQueue: supportOperatorProcedure.input(z.object({
     status: ticketStatus.optional(),
     priority: ticketPriority.optional(),
     query: z.string().trim().max(160).optional(),
@@ -103,7 +103,7 @@ export const supportRouter = router({
       .sort((a, b) => (a.priority === b.priority ? 0 : a.priority === "high" ? -1 : 1));
   }),
 
-  adminMessages: superadminProcedure.input(z.object({ ticketId: z.string().uuid() })).query(async ({ input }) => {
+  adminMessages: supportOperatorProcedure.input(z.object({ ticketId: z.string().uuid() })).query(async ({ input }) => {
     return getDb().select({
       id: supportMessages.id, ticketId: supportMessages.ticketId, senderUserId: supportMessages.senderUserId,
       body: supportMessages.body, isInternal: supportMessages.isInternal, createdAt: supportMessages.createdAt,
@@ -112,7 +112,7 @@ export const supportRouter = router({
       .where(eq(supportMessages.ticketId, input.ticketId)).orderBy(supportMessages.createdAt);
   }),
 
-  adminReply: superadminProcedure.input(z.object({
+  adminReply: supportOperatorProcedure.input(z.object({
     ticketId: z.string().uuid(), message: messageBody, internal: z.boolean().default(false),
   })).mutation(async ({ input, ctx }) => {
     const db = getDb();
@@ -135,7 +135,7 @@ export const supportRouter = router({
     });
   }),
 
-  adminUpdate: superadminProcedure.input(z.object({
+  adminUpdate: supportOperatorProcedure.input(z.object({
     ticketId: z.string().uuid(),
     status: ticketStatus.optional(),
     priority: ticketPriority.optional(),
@@ -145,9 +145,9 @@ export const supportRouter = router({
     const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, input.ticketId)).limit(1);
     if (!ticket) throw new TRPCError({ code: "NOT_FOUND", message: "Atendimento não encontrado." });
     if (input.assignedToUserId) {
-      const [assignee] = await db.select({ id: users.id, role: users.role }).from(users)
+      const [assignee] = await db.select({ id: users.id, role: users.role, suspendedAt: users.suspendedAt }).from(users)
         .where(eq(users.id, input.assignedToUserId)).limit(1);
-      if (!assignee || !["superadmin", "admin", "support"].includes(assignee.role)) {
+      if (!assignee || !["superadmin", "admin", "support"].includes(assignee.role) && !assignee.suspendedAt) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Responsável deve ser um usuário da equipe administrativa ou de suporte." });
       }
     }
