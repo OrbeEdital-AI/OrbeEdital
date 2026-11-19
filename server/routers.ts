@@ -1,4 +1,5 @@
 import { probeTcePe } from "./connectors/tce-pe";
+import { probeSergipe } from "./connectors/sergipe";
 import { runRadarAutomatic } from "./services/orberadar-automatic";
 import { listRadarReview, setRadarReview, verifyRadarCandidate } from "./services/orberadar-review";
 import { persistRadarRun } from "./services/orberadar-staging";
@@ -458,6 +459,7 @@ export const appRouter = router({
       }),
     }),
 
+    radarSergipePilot: superadminProcedure.mutation(async () => probeSergipe()),
     radarTcePePilot: superadminProcedure.input(z.object({year:z.number().int().min(2011).max(2030)})).mutation(async ({input}) => {
       const result = await probeTcePe(input.year);
       return { ...result, notices: result.notices.slice(0, 100), displayed: Math.min(result.notices.length, 100), totalExtracted: result.notices.length };
