@@ -1,3 +1,4 @@
+import { AdminPagination } from "./portal/common";
 import { useState } from "react";
 import { Search, RefreshCw, ShieldCheck, ClipboardList } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -13,8 +14,9 @@ function formatDate(value: Date | string | null | undefined) {
 export default function AdminAuditPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
   const audit = trpc.adminUsers.audit.useQuery(
-    { query: query.trim() || undefined, page, pageSize: 25 },
+    { query: query.trim() || undefined, page, pageSize },
     { retry: false, placeholderData: previous => previous }
   );
 
@@ -69,13 +71,7 @@ export default function AdminAuditPage() {
             <p className="mt-1 text-sm text-slate-500">As próximas operações administrativas instrumentadas aparecerão aqui.</p>
           </div>
         )}
-        <div className="flex items-center justify-between border-t px-5 py-3">
-          <span className="text-xs text-slate-500">Página {audit.data?.page ?? page} de {Math.max(1, audit.data?.pageCount ?? 1)}</span>
-          <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">Anterior</button>
-            <button disabled={page >= (audit.data?.pageCount ?? 1)} onClick={() => setPage(value => value + 1)} className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40">Próxima</button>
-          </div>
-        </div>
+        <AdminPagination total={audit.data?.total ?? 0} page={page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
       </div>
     </section>
   );
