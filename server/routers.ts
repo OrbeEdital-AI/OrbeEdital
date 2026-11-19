@@ -141,6 +141,9 @@ export const appRouter = router({
       if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha incorretos." });
       }
+      if (user.suspendedAt) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta está suspensa. Entre em contato com o suporte do OrbeEdital." });
+      }
       try {
         await touchLastSignedIn(user.id);
         const { passwordHash: _passwordHash, ...safeUser } = user;
