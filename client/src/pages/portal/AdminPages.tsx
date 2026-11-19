@@ -475,7 +475,7 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; onOpenSources?: () => void }) {
+export function AdminOverview({ isAdmin, onOpenSources, role = "superadmin" }: { isAdmin: boolean; onOpenSources?: () => void; role?: string }) {
   const query = trpc.admin.overview.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
   if (query.isLoading) return <Loading label="Carregando visão geral…" />;
@@ -524,10 +524,10 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
 
       <section className="grid gap-3 md:grid-cols-3">
         {[
-          { title: "Clientes e assinaturas", detail: "Contas, planos e acessos", href: "/app/admin/customers" },
-          { title: "Financeiro", detail: "Pagamentos e cobranças", href: "/app/admin/finance" },
-          { title: "Atendimento", detail: "Solicitações dos clientes", href: "/app/admin/support" },
-        ].map(item => (
+          { title: "Clientes e assinaturas", detail: "Contas, planos e acessos", href: "/app/admin/customers", roles: ["superadmin"] },
+          { title: "Financeiro", detail: "Pagamentos e cobranças", href: "/app/admin/finance", roles: ["superadmin", "admin"] },
+          { title: "Atendimento", detail: "Solicitações dos clientes", href: "/app/admin/support", roles: ["superadmin", "admin"] },
+        ].filter(item => item.roles.includes(role)).map(item => (
           <Link key={item.title} href={item.href} className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-cyan-300 hover:shadow-sm">
             <p className="text-sm font-bold text-[#102B4E]">{item.title}</p>
             <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
