@@ -23,6 +23,17 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
     onSuccess: () => utils.admin.sources.list.invalidate(),
     onError: e => toast.error(e.message),
   });
+  const [recoveryCnpj, setRecoveryCnpj] = useState("19459687000156");
+  const [recoveryFrom, setRecoveryFrom] = useState("2026-01-01");
+  const [recoveryTo, setRecoveryTo] = useState("2026-11-19");
+  const recover = trpc.admin.sources.recoverPncpByCnpj.useMutation({
+    onSuccess: async result => {
+      toast.success(`Recuperação concluída: ${result.inserted} novos e ${result.updated} atualizados. Confira a cobertura e os registros na lista de execuções.`);
+      await utils.admin.sources.list.invalidate();
+      await utils.admin.overview.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
   const [taskUids, setTaskUids] = useState<Record<string, string>>({});
   const [frequencyMinutes, setFrequencyMinutes] = useState<
     Record<string, string>
@@ -56,6 +67,31 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
       <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
         <strong>Agendamentos externos: {scheduledTaskCount}/2 associações registradas.</strong> O painel mostra os callbacks gravados no OrbeEdital, mas não consulta o histórico interno do Heartbeat. Confira lá se cada tarefa continua habilitada e sem falhas; a tabela abaixo registra as execuções recebidas pelo aplicativo. A sincronização manual segue disponível.
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold text-[#102B4E]">Recuperação direcionada de licitações — PNCP</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Pesquise publicações por CNPJ do órgão e intervalo de publicação. A operação consulta o PNCP, registra a sincronização e gera trilha de auditoria. Não garante que editais anulados ou fora dos filtros estejam abertos.</p>
+        <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={event => {
+          event.preventDefault();
+          const cnpj = recoveryCnpj.replace(/\D/g, "");
+          if (cnpj.length !== 14 || recoveryFrom > recoveryTo) {
+            toast.error("Informe um CNPJ de 14 dígitos e um intervalo válido.");
+            return;
+          }
+          recover.mutate({ cnpj, publicationFrom: recoveryFrom.replace(/-/g, ""), publicationTo: recoveryTo.replace(/-/g, ""), modalityCodes: [6], maxPages: 3 });
+        }}>
+          <label className="text-xs font-medium text-slate-600">CNPJ do órgão
+            <input value={recoveryCnpj} onChange={e => setRecoveryCnpj(e.target.value)} inputMode="numeric" maxLength={18} required className="mt-1 block w-44 rounded-lg border px-3 py-2 text-sm" placeholder="14 dígitos" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">Publicação inicial
+            <input type="date" value={recoveryFrom} onChange={e => setRecoveryFrom(e.target.value)} required className="mt-1 block rounded-lg border px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">Publicação final
+            <input type="date" value={recoveryTo} onChange={e => setRecoveryTo(e.target.value)} required className="mt-1 block rounded-lg border px-3 py-2 text-sm" />
+          </label>
+          <button type="submit" disabled={recover.isPending} className="rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{recover.isPending ? "Consultando PNCP…" : "Executar recuperação"}</button>
+        </form>
+        <p className="mt-3 text-xs text-amber-800">Caso de referência: Fundo Municipal de Educação de Pedro Afonso/TO — controle PNCP 19459687000156-1-000030/2026. O resultado deve ser conferido na fonte oficial.</p>
+      </section>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "Fontes cadastradas", value: allSources.length, tone: "slate" },
