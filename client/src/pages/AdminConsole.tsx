@@ -344,7 +344,7 @@ function PermissionsPage() {
   const rows: { name: string; endpoint: string; allowed: readonly Role[]; note?: string }[] = [
     { name: "Consultar painel e fontes", endpoint: "admin.overview / admin.sources.*", allowed: ["superadmin", "admin", "source_operator"], note: "Inclui sincronizar, configurar e recuperar PNCP." },
     { name: "Financeiro e estornos", endpoint: "admin.finance / admin.refundPayment / admin.reconcileRefund", allowed: ["superadmin", "admin", "finance"] },
-    { name: "Fila e respostas de suporte", endpoint: "support.adminQueue / adminMessages / adminReply / adminUpdate", allowed: ["superadmin"], note: "O papel suporte ainda não tem autorização nesses endpoints; não equivale a permissão de atendimento." },
+    { name: "Fila e respostas de suporte", endpoint: "support.adminQueue / adminMessages / adminReply / adminUpdate", allowed: ["superadmin", "admin", "support"], note: "Equipe de suporte pode consultar, responder, registrar notas e atualizar chamados; não recebe acesso a clientes, preços ou permissões." },
     { name: "Clientes, papéis e sessões", endpoint: "adminUsers.*", allowed: ["superadmin"], note: "Alteração de papel revoga sessões. Promoção a superadmin não está disponível pelo painel." },
     { name: "Preços e configurações globais", endpoint: "admin.planPricing / admin.settings", allowed: ["superadmin"] },
     { name: "OrbeRadar administrativo", endpoint: "admin.radar*", allowed: ["superadmin"] },
@@ -360,7 +360,7 @@ function PermissionsPage() {
       </table>
     </div>
     <p className="mt-3 text-xs text-slate-600">✓ Papel autorizado pela regra geral do endpoint; — sem autorização. Cada operação ainda exige sessão válida, e-mail confirmado e conta não suspensa. Esta tabela é informativa e deve ser revisada quando as regras do backend mudarem.</p>
-    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> o papel <strong>support</strong> existe, mas a fila administrativa de suporte exige <strong>superadmin</strong> no backend atual. Não conceda esse papel presumindo acesso à fila. A elevação a superadmin exige procedimento separado.</div>
+    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> o papel <strong>support</strong> pode operar chamados, mas não pode alterar papéis, contas, preços ou configurações globais. A elevação a superadmin exige procedimento separado.</div>
   </section>;
 }
 
