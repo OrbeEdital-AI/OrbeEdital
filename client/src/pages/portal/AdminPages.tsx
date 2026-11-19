@@ -428,6 +428,10 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
     source,
     run: data.recentRuns.find(({ run }: any) => run.connectorId === source.id)?.run,
   }));
+  const recentRuns = data.recentRuns.slice(0, 5);
+  const recentSuccesses = data.recentRuns.filter(({ run }: any) => run.status === "completed");
+  const recentNew = recentSuccesses.reduce((sum: number, { run }: any) => sum + Number(run.insertedCount ?? 0), 0);
+  const recentFailures = data.recentRuns.filter(({ run }: any) => run.status === "failed").length;
   const metrics = [
     { label: "Clientes cadastrados", value: data.users },
     { label: "Assinaturas ativas", value: data.activeSubscribers },
@@ -456,6 +460,32 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
         ))}
       </section>
 
+      <section className="grid gap-3 md:grid-cols-3">
+        {[
+          { title: "Clientes e assinaturas", detail: "Contas, planos e acessos", href: "/app/admin/customers" },
+          { title: "Financeiro", detail: "Pagamentos e cobranças", href: "/app/admin/finance" },
+          { title: "Atendimento", detail: "Solicitações dos clientes", href: "/app/admin/support" },
+        ].map(item => (
+          <Link key={item.title} href={item.href} className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-cyan-300 hover:shadow-sm">
+            <p className="text-sm font-bold text-[#102B4E]">{item.title}</p>
+            <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
+            <span className="mt-3 inline-block text-xs font-semibold text-cyan-800">Abrir área →</span>
+          </Link>
+        ))}
+      </section>
+      <section className="grid gap-3 md:grid-cols-3">
+        {[
+          { label: "Novas nas coletas recentes", value: recentNew },
+          { label: "Coletas concluídas", value: recentSuccesses.length },
+          { label: "Coletas com falha", value: recentFailures },
+        ].map(item => (
+          <article key={item.label} className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-medium text-slate-500">{item.label}</p>
+            <p className="mt-2 text-2xl font-bold text-[#102B4E]">{item.value.toLocaleString("pt-BR")}</p>
+            <p className="mt-1 text-xs text-slate-400">Histórico recente, não necessariamente últimas 24h</p>
+          </article>
+        ))}
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-[#102B4E]">O que precisa de atenção</h3>
@@ -500,6 +530,24 @@ export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; on
             );
           })}
           {!lastRuns.length && <p className="py-3 text-sm text-slate-500">Nenhuma integração cadastrada.</p>}
+        </div>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-[#102B4E]">Atividade recente de coleta</h3>
+          <button type="button" onClick={onOpenSources} className="text-xs font-semibold text-cyan-800 hover:underline">Histórico completo</button>
+        </div>
+        <div className="mt-3 divide-y divide-slate-100">
+          {recentRuns.map(({ run, sourceName }: any) => (
+            <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{sourceName}</p>
+                <p className="mt-1 text-xs text-slate-500">{date(run.startedAt)} · {Number(run.insertedCount ?? 0).toLocaleString("pt-BR")} novas</p>
+              </div>
+              <span className={run.status === "failed" ? "text-xs font-semibold text-rose-700" : "text-xs font-semibold text-emerald-700"}>{run.status === "completed" ? "Concluída" : run.status === "failed" ? "Falhou" : "Em andamento"}</span>
+            </div>
+          ))}
+          {!recentRuns.length && <p className="py-3 text-sm text-slate-500">Nenhuma coleta registrada.</p>}
         </div>
       </section>
     </div>
