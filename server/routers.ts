@@ -500,7 +500,13 @@ export const appRouter = router({
       const canViewCommercialMetrics = ctx.user.role === "superadmin";
       const [opportunityCount, sourceRows, recentRuns] = await Promise.all([
         db.select({ n: count() }).from(opportunities),
-        db.select().from(connectors),
+        db.select({
+          id: connectors.id, code: connectors.code, name: connectors.name,
+          status: connectors.status, enabled: connectors.enabled,
+          frequencySeconds: connectors.frequencySeconds, lastRunAt: connectors.lastRunAt,
+          nextRunAt: connectors.nextRunAt, importedCount: connectors.importedCount,
+          errorCount: connectors.errorCount, averageDurationMs: connectors.averageDurationMs,
+        }).from(connectors),
         db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(8),
       ]);
       // Consultas comerciais somente para superadmin: não basta ocultar os cartões no navegador.
