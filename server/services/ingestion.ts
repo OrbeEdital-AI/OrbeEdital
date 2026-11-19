@@ -233,7 +233,7 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
         try {
           const pages = sourceCode === "pncp"
             ? mode === "open"
-              ? await searchPncpOpen({ dataFinal: dateOnly(now, true), cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
+              ? await searchPncpOpen({ dataFinal: dateOnly(new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000), true), cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
               : await searchPncp({ dataInicial: publicationFrom, dataFinal: publicationTo, codigoModalidadeContratacao: modalityCode!, cnpj: input.cnpj, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
             : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode!, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
           return { modalityCode, pages, error: null as unknown };
