@@ -283,14 +283,17 @@ export const adminUsersRouter = router({
         }
         if (target.role === input.role) return { updated: false, role: target.role };
         await tx.update(users).set({ role: input.role, updatedAt: new Date() }).where(eq(users.id, input.userId));
+        // Revoke all existing sessions atomically with the role change so stale
+        // credentials cannot continue using privileges from the previous role.
+        await tx.delete(authSessions).where(eq(authSessions.userId, input.userId));
         await tx.insert(auditLogs).values({
           actorUserId: ctx.user.id,
           action: "user.role.updated",
           entityType: "user",
           entityId: input.userId,
-          details: { previousRole: target.role, newRole: input.role, targetEmail: target.email },
+          details: { previousRole: target.role, newRole: input.role, targetEmail: target.email, sessionsRevoked: true },
         });
-        return { updated: true, role: input.role };
+        return { updated: true, role: input.role, sessionsRevoked: true };
       });
     }),
 
