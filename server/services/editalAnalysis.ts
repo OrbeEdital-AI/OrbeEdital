@@ -606,17 +606,30 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     // explicitly mark the complementary files as pending instead of claiming success.
     if (complementaryNames.length) {
       try {
-        const supplementaryResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            contents: [{ role: "user", parts: complementaryParts }],
-            generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2500 },
-          }),
-          signal: AbortSignal.timeout(25_000),
-        });
-        if (!supplementaryResponse.ok) throw new Error("HTTP " + supplementaryResponse.status);
+        let supplementaryResponse: Response | undefined;
+        const supplementaryModels = [activeModel, activeModel, ...(fallbackModel && fallbackModel !== activeModel ? [fallbackModel] : [])];
+        for (let attempt = 0; attempt < supplementaryModels.length; attempt++) {
+          try {
+            supplementaryResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(supplementaryModels[attempt])}:generateContent`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                contents: [{ role: "user", parts: complementaryParts }],
+                generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2500 },
+              }),
+              signal: AbortSignal.timeout(25_000),
+            });
+            if (supplementaryResponse.ok) break;
+            if (supplementaryResponse.status !== 429 && supplementaryResponse.status !== 503) break;
+          } catch (error) {
+            if (attempt === supplementaryModels.length - 1) throw error;
+          }
+          if (attempt < supplementaryModels.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, Math.min(2000 * (attempt + 1), 5000)));
+          }
+        }
+        if (!supplementaryResponse?.ok) throw new Error("HTTP " + (supplementaryResponse?.status ?? "network"));
         const supplementaryPayload = await supplementaryResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
         const supplementaryAnswer = supplementaryPayload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
         const supplementary = parseAnalysis(supplementaryAnswer);
