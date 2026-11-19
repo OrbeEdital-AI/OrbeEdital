@@ -498,7 +498,7 @@ export default function AdminConsole() {
         </div>
       </header>
       <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
-        {section === "overview" && <AdminOverview isAdmin={true} onOpenSources={() => selectSection("sources")}/>}
+        {section === "overview" && <AdminOverview isAdmin={true} role={me.role} onOpenSources={() => selectSection("sources")}/>}
         {section === "customers" && <CustomerDirectory/>}
         {section === "sources" && <SourcesPage isAdmin={true}/>}
         {section === "radar" && <RadarPilotPage/>}
