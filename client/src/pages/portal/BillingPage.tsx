@@ -12,13 +12,13 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="font-medium text-slate-700">{label}</span>
         <span className={nearLimit ? "font-semibold text-amber-700" : "text-slate-500"}>
-          {used.toLocaleString("pt-BR")} / {limit.toLocaleString("pt-BR")} utilizados
+          {limit === 0 ? `${used.toLocaleString("pt-BR")} utilizados · sem limite cadastrado` : `${used.toLocaleString("pt-BR")} / ${limit.toLocaleString("pt-BR")} utilizados`}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
         <div className={`h-full rounded-full ${nearLimit ? "bg-amber-500" : "bg-cyan-700"}`} style={{ width: `${percentage}%` }} />
       </div>
-      <p className="text-xs text-slate-500">Restam {Math.max(0, limit - used).toLocaleString("pt-BR")}</p>
+      <p className="text-xs text-slate-500">{limit === 0 ? "Sem limite numérico configurado" : `Restam ${Math.max(0, limit - used).toLocaleString("pt-BR")}`}</p>
     </div>
   );
 }
@@ -60,7 +60,7 @@ export function BillingPage() {
   if (usage.error) return <ErrorState message={usage.error.message} onRetry={() => usage.refetch()} />;
 
   const current = usage.data?.plan;
-  const comparisonFeatures = Array.from(new Set((plans.data ?? []).flatMap(plan => plan.features ?? [])));
+
   const counters = usage.data?.usage;
   const limits = usage.data?.limits;
   const meters = current && counters && limits ? [
@@ -78,6 +78,7 @@ export function BillingPage() {
         </p>
       </section>
 
+      {(plans.data ?? []).some(plan => plan.monthlyPriceCents > 0 && plan.monthlyPriceCents < 9900) && <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção aos preços cadastrados:</strong> há valores mensais abaixo de R$ 99,00. Confirme com a administração se são preços de teste antes de contratar. O checkout utilizará o valor atualmente cadastrado no sistema.</div>}
       {current ? (
         <section className="space-y-4 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -91,7 +92,7 @@ export function BillingPage() {
           <div className="grid gap-4 md:grid-cols-3">
             {meters.map(meter => <UsageMeter key={meter.label} label={meter.label} used={meter.used} limit={meter.limit} />)}
           </div>
-          <p className="text-xs text-slate-500">Ao atingir o limite, a ação correspondente será bloqueada até a renovação mensal ou a mudança de plano.</p>
+          <p className="text-xs text-slate-500">Cotas positivas são aplicadas conforme o plano. Limite zero no cadastro significa ausência de limite numérico, não recurso excluído.</p>
         </section>
       ) : (
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
@@ -103,6 +104,7 @@ export function BillingPage() {
         {(plans.data ?? []).map(plan => {
           const isCurrent = current?.code === plan.code;
           const planLimits = plan.limits ?? {};
+          const isProfessional = plan.code === "profissional";
           return (
             <article key={plan.id} className={`flex flex-col rounded-xl border bg-white p-5 shadow-sm ${plan.code === "profissional" ? "border-cyan-300 ring-1 ring-cyan-100" : "border-slate-200"}`}>
               <div className="flex items-center justify-between gap-2">
@@ -111,24 +113,25 @@ export function BillingPage() {
               </div>
               {plan.description && <p className="mt-2 text-sm text-slate-500">{plan.description}</p>}
               <p className="mt-5 text-3xl font-bold text-[#102B4E]">{money(plan.monthlyPriceCents / 100)}<span className="text-sm font-normal text-slate-500">/mês</span></p>
-              <div className="mt-4 flex-1">
-                <p className="text-xs font-bold uppercase tracking-wide text-[#087eaa]">Recursos e limites do plano</p>
-                <ul className="mt-3 space-y-2.5 text-sm">
+              <div className="mt-4 flex-1 space-y-4 text-sm">
+                <div><h4 className="font-bold text-[#102B4E]">Pesquisa e oportunidades</h4><p className="mt-2 text-slate-700">✓ Consulta de oportunidades PNCP e Compras.gov.br</p><p className="mt-1 text-slate-700">✓ Filtros de pesquisa</p></div>
+                <div><h4 className="font-bold text-[#102B4E]">Organização e alertas</h4><p className="mt-2 text-slate-700">✓ Favoritos e pesquisas salvas, conforme as cotas</p><p className="mt-1 text-slate-700">✓ Recursos de acompanhamento disponíveis no portal</p></div>
+                <div><h4 className="font-bold text-[#102B4E]">Inteligência artificial</h4>
+                  <p className={isProfessional ? "mt-2 text-slate-700" : "mt-2 text-slate-400 line-through"}>{isProfessional ? "✓" : "—"} Busca assistida por IA</p>
+                  <p className={isProfessional ? "mt-1 text-slate-700" : "mt-1 text-slate-400 line-through"}>{isProfessional ? "✓" : "—"} Radar de oportunidades por perfil</p>
+                  <p className={isProfessional ? "mt-1 text-slate-700" : "mt-1 text-slate-400 line-through"}>{isProfessional ? "✓" : "—"} Chat Orbe IA {isProfessional ? "(até 60 mensagens por usuário/dia)" : ""}</p>
+                  <p className="mt-1 text-slate-700">✓ Análise de edital com IA, sujeita às regras de acesso da plataforma</p>
+                </div>
+                <div><h4 className="font-bold text-[#102B4E]">Suporte</h4><p className="mt-2 text-slate-700">✓ Atendimento pelo portal {isProfessional ? "com prioridade alta" : "com prioridade padrão"}</p></div>
+                <div><h4 className="font-bold text-[#102B4E]">Limites de uso</h4>
                   {[
                     { label: "Pesquisas por mês", value: Number(planLimits.maxSearchesPerMonth ?? 0) },
-                    { label: "Oportunidades favoritas", value: Number(planLimits.maxFavorites ?? 0) },
+                    { label: "Favoritos", value: Number(planLimits.maxFavorites ?? 0) },
                     { label: "Pesquisas salvas", value: Number(planLimits.maxSavedSearches ?? 0) },
-                  ].map(item => <li key={item.label} className={item.value > 0 ? "flex items-start gap-2 text-slate-700" : "flex items-start gap-2 text-slate-400 line-through"}>
-                    <span className={item.value > 0 ? "font-bold text-emerald-600" : "text-slate-400"}>{item.value > 0 ? "✓" : "—"}</span>
-                    <span>{item.value > 0 ? "Até " + item.value.toLocaleString("pt-BR") + " " + item.label.toLowerCase() : item.label + " não incluídas"}</span>
-                  </li>)}
-                  {comparisonFeatures.map(feature => {
-                    const included = (plan.features ?? []).includes(feature);
-                    return <li key={feature} className={included ? "flex items-start gap-2 text-slate-700" : "flex items-start gap-2 text-slate-400 line-through"}>
-                      <span className={included ? "font-bold text-emerald-600" : "text-slate-400"}>{included ? "✓" : "—"}</span><span>{feature}</span>
-                    </li>;
-                  })}
-                </ul>
+                  ].map(item => <p key={item.label} className="mt-2 flex justify-between gap-3 text-slate-700"><span>{item.label}</span><strong className="tabular-nums">{item.value === 0 ? "Sem limite cadastrado" : item.value.toLocaleString("pt-BR")}</strong></p>)}
+                  <p className="mt-2 text-xs text-slate-500">Pesquisas, favoritos e pesquisas salvas: cotas compartilhadas pela empresa. Chat: limite diário individual por usuário.</p>
+                  {isProfessional && <p className="mt-2 text-xs font-semibold text-cyan-800">Em relação ao Essencial cadastrado: +1.200 pesquisas/mês, +250 favoritos e +25 pesquisas salvas, quando vigentes as cotas de 300/50/5 e 1.500/300/30.</p>}
+                </div>
               </div>
               <div className="mt-6 rounded-lg border border-slate-200 p-3">
                 <p className="text-sm font-semibold text-slate-700">Forma de pagamento</p>
