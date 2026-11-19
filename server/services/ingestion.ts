@@ -127,6 +127,24 @@ export function comparableChanges(existing: typeof opportunities.$inferSelect, n
   return Object.keys(previousValues).length ? { previousValues, newValues } : null;
 }
 
+function classifySourceUpdate(change: NonNullable<ReturnType<typeof comparableChanges>>) {
+  const previousStatus = change.previousValues.status;
+  const nextStatus = change.newValues.status;
+  const previousDeadline = change.previousValues.proposalDeadline;
+  const nextDeadline = change.newValues.proposalDeadline;
+  const terminalStatuses = new Set(["closed", "suspended", "revoked", "annulled", "homologated", "awarded"]);
+  const activeStatuses = new Set(["open", "receiving_proposals"]);
+  if (typeof previousStatus === "string" && typeof nextStatus === "string" &&
+      terminalStatuses.has(previousStatus) && activeStatuses.has(nextStatus)) {
+    return { eventType: "reopened", summary: "A fonte oficial confirmou a reabertura desta licitação." };
+  }
+  if (typeof previousDeadline === "string" && typeof nextDeadline === "string" &&
+      Date.parse(nextDeadline) > Date.parse(previousDeadline)) {
+    return { eventType: "deadline_extended", summary: "A fonte oficial prorrogou o prazo desta licitação." };
+  }
+  return { eventType: "source_update", summary: "A fonte oficial atualizou informações desta oportunidade." };
+}
+
 function dateOnly(date: Date, compact: boolean): string {
   const iso = date.toISOString().slice(0, 10);
   return compact ? iso.replace(/-/g, "") : iso;
@@ -326,8 +344,8 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
           if (inserts.length || upsertRows.length) {
             const historyRows = pendingUpdates.flatMap(({ existing, change }) => change ? [{
               opportunityId: existing.id,
-              eventType: "source_update",
-              summary: "A fonte oficial atualizou informações desta oportunidade.",
+              eventType: classifySourceUpdate(change).eventType,
+              summary: classifySourceUpdate(change).summary,
               previousValues: change.previousValues,
               newValues: change.newValues,
             }] : []);
