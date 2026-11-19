@@ -669,6 +669,24 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
         !/diverg[eê]ncia.*(proposta|abertura)/i.test(point)
       );
     }
+    // Traceability: flag claims whose supporting source is not represented in the
+    // evidence list. This is a warning, not proof that a citation is accurate.
+    const normalizedEvidence = analysis.evidence.map(item =>
+      [item.topic, item.excerpt].join(" ").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase()
+    );
+    const traceableTerms = [
+      { pattern: /34[,.]90|312[,.]00|telhamento|concretagem/i, label: "Quantitativos e capacidade técnica" },
+      { pattern: /engenheiro residente|4 horas di[aá]rias/i, label: "Presença de engenheiro residente" },
+      { pattern: /desconto.*linear|linear.*desconto/i, label: "Aplicação linear do desconto" },
+      { pattern: /garantia.*(?:5%|85%)/i, label: "Garantias contratuais" },
+    ];
+    const assertions = [...analysis.qualificationRequirements, ...analysis.attentionPoints, ...analysis.risks];
+    for (const rule of traceableTerms) {
+      if (!assertions.some(item => rule.pattern.test(item))) continue;
+      const hasEvidence = normalizedEvidence.some(item => rule.pattern.test(item));
+      if (!hasEvidence) analysis.missingInformation.push(rule.label + ": fundamento específico não identificado nas evidências exibidas; confirmar no documento oficial.");
+    }
+    analysis.missingInformation = [...new Set(analysis.missingInformation)];
     analysis.documentsAnalyzed = documentsAnalyzed;
     analysis.documentsNotProcessed = documentsNotProcessed;
     analysis.documentAnalyzed = documentsAnalyzed.length > 0;
