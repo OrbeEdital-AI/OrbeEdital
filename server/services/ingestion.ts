@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { connectors, opportunities, opportunityHistory, syncRuns } from "../../drizzle/schema";
+import { connectors, favorites, notifications, opportunities, opportunityHistory, syncRuns } from "../../drizzle/schema";
 import { searchCompras } from "../connectors/compras";
 import { ConnectorError, MAX_PAGE_LIMIT, type ProcurementRecord } from "../connectors/types";
 import { searchPncp, searchPncpOpen } from "../connectors/pncp";
@@ -397,7 +397,34 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
                   updatedAt: sql`excluded.updated_at`,
                 },
               });
-              if (historyRows.length) await tx.insert(opportunityHistory).values(historyRows);
+              if (historyRows.length) {
+                await tx.insert(opportunityHistory).values(historyRows);
+                // Notify only users who explicitly saved the opportunity.
+                // Events are emitted from observed source changes, not from
+                // a future deadline alone.
+                const actionable = historyRows.filter(row =>
+                  row.eventType === "reopened" || row.eventType === "deadline_extended");
+                if (actionable.length) {
+                  const watched = await tx.select({
+                    userId: favorites.userId,
+                    opportunityId: favorites.opportunityId,
+                  }).from(favorites).where(inArray(favorites.opportunityId, actionable.map(row => row.opportunityId)));
+                  const eventByOpportunity = new Map(actionable.map(row => [row.opportunityId, row]));
+                  const notices = watched.flatMap(watch => {
+                    const event = eventByOpportunity.get(watch.opportunityId);
+                    if (!event) return [];
+                    return [{
+                      userId: watch.userId,
+                      opportunityId: watch.opportunityId,
+                      type: event.eventType,
+                      title: event.eventType === "reopened" ? "Licitação reaberta" : "Prazo de licitação prorrogado",
+                      message: event.summary,
+                      href: `/app/opportunities/${watch.opportunityId}`,
+                    }];
+                  });
+                  if (notices.length) await tx.insert(notifications).values(notices);
+                }
+              }
               return createdRows;
             });
             inserted += createdCount;
