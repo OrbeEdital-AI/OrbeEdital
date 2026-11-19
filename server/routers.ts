@@ -38,7 +38,7 @@ import { adminProcedure, authenticatedProcedure, financeProcedure, publicProcedu
 import { syncConnector } from "./services/ingestion";
 import { analyzeOpportunityEdital } from "./services/editalAnalysis";
 import { cancelMercadoPagoSubscription, changeMercadoPagoPlan, createMercadoPagoCheckout, createMercadoPagoPix, getMercadoPagoPixStatus, refundMercadoPagoPayment, reconcileExternallyRefundedPayment, verifyMercadoPagoPayments } from "./services/mercadoPago";
-import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, recordSearchUsage } from "./services/planLimits";
+import { ensureCanAddFavorite, ensureCanSaveSearch, getPlanUsageSummary, getSubscriptionAccess, recordSearchUsage } from "./services/planLimits";
 import {
   deleteSavedSearch,
   getDashboardSummary,
@@ -318,6 +318,7 @@ export const appRouter = router({
       monthlyPriceCents: plans.monthlyPriceCents, annualPriceCents: plans.annualPriceCents,
       features: plans.features, limits: plans.limits,
     }).from(plans).where(and(eq(plans.active, true), inArray(plans.code, ["essencial", "profissional", "teste-gratis"])))),
+    access: authenticatedProcedure.query(({ ctx }) => getSubscriptionAccess(ctx.user.id)),
     usage: authenticatedProcedure.query(({ ctx }) => getPlanUsageSummary(ctx.user.id)),
     resumePlan: authenticatedProcedure.query(async ({ ctx }) => {
       const db = getDb();
