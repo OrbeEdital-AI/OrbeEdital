@@ -356,26 +356,26 @@ function PermissionsPage() {
     { key: "user", title: "Cliente" },
   ] as const;
   type Role = typeof columns[number]["key"];
-  const rows: { name: string; endpoint: string; allowed: readonly Role[]; note?: string }[] = [
-    { name: "Consultar painel e fontes", endpoint: "admin.overview / admin.sources.*", allowed: ["superadmin", "admin", "source_operator"], note: "Inclui sincronizar, configurar e recuperar PNCP." },
-    { name: "Financeiro e estornos", endpoint: "admin.finance / admin.refundPayment / admin.reconcileRefund", allowed: ["superadmin", "admin", "finance"] },
-    { name: "Fila e respostas de suporte", endpoint: "support.adminQueue / adminMessages / adminReply / adminUpdate", allowed: ["superadmin", "admin", "support"], note: "Equipe de suporte pode consultar, responder, registrar notas e atualizar chamados; não recebe acesso a clientes, preços ou permissões." },
-    { name: "Clientes, papéis e sessões", endpoint: "adminUsers.*", allowed: ["superadmin"], note: "Alteração de papel revoga sessões. Promoção a superadmin não está disponível pelo painel." },
-    { name: "Preços e configurações globais", endpoint: "admin.planPricing / admin.settings", allowed: ["superadmin"] },
-    { name: "OrbeRadar administrativo", endpoint: "admin.radar*", allowed: ["superadmin"] },
-    { name: "Portal do cliente", endpoint: "account / opportunities / billing", allowed: ["user", "superadmin", "admin", "source_operator", "finance", "support"], note: "Os recursos dependem da autenticação, assinatura e verificações específicas de cada endpoint; papéis internos possuem exceção de assinatura." },
+  const rows: { name: string; description: string; allowed: readonly Role[]; note?: string }[] = [
+    { name: "Consultar painel e fontes", description: "Acompanhar indicadores, consultar fontes de licitações e executar sincronizações.", allowed: ["superadmin", "admin", "source_operator"], note: "Inclui sincronizar, configurar e recuperar PNCP." },
+    { name: "Financeiro e estornos", description: "Consultar cobranças, acompanhar pagamentos, realizar estornos e conciliações.", allowed: ["superadmin", "admin", "finance"] },
+    { name: "Fila e respostas de suporte", description: "Consultar chamados, responder clientes, registrar notas e atualizar atendimentos.", allowed: ["superadmin", "admin", "support"], note: "Equipe de suporte pode consultar, responder, registrar notas e atualizar chamados; não recebe acesso a clientes, preços ou permissões." },
+    { name: "Clientes, papéis e sessões", description: "Consultar e administrar contas, permissões de acesso e sessões.", allowed: ["superadmin"], note: "Alterar o perfil de acesso encerra as sessões anteriores. Não é possível promover uma conta a Superadmin pelo painel." },
+    { name: "Preços e configurações globais", description: "Alterar valores dos planos e administrar configurações gerais.", allowed: ["superadmin"] },
+    { name: "OrbeRadar administrativo", description: "Gerenciar as atividades administrativas de descoberta e revisão do OrbeRadar.", allowed: ["superadmin"] },
+    { name: "Portal do cliente", description: "Acessar dados da empresa, pesquisar licitações e consultar planos e assinaturas.", allowed: ["user", "superadmin", "admin", "source_operator", "finance", "support"], note: "Os recursos dependem da autenticação, assinatura e verificações específicas de cada endpoint; perfis administrativos possuem regras específicas de acesso." },
   ];
   return <section className="rounded-xl border bg-white p-5">
     <h2 className="font-semibold text-[#102B4E]">Matriz de permissões efetivas</h2>
-    <p className="mt-1 text-sm text-slate-600">Referência dos controles aplicados no servidor. A visualização de um menu não concede autorização para executar uma operação.</p>
+    <p className="mt-1 text-sm text-slate-600">Veja o que cada perfil pode fazer no sistema. A exibição de uma opção no menu não substitui as verificações de segurança.</p>
     <div className="mt-5 overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-left text-sm">
         <thead><tr className="border-b bg-slate-50"><th scope="col" className="px-3 py-3">Operação</th>{columns.map(col => <th key={col.key} scope="col" className="px-2 py-3 text-center text-xs font-bold">{col.title}</th>)}</tr></thead>
-        <tbody>{rows.map(row => <tr key={row.name} className="border-b align-top"><th scope="row" className="px-3 py-3 font-semibold text-[#102B4E]">{row.name}<p className="mt-1 font-mono text-[11px] font-normal text-slate-500">{row.endpoint}</p>{row.note && <p className="mt-1 text-xs font-normal text-slate-600">{row.note}</p>}</th>{columns.map(col => <td key={col.key} className="px-2 py-3 text-center"><span className={row.allowed.includes(col.key) ? "font-bold text-emerald-700" : "font-semibold text-slate-400"} aria-label={row.allowed.includes(col.key) ? "Permitido" : "Não autorizado"}>{row.allowed.includes(col.key) ? "✓" : "—"}</span></td>)}</tr>)}</tbody>
+        <tbody>{rows.map(row => <tr key={row.name} className="border-b align-top"><th scope="row" className="px-3 py-3 font-semibold text-[#102B4E]">{row.name}<p className="mt-1 text-xs font-normal text-slate-500">{row.description}</p>{row.note && <p className="mt-1 text-xs font-normal text-slate-600">{row.note}</p>}</th>{columns.map(col => <td key={col.key} className="px-2 py-3 text-center"><span className={row.allowed.includes(col.key) ? "font-bold text-emerald-700" : "font-semibold text-slate-400"} aria-label={row.allowed.includes(col.key) ? "Permitido" : "Não autorizado"}>{row.allowed.includes(col.key) ? "✓" : "—"}</span></td>)}</tr>)}</tbody>
       </table>
     </div>
-    <p className="mt-3 text-xs text-slate-600">✓ Papel autorizado pela regra geral do endpoint; — sem autorização. Cada operação ainda exige sessão válida, e-mail confirmado e conta não suspensa. Esta tabela é informativa e deve ser revisada quando as regras do backend mudarem.</p>
-    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> o papel <strong>support</strong> pode operar chamados, mas não pode alterar papéis, contas, preços ou configurações globais. A elevação a superadmin exige procedimento separado.</div>
+    <p className="mt-3 text-xs text-slate-600">✓ Perfil autorizado para a operação; — sem autorização. Cada operação ainda exige sessão válida, e-mail confirmado e conta não suspensa. Esta tabela é informativa e deve ser atualizada sempre que as permissões mudarem.</p>
+    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> o perfil <strong>Suporte</strong> pode operar chamados, mas não pode alterar papéis, contas, preços ou configurações globais. A elevação a superadmin exige procedimento separado.</div>
   </section>;
 }
 
