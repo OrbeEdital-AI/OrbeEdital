@@ -40,6 +40,21 @@ const navGroups: { title: string; items: { id: Section; label: string; icon: typ
   ]},
 ];
 const nav = navGroups.flatMap(group => group.items);
+const sectionRoles: Record<Section, readonly string[]> = {
+  overview: ["superadmin", "admin", "source_operator"],
+  sources: ["superadmin", "admin", "source_operator"],
+  radar: ["superadmin"],
+  customers: ["superadmin"],
+  permissions: ["superadmin"],
+  support: ["superadmin", "admin", "support"],
+  finance: ["superadmin", "admin", "finance"],
+  audit: ["superadmin"],
+  ia: ["superadmin"],
+  settings: ["superadmin"],
+};
+const canOpenSection = (role: string, section: Section) => sectionRoles[section].includes(role);
+const defaultSectionForRole = (role: string): Section =>
+  role === "support" ? "support" : role === "finance" ? "finance" : "overview";
 const sectionDescriptions: Record<Section, string> = {
   overview: "Resumo operacional, indicadores e situação dos módulos da plataforma.",
   customers: "Consulte contas, verificação de e-mail, papéis e sessões dos usuários.",
@@ -436,13 +451,15 @@ export default function AdminConsole() {
     const candidate = value.split("/").filter(Boolean).at(-1) as Section | undefined;
     return candidate && nav.some(item => item.id === candidate) ? candidate : "overview";
   };
-  const section = sectionFromPath(path);
+  const requestedSection = sectionFromPath(path);
   const selectSection = (next: Section) => {
+    if (!me?.role || !canOpenSection(me.role, next)) return;
     navigate(next === "overview" ? "/app/admin" : `/app/admin/${next}`);
     setMobileMenuOpen(false);
   };
   const me = auth.user as (typeof auth.user & { role?: string; name?: string; email?: string }) | null;
-  const allowed = me?.role === "superadmin";
+  const allowed = !!me?.role && ["superadmin", "admin", "source_operator", "support", "finance"].includes(me.role);
+  const section = me?.role && canOpenSection(me.role, requestedSection) ? requestedSection : defaultSectionForRole(me?.role ?? "");
 
   useEffect(() => {
     if (!auth.loading && !auth.user) navigate("/app/admin/login");
@@ -457,6 +474,7 @@ export default function AdminConsole() {
 
   const logout = async () => { await auth.logout(); navigate("/"); };
   const current = nav.find(item => item.id === section)!;
+  const visibleGroups = navGroups.map(group => ({ ...group, items: group.items.filter(item => canOpenSection(me.role!, item.id)) })).filter(group => group.items.length);
   const Icon = current.icon;
   return <div className="min-h-screen bg-[#f4f7fb] text-slate-800 lg:flex">
     {mobileMenuOpen && <button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] lg:hidden"/>}
@@ -465,18 +483,18 @@ export default function AdminConsole() {
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-5"><BrandMark variant="dark"/><div className="flex items-center gap-2"><button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"><X size={19}/></button></div></div>
       <div className="px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-200">Administração</p></div>
       <nav aria-label="Administração" className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
-        {navGroups.map(group => <div key={group.title} className="mb-2 min-w-0 lg:min-w-0">
+        {visibleGroups.map(group => <div key={group.title} className="mb-2 min-w-0 lg:min-w-0">
           <p className="mb-1 px-2.5 text-[9px] font-bold uppercase tracking-[.14em] text-[#55c4e6]">{group.title}</p>
           <div className="space-y-px">{group.items.map(item => { const ItemIcon = item.icon; return <button key={item.id} aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium transition ${section === item.id ? "bg-[#087eaa] font-semibold text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)] ring-1 ring-cyan-200/30" : "text-[#d8e8f5] hover:bg-[#1d496b] hover:text-white"}`}><ItemIcon size={15}/><span>{item.label}</span>{section === item.id && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-600"/>}</button>; })}</div>
         </div>)}
       </nav>
-      <div className="border-t border-white/15 p-3 sm:p-4"><div className="rounded-md bg-white/5 p-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-[#55c4e6]">Sessão administrativa</p><p className="mt-1.5 truncate text-xs font-semibold">{me.name}</p><p className="truncate text-[11px] text-[#a9c6dc]">{me.email}</p><span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Superadmin verificado</span></div><button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-blue-100 hover:bg-white/10 hover:text-white"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
+      <div className="border-t border-white/15 p-3 sm:p-4"><div className="rounded-md bg-white/5 p-2"><p className="text-[10px] font-semibold uppercase tracking-wider text-[#55c4e6]">Sessão administrativa</p><p className="mt-1.5 truncate text-xs font-semibold">{me.name}</p><p className="truncate text-[11px] text-[#a9c6dc]">{me.email}</p><span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400"/> Acesso verificado</span></div><button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-blue-100 hover:bg-white/10 hover:text-white"><LogOut size={16}/> Sair</button><Link href="/app" className="mt-1 flex items-center gap-2 px-3 py-2 text-xs text-blue-200 hover:text-white"><ArrowLeft size={14}/> Voltar ao portal do cliente</Link></div>
     </aside>
     <main className="min-w-0 flex-1">
       <header className="relative z-10 border-b border-slate-200/90 bg-white/95 px-4 pb-4 pt-20 sm:px-7 sm:pt-20 lg:sticky lg:top-0 lg:py-4">
         <div className="mx-auto max-w-[1540px]">
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-800">OrbeEdital <span className="mx-1 text-slate-300">/</span> Administração geral <span className="mx-1 text-slate-300">/</span> {current.label}</p><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada</span></div>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · Superadmin</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-cyan-800">OrbeEdital <span className="mx-1 text-slate-300">/</span> Administração <span className="mx-1 text-slate-300">/</span> {current.label}</p><span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"><ShieldCheck size={14}/> Sessão verificada</span></div>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">{greeting}, {me.name?.split(" ")[0] ?? "administrador"}.</p><h1 className="mt-1 text-2xl font-bold tracking-tight text-[#102B4E] sm:text-3xl">{current.label}</h1><p className="mt-1 max-w-3xl text-sm text-slate-500">{sectionDescriptions[section]}</p></div><span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">Área restrita · {me.role}</span></div>
         </div>
       </header>
       <div className="mx-auto max-w-[1540px] space-y-6 p-5 sm:p-8">
