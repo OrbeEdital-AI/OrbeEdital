@@ -412,201 +412,96 @@ export function FinancePage({ isAdmin }: { isAdmin: boolean }) {
 export function AdminOverview({ isAdmin, onOpenSources }: { isAdmin: boolean; onOpenSources?: () => void }) {
   const query = trpc.admin.overview.useQuery(undefined, { enabled: isAdmin });
   if (!isAdmin) return <NoPermission />;
-  if (query.isLoading) return <Loading label="Carregando dados administrativos…" />;
+  if (query.isLoading) return <Loading label="Carregando visão geral…" />;
   if (query.error) return <ErrorState message={query.error.message} onRetry={() => query.refetch()} />;
 
   const data = query.data!;
   const activeSources = data.sources.filter((source: any) => source.enabled);
-  const inactiveSources = data.sources.filter((source: any) => !source.enabled);
-  const failedSources = data.sources.filter((source: any) => source.status === "error");
   const now = Date.now();
-  const staleSources = activeSources.filter((source: any) => {
+  const sourceIssues = activeSources.filter((source: any) => {
     const last = source.lastRunAt ? new Date(source.lastRunAt).getTime() : NaN;
     const frequency = Number(source.frequencySeconds);
-    return !Number.isFinite(last) || now - last > Math.max(8 * 60 * 60 * 1000, (Number.isFinite(frequency) ? frequency : 0) * 2000);
+    return source.status === "error" || !Number.isFinite(last) ||
+      now - last > Math.max(8 * 60 * 60 * 1000, (Number.isFinite(frequency) ? frequency : 0) * 2000);
   });
-  const attentionSources = activeSources.filter((source: any) =>
-    source.status === "error" || staleSources.some((stale: any) => stale.code === source.code));
-  const timeSince = (value: string | Date | null | undefined) => {
-    if (!value) return "sem execução registrada";
-    const elapsed = Math.max(0, now - new Date(value).getTime());
-    if (!Number.isFinite(elapsed)) return "horário indisponível";
-    return elapsed < 3600000 ? `${Math.floor(elapsed / 60000)} min` : `${Math.floor(elapsed / 3600000)} h`;
-  };
-  const incompleteRuns = data.recentRuns.filter(({ run }: any) => {
-    const meta = run.metadata as Record<string, unknown> | null;
-    return meta?.incompleteCoverage === true;
-  });
+  const lastRuns = data.sources.map((source: any) => ({
+    source,
+    run: data.recentRuns.find(({ run }: any) => run.connectorId === source.id)?.run,
+  }));
   const metrics = [
-    { label: "Usuários", value: data.users, detail: "contas cadastradas" },
-    { label: "Oportunidades", value: data.opportunities, detail: "no catálogo" },
-    { label: "Fontes habilitadas", value: activeSources.length, detail: `de ${data.sourceCount} cadastradas` },
-    { label: "Assinaturas", value: data.activeSubscribers, detail: "registros ativos" },
-  ] as const;
-
+    { label: "Clientes cadastrados", value: data.users },
+    { label: "Assinaturas ativas", value: data.activeSubscribers },
+    { label: "Oportunidades no catálogo", value: data.opportunities },
+    { label: "Fontes em operação", value: activeSources.length },
+  ];
   return (
     <div className="space-y-5">
-      <section className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-slate-400">Painel de controle</p>
-          <h2 className="mt-1 text-xl font-bold tracking-tight text-[#102B4E]">Resumo executivo</h2>
-          <p className="mt-1 text-sm text-slate-500">Indicadores essenciais e situação operacional em um só lugar.</p>
+          <h2 className="text-xl font-bold tracking-tight text-[#102B4E]">Visão geral</h2>
+          <p className="mt-1 text-sm text-slate-500">O essencial para acompanhar a operação do OrbeEdital.</p>
         </div>
-        <button onClick={() => query.refetch()} disabled={query.isFetching} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50">
-          <RefreshCw size={13} className={query.isFetching ? "animate-spin" : ""} /> Atualizar dados
+        <button type="button" onClick={() => query.refetch()} disabled={query.isFetching}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <RefreshCw size={14} className={query.isFetching ? "animate-spin" : ""} /> Atualizar
         </button>
-      </section>
+      </header>
 
-      <section aria-label="Indicadores principais" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 xl:grid-cols-4 xl:divide-y-0">
-          {metrics.map((metric, index) => (
-            <article key={metric.label} className={`px-4 py-4 sm:px-5 ${index > 1 ? "xl:border-l xl:border-slate-100" : ""}`}>
-              <p className="text-xs font-medium text-slate-500">{metric.label}</p>
-              <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-[#102B4E]">{Number(metric.value).toLocaleString("pt-BR")}</p>
-              <p className="mt-1 text-[11px] text-slate-400">{metric.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <div>
-            <h3 className="text-sm font-bold text-[#102B4E]">Integrações e fontes de dados</h3>
-            <p className="mt-1 text-xs text-slate-500">Separação entre habilitação da fonte e saúde da última operação registrada.</p>
-          </div>
-          <Link className="text-xs font-semibold text-cyan-800 hover:underline" href="/app/admin/sources">Abrir gestão de fontes →</Link>
-        </div>
-        <div className="grid md:grid-cols-2">
-          <div className="p-5 md:border-r md:border-slate-100">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <h4 className="text-sm font-semibold text-slate-800">Habilitadas</h4>
-              </div>
-              <span className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">{activeSources.length}</span>
-            </div>
-            <p className="mt-1 text-xs text-slate-400">Podem participar da rotina de sincronização.</p>
-            <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
-              {activeSources.length ? activeSources.map((source: any) => (
-                <div key={source.code} className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="text-sm font-medium text-slate-700">{source.name}</span>
-                  <span className={`shrink-0 text-[11px] font-semibold ${source.status === "error" ? "text-rose-700" : "text-emerald-700"}`}>{source.status === "error" ? "Com falha" : "Habilitada"}</span>
-                </div>
-              )) : <p className="py-3 text-xs text-slate-400">Nenhuma fonte habilitada.</p>}
-            </div>
-          </div>
-          <div className="bg-slate-50/60 p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-slate-400" />
-                <h4 className="text-sm font-semibold text-slate-800">Desabilitadas</h4>
-              </div>
-              <span className="rounded-md bg-slate-200/70 px-2 py-1 text-xs font-bold text-slate-700">{inactiveSources.length}</span>
-            </div>
-            <p className="mt-1 text-xs text-slate-400">Pausadas e fora da rotina de sincronização.</p>
-            <div className="mt-3 divide-y divide-slate-200 border-y border-slate-200">
-              {inactiveSources.length ? inactiveSources.map((source: any) => (
-                <div key={source.code} className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="text-sm font-medium text-slate-600">{source.name}</span>
-                  <span className="shrink-0 text-[11px] font-medium text-slate-400">Pausada</span>
-                </div>
-              )) : <p className="py-3 text-xs text-slate-400">Nenhuma fonte desabilitada.</p>}
-            </div>
-          </div>
-        </div>
+      <section aria-label="Indicadores essenciais" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {metrics.map(metric => (
+          <article key={metric.label} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+            <p className="mt-2 text-2xl font-bold tabular-nums text-[#102B4E]">{Number(metric.value).toLocaleString("pt-BR")}</p>
+          </article>
+        ))}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-[#102B4E]">Saúde operacional das fontes</h3>
-            <p className="mt-1 text-xs text-slate-500">Horários reais registrados pelo servidor; fonte habilitada não significa coleta completa.</p>
-          </div>
-          <button type="button" onClick={onOpenSources} className="rounded-lg border px-3 py-2 text-xs font-semibold text-cyan-800">Gerenciar sincronizações</button>
+          <h3 className="text-sm font-bold text-[#102B4E]">O que precisa de atenção</h3>
+          {sourceIssues.length > 0 && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">{sourceIssues.length} pendência(s)</span>}
         </div>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-xs">
-            <thead className="border-b text-slate-500"><tr><th className="py-2">Fonte</th><th>Última execução</th><th>Tempo decorrido</th><th>Situação</th></tr></thead>
-            <tbody>{data.sources.map((source: any) => (
-              <tr key={source.code} className="border-b last:border-0">
-                <td className="py-3 font-semibold text-slate-700">{source.name}</td>
-                <td>{date(source.lastRunAt)}</td>
-                <td>{timeSince(source.lastRunAt)}</td>
-                <td className={source.status === "error" ? "font-semibold text-rose-700" : staleSources.some((stale: any) => stale.code === source.code) ? "font-semibold text-amber-700" : "text-slate-600"}>{!source.enabled ? "Desabilitada" : source.status === "error" ? "Falha" : staleSources.some((stale: any) => stale.code === source.code) ? "Atrasada" : "Execução recente"}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h3 className="text-sm font-bold text-[#102B4E]">Atividade recente de extração</h3><p className="mt-1 text-xs text-slate-500">Execuções registradas no banco, da mais recente para a mais antiga.</p></div>
-          <button type="button" onClick={onOpenSources} className="rounded-lg border px-3 py-2 text-xs font-semibold text-cyan-800">Ver todas as execuções</button>
-        </div>
-        {incompleteRuns.length > 0 && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Atenção: {incompleteRuns.length} das últimas {data.recentRuns.length} execuções indicam cobertura parcial. Execução concluída não significa todas as páginas coletadas.
-        </div>}
-        <div className="mt-3 divide-y divide-slate-100">
-          {data.recentRuns.map(({ run, sourceName }: any) => {
-            const meta = (run.metadata ?? {}) as Record<string, unknown>;
-            const pages = Array.isArray(meta.pageStats) ? meta.pageStats as Array<Record<string, unknown>> : [];
-            const totalPages = pages.reduce((max, page) => Math.max(max, Number(page.totalPages) || 0), 0);
-            return <article key={run.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
-              <div><p className="font-semibold text-slate-800">{sourceName} · {run.status === "completed" ? "Concluída" : run.status === "failed" ? "Falhou" : run.status}</p>
-                <p className="mt-1 text-slate-500">{date(run.startedAt)} · {run.insertedCount ?? 0} novos · {run.updatedCount ?? 0} atualizados</p>
-                {meta.incompleteCoverage === true && <p className="mt-1 font-medium text-amber-800">Cobertura parcial{totalPages ? ` · ${totalPages} páginas reportadas pela API` : ""}</p>}
-              </div>
-              <span className={run.status === "failed" ? "font-semibold text-rose-700" : meta.incompleteCoverage === true ? "font-semibold text-amber-700" : "text-slate-500"}>{meta.incompleteCoverage === true ? "Parcial" : run.status === "completed" ? "Concluída" : "Verificar"}</span>
-            </article>;
-          })}
-          {!data.recentRuns.length && <p className="py-4 text-sm text-slate-500">Nenhuma execução registrada.</p>}
-        </div>
-      </section>
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-        <article className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-[#102B4E]">Pontos de atenção</h3>
-              <p className="mt-1 text-xs text-slate-500">Itens que merecem acompanhamento operacional.</p>
-            </div>
-            <span className={`rounded-md px-2 py-1 text-xs font-bold ${attentionSources.length ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{attentionSources.length} alerta(s)</span>
-          </div>
-          {attentionSources.length ? (
-            <div className="mt-3 divide-y divide-slate-100 border-y border-slate-100">
-              {attentionSources.map((source: any) => (
-                <div key={source.code} className="flex items-start justify-between gap-3 py-3">
-                  <div><p className="text-sm font-semibold text-slate-700">{source.name}</p><p className="mt-0.5 text-xs text-slate-500">{source.status === "error" ? "Falha registrada na integração." : "Sincronização atrasada ou não registrada."} Última execução: {date(source.lastRunAt)} ({timeSince(source.lastRunAt)}).</p></div>
-                  <button type="button" onClick={onOpenSources} className="shrink-0 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50">Verificar fonte</button>
+        {sourceIssues.length ? (
+          <div className="mt-3 divide-y divide-slate-100">
+            {sourceIssues.map((source: any) => (
+              <div key={source.code} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{source.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{source.status === "error" ? "A última situação registrada indica falha." : "Execução atrasada ou ainda não registrada."} Última tentativa: {date(source.lastRunAt)}.</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3 rounded-lg bg-emerald-50/70 px-4 py-3">
-              <p className="text-sm font-semibold text-emerald-800">Nenhuma falha registrada nas fontes.</p>
-              <p className="mt-1 text-xs text-emerald-700/80">Continue acompanhando as execuções e os callbacks recebidos.</p>
-            </div>
-          )}
-        </article>
-
-        <article className="rounded-xl border border-slate-200 bg-white p-5">
-          <h3 className="text-sm font-bold text-[#102B4E]">Resumo de disponibilidade</h3>
-          <p className="mt-1 text-xs text-slate-500">Distribuição atual das integrações cadastradas.</p>
-          <div className="mt-4 space-y-3">
-            <div>
-              <div className="mb-1.5 flex justify-between text-xs"><span className="font-medium text-slate-600">Habilitadas</span><span className="font-semibold text-slate-700">{activeSources.length}</span></div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${data.sourceCount ? (activeSources.length / data.sourceCount) * 100 : 0}%` }} /></div>
-            </div>
-            <div>
-              <div className="mb-1.5 flex justify-between text-xs"><span className="font-medium text-slate-600">Desabilitadas</span><span className="font-semibold text-slate-700">{inactiveSources.length}</span></div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-400" style={{ width: `${data.sourceCount ? (inactiveSources.length / data.sourceCount) * 100 : 0}%` }} /></div>
-            </div>
+                <button type="button" onClick={onOpenSources} className="text-xs font-semibold text-cyan-800 hover:underline">Verificar fonte</button>
+              </div>
+            ))}
           </div>
-          <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] leading-5 text-slate-500">{data.sourceCount} fonte(s) cadastrada(s). A disponibilidade do agendador externo não é consultada diretamente por este painel.</p>
-        </article>
+        ) : <p className="mt-3 text-sm text-slate-600">Nenhuma fonte ativa com falha ou atraso identificado.</p>}
       </section>
 
-      <p className="px-1 text-[11px] leading-5 text-slate-400">Observação: os indicadores refletem os dados persistidos no OrbeEdital. Indicadores financeiros dependem da integração com um gateway de pagamento.</p>
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#102B4E]">Funcionamento da plataforma</h3>
+            <p className="mt-1 text-xs text-slate-500">Resumo das integrações; detalhes técnicos ficam em Fontes e sincronizações.</p>
+          </div>
+          <button type="button" onClick={onOpenSources} className="text-xs font-semibold text-cyan-800 hover:underline">Ver detalhes</button>
+        </div>
+        <div className="mt-3 divide-y divide-slate-100">
+          {lastRuns.map(({ source, run }: any) => {
+            const hasIssue = sourceIssues.some((issue: any) => issue.code === source.code);
+            return (
+              <div key={source.code} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{source.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">Última execução: {date(source.lastRunAt)}{run ? ` · ${Number(run.insertedCount ?? 0).toLocaleString("pt-BR")} novas oportunidades` : ""}</p>
+                </div>
+                <span className={`text-xs font-semibold ${!source.enabled ? "text-slate-500" : hasIssue ? "text-amber-700" : "text-emerald-700"}`}>
+                  {!source.enabled ? "Pausada" : hasIssue ? "Verificar" : "Em operação"}
+                </span>
+              </div>
+            );
+          })}
+          {!lastRuns.length && <p className="py-3 text-sm text-slate-500">Nenhuma integração cadastrada.</p>}
+        </div>
+      </section>
     </div>
   );
 }
