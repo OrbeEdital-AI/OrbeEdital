@@ -668,7 +668,12 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     }
     // Checklist lists deliverables; qualification text belongs in its own section.
     const qualificationText = new Set(analysis.qualificationRequirements.map(item => item.trim().toLocaleLowerCase("pt-BR")));
-    analysis.documentChecklist = [...new Set(analysis.documentChecklist)].filter(item => !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")));
+    // Technical plans attached by the contracting authority are reference
+    // material, not bidder deliverables unless the notice explicitly says so.
+    const technicalReference = /(?:^|\\b)(?:plantas? (?:el[eé]tricas?|de arquitetura|de implanta[cç][aã]o)|diagramas? (?:uni|multi)filare?s?|projetos? (?:executivos?|de arquitetura|el[eé]tricos?)|planilha de acabamentos e especifica[cç][oõ]es)(?:\\b|$)/i;
+    analysis.documentChecklist = [...new Set(analysis.documentChecklist)].filter(item =>
+      !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")) && !technicalReference.test(item)
+    );
     if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
     if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
     // Do not let a legacy openingDate value (often the proposal-receipt start) be reported as a conflict with the public session.
@@ -697,13 +702,23 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
       { pattern: /34[,.]90|312[,.]00|telhamento|concretagem/i, label: "Quantitativos e capacidade técnica" },
       { pattern: /engenheiro residente|4 horas di[aá]rias/i, label: "Presença de engenheiro residente" },
       { pattern: /desconto.*linear|linear.*desconto/i, label: "Aplicação linear do desconto" },
-      { pattern: /garantia.*(?:5%|85%)/i, label: "Garantias contratuais" },
+      { pattern: /garantia.*(?:5(?:[,.]00)?\\s*%)/i, label: "Garantia contratual de 5%" },
+      { pattern: /(?:garantia adicional|inferior(?:es)? a 85\\s*%|85\\s*%.*garantia)/i, label: "Garantia adicional para propostas abaixo de 85%" },
     ];
     const assertions = [...analysis.qualificationRequirements, ...analysis.attentionPoints, ...analysis.risks];
     for (const rule of traceableTerms) {
       if (!assertions.some(item => rule.pattern.test(item))) continue;
       const hasEvidence = normalizedEvidence.some(item => rule.pattern.test(item));
       if (!hasEvidence) analysis.missingInformation.push(rule.label + ": fundamento específico não identificado nas evidências exibidas; confirmar no documento oficial.");
+    }
+    // Remove only stale generic guarantee warnings when the 5% clause is
+    // evidenced; a separate warning still applies to the 85% rule.
+    const hasFivePercentEvidence = analysis.evidence.some(item => /5(?:[,.]00)?\\s*%/.test(item.excerpt) && /garantia/i.test(item.excerpt + " " + item.topic));
+    if (hasFivePercentEvidence) {
+      analysis.missingInformation = analysis.missingInformation.filter(item =>
+        !/^Garantias contratuais: fundamento específico/i.test(item) &&
+        !/^Garantia contratual de 5%: fundamento específico/i.test(item)
+      );
     }
     analysis.missingInformation = [...new Set(analysis.missingInformation)];
     analysis.documentsAnalyzed = documentsAnalyzed;
