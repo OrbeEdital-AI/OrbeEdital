@@ -20,7 +20,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
     onError: e => toast.error(e.message),
   });
   const configure = trpc.admin.sources.configure.useMutation({
-    onSuccess: () => utils.admin.sources.list.invalidate(),
+    onSuccess: async () => { toast.success("Configuração da fonte salva no OrbeEdital."); await utils.admin.sources.list.invalidate(); },
     onError: e => toast.error(e.message),
   });
   const [runSearch, setRunSearch] = useState("");
@@ -28,9 +28,9 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
   const [runOrder, setRunOrder] = useState("newest");
   const [runPage, setRunPage] = useState(1);
   const [runPageSize, setRunPageSize] = useState(5);
-  const [recoveryCnpj, setRecoveryCnpj] = useState("19459687000156");
-  const [recoveryFrom, setRecoveryFrom] = useState("2026-01-01");
-  const [recoveryTo, setRecoveryTo] = useState("2026-11-19");
+  const [recoveryCnpj, setRecoveryCnpj] = useState("");
+  const [recoveryFrom, setRecoveryFrom] = useState("");
+  const [recoveryTo, setRecoveryTo] = useState("");
   const recover = trpc.admin.sources.recoverPncpByCnpj.useMutation({
     onSuccess: async result => {
       toast.success(`Recuperação concluída: ${result.inserted} novos e ${result.updated} atualizados. Confira a cobertura e os registros na lista de execuções.`);
@@ -40,6 +40,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
     onError: error => toast.error(error.message),
   });
   const [taskUids, setTaskUids] = useState<Record<string, string>>({});
+  const [sourceConfirmation, setSourceConfirmation] = useState<{ title: string; description: string; action: () => void } | null>(null);
   const [frequencyMinutes, setFrequencyMinutes] = useState<
     Record<string, string>
   >({});
@@ -82,7 +83,13 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
             toast.error("Informe um CNPJ de 14 dígitos e um intervalo válido.");
             return;
           }
-          recover.mutate({ cnpj, publicationFrom: recoveryFrom.replace(/-/g, ""), publicationTo: recoveryTo.replace(/-/g, ""), modalityCodes: [6], maxPages: 3 });
+          const from = recoveryFrom.replace(/-/g, "");
+          const to = recoveryTo.replace(/-/g, "");
+          setSourceConfirmation({
+            title: "Confirmar recuperação direcionada do PNCP",
+            description: `Órgão CNPJ ${cnpj}. Publicações de ${recoveryFrom} até ${recoveryTo}. Consulta restrita à modalidade 6 e até 3 páginas por intervalo. Esta operação pode demorar, consumir recursos e não garante cobertura integral nem que todas as oportunidades estejam abertas.`,
+            action: () => recover.mutate({ cnpj, publicationFrom: from, publicationTo: to, modalityCodes: [6], maxPages: 3 }),
+          });
         }}>
           <label className="text-xs font-medium text-slate-600">CNPJ do órgão
             <input value={recoveryCnpj} onChange={e => setRecoveryCnpj(e.target.value)} inputMode="numeric" maxLength={18} required className="mt-1 block w-44 rounded-lg border px-3 py-2 text-sm" placeholder="14 dígitos" />
@@ -95,7 +102,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
           </label>
           <button type="submit" disabled={recover.isPending} className="rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{recover.isPending ? "Consultando PNCP…" : "Executar recuperação"}</button>
         </form>
-        <p className="mt-3 text-xs text-amber-800">Caso de referência: Fundo Municipal de Educação de Pedro Afonso/TO — controle PNCP 19459687000156-1-000030/2026. O resultado deve ser conferido na fonte oficial.</p>
+        <p className="mt-3 text-xs text-slate-500">Preencha o CNPJ e o período desejado. Nenhum órgão ou intervalo é selecionado automaticamente.</p>
       </section>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -180,12 +187,19 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               </button>
               <button
                 className="rounded-lg border px-3 py-2 text-sm"
-                onClick={() =>
-                  configure.mutate({
-                    code: source.code as "pncp" | "compras.gov.br",
-                    enabled: !source.enabled,
-                  })
-                }
+                disabled={configure.isPending}
+                onClick={() => {
+                  const nextEnabled = !source.enabled;
+                  if (!nextEnabled) {
+                    setSourceConfirmation({
+                      title: `Desativar ${source.name}?`,
+                      description: `A fonte ${source.name} deixará de participar das sincronizações habilitadas. O catálogo existente não será apagado, mas novas oportunidades dessa origem poderão deixar de chegar até a reativação.`,
+                      action: () => configure.mutate({ code: source.code as "pncp" | "compras.gov.br", enabled: false }),
+                    });
+                  } else {
+                    configure.mutate({ code: source.code as "pncp" | "compras.gov.br", enabled: true });
+                  }
+                }}
               >
                 {source.enabled ? "Desativar" : "Ativar"}
               </button>
@@ -210,16 +224,15 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               </label>
               <button
                 className="rounded-lg border px-3 py-2 text-sm"
-                onClick={() =>
-                  configure.mutate({
-                    code: source.code as "pncp" | "compras.gov.br",
-                    frequencySeconds:
-                      Number(
-                        frequencyMinutes[source.code] ??
-                          Math.round(source.frequencySeconds / 60)
-                      ) * 60,
-                  })
-                }
+                disabled={configure.isPending}
+                onClick={() => {
+                  const minutes = Number(frequencyMinutes[source.code] ?? Math.round(source.frequencySeconds / 60));
+                  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 1440) {
+                    toast.error("A frequência deve ser um número inteiro entre 5 e 1440 minutos.");
+                    return;
+                  }
+                  configure.mutate({ code: source.code as "pncp" | "compras.gov.br", frequencySeconds: minutes * 60 });
+                }}
               >
                 Salvar frequência
               </button>
@@ -271,8 +284,19 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
         ))}
         {!orderedSources.length && <div className="rounded-xl border border-dashed bg-white p-10 text-center text-sm text-slate-500">Nenhuma fonte cadastrada.</div>}
       </div>
+      {sourceConfirmation && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget && !recover.isPending && !configure.isPending) setSourceConfirmation(null); }}>
+        <div role="alertdialog" aria-modal="true" aria-labelledby="source-confirm-title" aria-describedby="source-confirm-description" className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+          <h2 id="source-confirm-title" className="text-lg font-bold text-slate-900">{sourceConfirmation.title}</h2>
+          <p id="source-confirm-description" className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{sourceConfirmation.description}</p>
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            <button type="button" autoFocus disabled={recover.isPending || configure.isPending} onClick={() => setSourceConfirmation(null)} className="rounded-lg border px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancelar</button>
+            <button type="button" disabled={recover.isPending || configure.isPending} onClick={() => { const action = sourceConfirmation.action; setSourceConfirmation(null); action(); }} className="rounded-lg bg-[#102B4E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirmar operação</button>
+          </div>
+        </div>
+      </div>}
       <section className="rounded-xl border bg-white p-5">
-        <h3 className="font-semibold">Execuções recentes</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">Execuções recentes</h3><button type="button" disabled={query.isFetching} onClick={() => { void query.refetch(); }} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50"><RefreshCw size={14} className={query.isFetching ? "animate-spin" : ""}/> Atualizar</button></div>
+        <p className="mt-1 text-xs text-slate-500">Histórico limitado aos registros retornados pelo servidor. A paginação e os filtros atuam sobre esse conjunto.</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <input aria-label="Buscar execuções" placeholder="Buscar fonte" value={runSearch} onChange={e => { setRunSearch(e.target.value); setRunPage(1); }} className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
           <select aria-label="Filtrar status das execuções" value={runStatus} onChange={e => { setRunStatus(e.target.value); setRunPage(1); }} className="rounded-lg border px-3 py-2 text-sm"><option value="all">Todos os status</option><option value="completed">Concluídas</option><option value="failed">Com falha</option><option value="running">Em andamento</option></select>
