@@ -368,7 +368,13 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
       if (queryFailure) throw queryFailure.error;
     }
     const duration = Date.now() - durationStart;
-    await db.update(syncRuns).set({ status: "completed", finishedAt: new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq(syncRuns.id, run.id));
+    const finalPage = pageStats.at(-1)?.page ?? effectiveStartPage;
+    const finalTotalPages = pageStats.at(-1)?.totalPages ?? null;
+    const incompleteCoverage = finalTotalPages !== null && finalPage < finalTotalPages;
+    if (incompleteCoverage) {
+      console.warn("[ingestion] partial page coverage", { sourceCode, mode, finalPage, finalTotalPages, nextPage: finalPage + 1 });
+    }
+    await db.update(syncRuns).set({ status: "completed", finishedAt: new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: finalPage, reportedTotalPages: finalTotalPages, incompleteCoverage, nextPage: incompleteCoverage ? finalPage + 1 : 1, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq(syncRuns.id, run.id));
     await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1000), updatedAt: new Date() }).where(eq(connectors.id, source.id));
     return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
   } catch (error) {
