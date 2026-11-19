@@ -534,8 +534,20 @@ export const appRouter = router({
         await ensureBuiltInConnectors();
         const db = getDb();
         const [sources, runs, scheduleEvents] = await Promise.all([
-          db.select().from(connectors).orderBy(connectors.name),
-          db.select({ run: syncRuns, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(50),
+          db.select({
+            id: connectors.id, code: connectors.code, name: connectors.name,
+            baseUrl: connectors.baseUrl, status: connectors.status, enabled: connectors.enabled,
+            frequencySeconds: connectors.frequencySeconds, lastRunAt: connectors.lastRunAt,
+            nextRunAt: connectors.nextRunAt, importedCount: connectors.importedCount,
+            errorCount: connectors.errorCount, averageDurationMs: connectors.averageDurationMs,
+            lastError: connectors.lastError,
+            configuration: sql<{ scheduledTaskUid: string | null }>`jsonb_build_object('scheduledTaskUid', case when nullif(${connectors.configuration}->>'scheduledTaskUid', '') is not null then 'configured' else null end)`,
+          }).from(connectors).orderBy(connectors.name),
+          db.select({ run: {
+            id: syncRuns.id, status: syncRuns.status, startedAt: syncRuns.startedAt,
+            finishedAt: syncRuns.finishedAt, insertedCount: syncRuns.insertedCount,
+            updatedCount: syncRuns.updatedCount, errorCount: syncRuns.errorCount,
+          }, sourceName: connectors.name }).from(syncRuns).innerJoin(connectors, eq(syncRuns.connectorId, connectors.id)).orderBy(desc(syncRuns.startedAt)).limit(50),
           db.select({
             action: auditLogs.action,
             entityId: auditLogs.entityId,
