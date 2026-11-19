@@ -56,8 +56,8 @@ function extractPdfsFromZip(archive: Buffer, depth = 0): { files: Array<{ name: 
     } catch { /* Ignore corrupt or unsupported entries. */ }
   }
   pdfCandidates.sort((a, b) => a.priority - b.priority || a.bytes.length - b.bytes.length);
-  skipped.push(...pdfCandidates.slice(6).map(file => file.name + " (não selecionado: limite de seis PDFs por análise; processamento complementar pendente)"));
-  return { files: pdfCandidates.slice(0, 6).map(({ name, bytes }) => ({ name, bytes })), skipped };
+  skipped.push(...pdfCandidates.slice(12).map(file => file.name + " (não selecionado: limite de doze PDFs por ZIP)"));
+  return { files: pdfCandidates.slice(0, 12).map(({ name, bytes }) => ({ name, bytes })), skipped };
 }
 
 function extractDocxText(archive: Buffer, depth = 0): string | null {
@@ -468,6 +468,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     }];
 
     const maxAggregateBytes = 40 * 1024 * 1024;
+    const complementaryParts: Array<Record<string, unknown>> = [{ text: "Analise apenas os documentos técnicos complementares anexados. Retorne JSON com as mesmas chaves da análise principal. Não invente exigências; cite nome do documento e página nas evidências." }];
+    const complementaryNames: string[] = [];
     for (const document of pdfs.slice(0, 4)) {
       try {
         let pdfBuffer: Buffer | null = null;
@@ -524,8 +526,10 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
             }
             documentSizeBytes += file.bytes.length;
             documentsAnalyzed.push(file.name);
-            parts.push({ text: "Documento oficial extraído de " + document.name + ": " + file.name + ". Cite este nome nas evidências." });
-            parts.push({ inlineData: { mimeType: "application/pdf", data: file.bytes.toString("base64") } });
+            const targetParts = documentsAnalyzed.length <= 6 ? parts : complementaryParts;
+            if (targetParts === complementaryParts) complementaryNames.push(file.name);
+            targetParts.push({ text: "Documento oficial extraído de " + document.name + ": " + file.name + ". Cite este nome nas evidências." });
+            targetParts.push({ inlineData: { mimeType: "application/pdf", data: file.bytes.toString("base64") } });
           }
           continue;
         }
@@ -623,9 +627,8 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     if (!documentsAnalyzed.length) {
       analysis.missingInformation.push("Nenhum PDF oficial foi efetivamente processado; a análise se limita aos metadados disponíveis.");
     }
-    if (documentsNotProcessed.length) {
-      analysis.missingInformation.push("Documentos oficiais localizados, mas não processados: " + documentsNotProcessed.join("; "));
-    }
+    // The dedicated documentsNotProcessed field is rendered separately in the portal.
+    analysis.missingInformation = analysis.missingInformation.filter(item => !/documentos oficiais localizados, mas n[aã]o processados/i.test(item));
     const result = {
       opportunityId,
       generatedAt: new Date().toISOString(),
