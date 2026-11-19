@@ -605,46 +605,65 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     // If the provider is overloaded, preserve the completed main analysis and
     // explicitly mark the complementary files as pending instead of claiming success.
     if (complementaryNames.length) {
-      try {
-        let supplementaryResponse: Response | undefined;
-        const supplementaryModels = [activeModel, activeModel, ...(fallbackModel && fallbackModel !== activeModel ? [fallbackModel] : [])];
-        for (let attempt = 0; attempt < supplementaryModels.length; attempt++) {
-          try {
-            supplementaryResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(supplementaryModels[attempt])}:generateContent`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemInstruction }] },
-                contents: [{ role: "user", parts: complementaryParts }],
-                generationConfig: { responseMimeType: "application/json", maxOutputTokens: 2500 },
-              }),
-              signal: AbortSignal.timeout(25_000),
-            });
-            if (supplementaryResponse.ok) break;
-            if (supplementaryResponse.status !== 429 && supplementaryResponse.status !== 503) break;
-          } catch (error) {
-            if (attempt === supplementaryModels.length - 1) throw error;
+      // Small independent batches prevent one overloaded Gemini request from
+      // invalidating the other technical documents.
+      const batchSize = 2;
+      for (let start = 0; start < complementaryNames.length; start += batchSize) {
+        const names = complementaryNames.slice(start, start + batchSize);
+        const batchParts: Array<Record<string, unknown>> = [
+          { text: "Analise SOMENTE estes PDFs técnicos: " + names.join("; ") + ". Retorne JSON válido com as mesmas chaves da análise principal. Extraia exigências, riscos e evidências com documento e página. Não invente dados." },
+          ...complementaryParts.slice(1 + start * 2, 1 + (start + names.length) * 2),
+        ];
+        try {
+          let response: Response | undefined;
+          const models = [activeModel, ...(fallbackModel && fallbackModel !== activeModel ? [fallbackModel] : [])];
+          let failure = "sem resposta";
+          for (let attempt = 0; attempt < models.length; attempt++) {
+            try {
+              response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models[attempt])}:generateContent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemInstruction }] },
+                  contents: [{ role: "user", parts: batchParts }],
+                  generationConfig: { responseMimeType: "application/json", maxOutputTokens: 1800 },
+                }),
+                signal: AbortSignal.timeout(20_000),
+              });
+              if (response.ok) break;
+              failure = "HTTP " + response.status;
+              if (response.status !== 429 && response.status !== 503) break;
+            } catch (error) {
+              failure = error instanceof Error ? error.message : "falha de conexão";
+            }
+            if (attempt < models.length - 1) await new Promise(resolve => setTimeout(resolve, 1500));
           }
-          if (attempt < supplementaryModels.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, Math.min(2000 * (attempt + 1), 5000)));
+          if (!response?.ok) throw new Error(failure);
+          const payload = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+          const answer = payload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+          const supplementary = parseAnalysis(answer);
+          const meaningful = [...supplementary.qualificationRequirements, ...supplementary.documentChecklist, ...supplementary.risks, ...supplementary.attentionPoints, ...supplementary.evidence];
+          if (!meaningful.length) throw new Error("resposta sem resultados verificáveis");
+          for (const field of ["qualificationRequirements", "documentChecklist", "risks", "attentionPoints", "missingInformation"] as const) {
+            analysis[field] = [...new Set([...analysis[field], ...supplementary[field]])];
           }
+          const evidenceKeys = new Set(analysis.evidence.map(item => [item.document, item.page, item.topic, item.excerpt].join("|")));
+          for (const item of supplementary.evidence) {
+            const key = [item.document, item.page, item.topic, item.excerpt].join("|");
+            if (!evidenceKeys.has(key)) { analysis.evidence.push(item); evidenceKeys.add(key); }
+          }
+          // Mark only files named by the returned evidence as evidenced. Other
+          // files were processed but may not contain extractable requirements.
+          for (const name of names) {
+            if (!supplementary.evidence.some(item => item.document && (name.toLowerCase().includes(item.document.toLowerCase()) || item.document.toLowerCase().includes(name.replace(/\\.pdf$/i, "").toLowerCase())))) {
+              analysis.missingInformation.push(name + ": análise técnica sem citação específica; confira o PDF original.");
+            }
+          }
+        } catch (error) {
+          console.warn("[edital-analysis] complementary batch pending", names.join("; "), error instanceof Error ? error.message : "unknown");
+          documentsAnalyzed = documentsAnalyzed.filter(name => !names.includes(name));
+          documentsNotProcessed.push(...names.map(name => name + " (lote técnico indisponível; tente analisar novamente)"));
         }
-        if (!supplementaryResponse?.ok) throw new Error("HTTP " + (supplementaryResponse?.status ?? "network"));
-        const supplementaryPayload = await supplementaryResponse.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-        const supplementaryAnswer = supplementaryPayload.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
-        const supplementary = parseAnalysis(supplementaryAnswer);
-        for (const field of ["qualificationRequirements", "documentChecklist", "risks", "attentionPoints", "missingInformation"] as const) {
-          analysis[field] = [...new Set([...analysis[field], ...supplementary[field]])];
-        }
-        const evidenceKeys = new Set(analysis.evidence.map(item => [item.document, item.page, item.topic, item.excerpt].join("|")));
-        for (const item of supplementary.evidence) {
-          const key = [item.document, item.page, item.topic, item.excerpt].join("|");
-          if (!evidenceKeys.has(key)) { analysis.evidence.push(item); evidenceKeys.add(key); }
-        }
-      } catch (error) {
-        console.warn("[edital-analysis] complementary batch pending", error instanceof Error ? error.message : "unknown");
-        documentsAnalyzed = documentsAnalyzed.filter(name => !complementaryNames.includes(name));
-        documentsNotProcessed.push(...complementaryNames.map(name => name + " (análise complementar indisponível; tente analisar novamente)"));
       }
     }
     // Checklist lists deliverables; qualification text belongs in its own section.
