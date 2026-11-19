@@ -148,11 +148,29 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
     : [...new Set(input.modalityCodes?.length ? input.modalityCodes : [6])];
   const queryModalities: Array<number | undefined> = mode === "open" ? [undefined] : modalityCodes;
   const pageSize = input.pageSize ?? 50;
+  // When no explicit page is requested, continue the previous open-proposals
+  // scan rather than restarting from page 1 on every scheduled execution.
+  // Explicit startPage still takes precedence for manual recovery and cron shards.
+  let effectiveStartPage = input.startPage ?? 1;
+  if (sourceCode === "pncp" && mode === "open" && input.startPage === undefined) {
+    const [previous] = await db.select({ metadata: syncRuns.metadata })
+      .from(syncRuns)
+      .where(and(eq(syncRuns.connectorId, source.id), eq(syncRuns.status, "completed")))
+      .orderBy(sql`started_at desc`).limit(1);
+    const metadata = previous?.metadata as Record<string, unknown> | null | undefined;
+    if (metadata?.mode === "open") {
+      const previousLast = Number(metadata.lastPage);
+      const previousTotal = Number(metadata.reportedTotalPages);
+      if (Number.isInteger(previousLast) && previousLast > 0 && Number.isInteger(previousTotal) && previousTotal > 0) {
+        effectiveStartPage = previousLast >= previousTotal ? 1 : previousLast + 1;
+      }
+    }
+  }
   const now = new Date();
   const from = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
   const runStartedAt = new Date();
   const queryConcurrency = sourceCode === "compras.gov.br" ? 3 : 1;
-  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency };
+  const runMetadata = { daysBack, modalityCodes, maxPages, allPages, pageSize, mode, queryConcurrency, effectiveStartPage };
   const [run] = await db.insert(syncRuns).values({ connectorId: source.id, status: "running", startedAt: runStartedAt, metadata: runMetadata }).returning();
   await db.update(connectors).set({ status: "running", lastRunAt: runStartedAt, updatedAt: new Date() }).where(eq(connectors.id, source.id));
 
@@ -173,8 +191,8 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
         try {
           const pages = sourceCode === "pncp"
             ? mode === "open"
-              ? await searchPncpOpen({ dataFinal: dateOnly(now, true), page: input.startPage ?? 1, maxPages, allPages, tamanhoPagina: pageSize })
-              : await searchPncp({ dataInicial: dateOnly(from, true), dataFinal: dateOnly(now, true), codigoModalidadeContratacao: modalityCode!, page: input.startPage ?? 1, maxPages, allPages, tamanhoPagina: pageSize })
+              ? await searchPncpOpen({ dataFinal: dateOnly(now, true), page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
+              : await searchPncp({ dataInicial: dateOnly(from, true), dataFinal: dateOnly(now, true), codigoModalidadeContratacao: modalityCode!, page: effectiveStartPage, maxPages, allPages, tamanhoPagina: pageSize })
             : await searchCompras({ dataPublicacaoPncpInicial: dateOnly(from, false), dataPublicacaoPncpFinal: dateOnly(now, false), codigoModalidade: modalityCode!, page: 1, maxPages, allPages, tamanhoPagina: pageSize });
           return { modalityCode, pages, error: null as unknown };
         } catch (error) {
@@ -350,9 +368,9 @@ export async function syncConnector(sourceCode: SourceCode, input: SyncInput = {
       if (queryFailure) throw queryFailure.error;
     }
     const duration = Date.now() - durationStart;
-    await db.update(syncRuns).set({ status: "completed", finishedAt: new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq(syncRuns.id, run.id));
+    await db.update(syncRuns).set({ status: "completed", finishedAt: new Date(), fetchedCount: fetched, insertedCount: inserted, updatedCount: updated, errorCount: failures.length, metadata: { ...runMetadata, pagesFetched, pageStats, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, skipped } }).where(eq(syncRuns.id, run.id));
     await db.update(connectors).set({ status: "active", importedCount: source.importedCount + inserted, errorCount: source.errorCount, lastError: null, averageDurationMs: duration, nextRunAt: new Date(Date.now() + source.frequencySeconds * 1000), updatedAt: new Date() }).where(eq(connectors.id, source.id));
-    return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? input.startPage ?? 1, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
+    return { sourceCode, mode, pagesFetched, reportedTotalRecords: hasReportedTotal ? reportedTotalRecords : null, lastPage: pageStats.at(-1)?.page ?? effectiveStartPage, reportedTotalPages: pageStats.at(-1)?.totalPages ?? null, fetched, inserted, updated, skipped, durationMs: duration, runId: run.id };
   } catch (error) {
     const duration = Date.now() - durationStart;
     const errorCode = error instanceof ConnectorError ? `${error.code}${error.status ? `_${error.status}` : ""}` : "sync_failed";
