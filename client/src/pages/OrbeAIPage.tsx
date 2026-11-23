@@ -70,7 +70,8 @@ export function OrbeAIPage() {
   const persistToolResult = async (content: string, userPrompt: string) => {
     await send.mutateAsync({
       conversationId,
-      message: "O usuário pediu: " + userPrompt.slice(0, 350) + "\nResultado confirmado de uma ferramenta da plataforma. Use somente estes dados para responder ao usuário, sem inventar informações:\n" + content.slice(0, 2250),
+      message: userPrompt,
+      toolResult: content.slice(0, 10000),
     });
     await Promise.all([history.refetch(), conversations.refetch()]);
   };
@@ -85,7 +86,7 @@ export function OrbeAIPage() {
     },
     onError: error => toast.error(error.message),
   });
-  const savedMessages = (history.data ?? []).map(message => ({ role: message.role, content: message.content }));
+  const savedMessages = (history.data ?? []).filter(message => !message.content.startsWith("O usuário pediu: ") && !message.content.startsWith("Resultado confirmado de uma ferramenta")).map(message => ({ role: message.role, content: message.content }));
   const messages = [...savedMessages, ...localMessages];
   const hasProfile = Boolean(
     profile.data?.primarySegment ||
@@ -221,7 +222,7 @@ export function OrbeAIPage() {
         </div>}
         {messages.map((message, index) => <div key={index} className={`flex items-start gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
-          <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
+          <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm border border-slate-200 bg-[#f1f5f9] text-[#243449]"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
         </div>)}
         {(isWorking || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
