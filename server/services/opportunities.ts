@@ -118,15 +118,21 @@ function buildFilters(filters: OpportunityFilters) {
     const pattern = (term: string) => "%" + term.replace(/[\\%_]/g, "\\$&") + "%";
     const match = (field: ReturnType<typeof sql>) => {
       const value = normalized(field);
-      if (quoted) return sql`${value} like ${pattern(cleaned)} escape '\\'`;
+      if (quoted) return sql`${value} like ${pattern(cleaned)}`;
       // Require every meaningful term in the SAME combined notice text or item.
       // Portuguese stemming applies to alphabetic words, while numbers/model
       // identifiers remain literal and mandatory.
-      return and(...terms.map(term => {
-        const literal = sql`${value} like ${pattern(term)} escape '\\'`;
-        if (!/^[a-z]{4,}$/.test(term)) return literal;
-        return or(literal, sql`to_tsvector('portuguese', ${field}) @@ plainto_tsquery('portuguese', ${term})`)!;
-      }))!;
+      // One full-text predicate per field, rather than a costly vector
+      // reconstruction for each word. Literal technical specs remain required.
+      const lexical = terms.filter(term => /^[a-z]{4,}$/.test(term));
+      const technical = terms.filter(term => !/^[a-z]{4,}$/.test(term));
+      return and(
+        ...(lexical.length ? [or(
+          and(...lexical.map(term => sql`${value} like ${pattern(term)}`))!,
+          sql`to_tsvector('portuguese', ${field}) @@ plainto_tsquery('portuguese', ${lexical.join(" ")})`
+        )!] : []),
+        ...technical.map(term => sql`${value} like ${pattern(term)}`)
+      )!;
     };
     if (terms.length) {
       clauses.push(or(
