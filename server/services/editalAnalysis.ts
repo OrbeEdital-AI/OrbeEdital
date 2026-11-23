@@ -644,6 +644,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
           const supplementary = parseAnalysis(answer);
           const meaningful = [...supplementary.qualificationRequirements, ...supplementary.documentChecklist, ...supplementary.risks, ...supplementary.attentionPoints, ...supplementary.evidence];
           if (!meaningful.length) throw new Error("resposta sem resultados verificáveis");
+          analysis.missingInformation = [...new Set([...analysis.missingInformation, ...supplementary.missingInformation])];
           for (const field of ["qualificationRequirements", "documentChecklist", "risks", "attentionPoints"] as const) {
             analysis[field] = [...new Set([...analysis[field], ...supplementary[field]])];
           }
@@ -729,6 +730,7 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
         !/^Garantia contratual de 5%: fundamento específico/i.test(item)
       );
     }
+    // A missing citation is a verification task, never proof that the requirement is absent.
     analysis.missingInformation = [...new Set(analysis.missingInformation)];
     analysis.documentsAnalyzed = documentsAnalyzed;
     analysis.documentsNotProcessed = documentsNotProcessed;
