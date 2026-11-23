@@ -95,7 +95,8 @@ export default function Portal() {
     retry: 1,
     refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false,
   });
-  const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
+  const accessReady = subscriptionAccess.data?.hasSubscription === true;
+  const planUsage = trpc.billing.usage.useQuery(undefined, { enabled: !!auth.user && emailVerified && accessReady, refetchInterval: window.location.search.includes("checkout=return") ? 5000 : false });
   const verifyPayment = trpc.billing.verifyPayment.useMutation({
     onSuccess: async result => {
       await Promise.all([planUsage.refetch(), subscriptionAccess.refetch()]);
@@ -104,13 +105,13 @@ export default function Portal() {
     },
     onError: error => toast.error(error.message || "Não foi possível consultar o Mercado Pago."),
   });
-  const resumePlan = trpc.billing.resumePlan.useQuery(undefined, { enabled: !!auth.user && emailVerified });
-  const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified, refetchInterval: 60000 });
+  const resumePlan = trpc.billing.resumePlan.useQuery(undefined, { enabled: !!auth.user && emailVerified && !accessReady && !subscriptionAccess.isPending });
+  const notificationSummary = trpc.notifications.list.useQuery(undefined, { enabled: !!auth.user && emailVerified && accessReady, refetchInterval: 60000 });
   const summary = trpc.dashboard.summary.useQuery(undefined, {
-    enabled: !!auth.user && emailVerified,
+    enabled: !!auth.user && emailVerified && accessReady && path === "/app",
     retry: false,
   });
-  const recommendations = trpc.dashboard.recommendations.useQuery(undefined, { enabled: !!auth.user && emailVerified && path === "/app" });
+  const recommendations = trpc.dashboard.recommendations.useQuery(undefined, { enabled: !!auth.user && emailVerified && accessReady && path === "/app" });
   const handleExplicitSearch = async () => { await recordSearch.mutateAsync(); };
   const searchQuery = trpc.opportunities.search.useQuery(
     {
@@ -128,18 +129,19 @@ export default function Portal() {
       enabled:
         !!auth.user &&
         emailVerified &&
+        accessReady &&
         path === "/app/opportunities" &&
         (!savedSearchRequested || restoredSearchUrl === locationSearch),
     }
   );
   const favorites = trpc.favorites.list.useQuery(undefined, {
-    enabled: !!auth.user && emailVerified && (path === "/app/favorites" || path === "/app"),
+    enabled: !!auth.user && emailVerified && accessReady && (path === "/app/favorites" || path === "/app"),
   });
   const favoriteChanges = trpc.dashboard.favoriteChanges.useQuery(undefined, {
-    enabled: !!auth.user && emailVerified && path === "/app",
+    enabled: !!auth.user && emailVerified && accessReady && path === "/app",
   });
   const dashboardSavedSearches = trpc.savedSearches.list.useQuery(undefined, {
-    enabled: !!auth.user && emailVerified && path === "/app",
+    enabled: !!auth.user && emailVerified && accessReady && path === "/app",
   });
   const logout = trpc.auth.logout.useMutation({
     onSuccess: async () => {
