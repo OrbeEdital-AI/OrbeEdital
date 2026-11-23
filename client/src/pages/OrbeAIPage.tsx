@@ -24,23 +24,25 @@ function extractOpportunityQuery(value: string) {
 
 function ChatMessageContent({ content, role }: { content: string; role: "user" | "assistant" }) {
   if (role === "user") return <p className="whitespace-pre-wrap break-words">{content}</p>;
-  const urlPattern = /https?:\/\/[^\s<>\[\]"']+/g;
-  const parts: Array<{ text: string; url?: string }> = [];
+  // Recognize Markdown links as a unit, then plain URLs. The assistant often returns [Ver no OrbeEdital](url).
+  const linkPattern = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>\[\]"']+)/g;
+  const parts: Array<{ text: string; url?: string; label?: string }> = [];
   let lastIndex = 0;
-  for (const match of content.matchAll(urlPattern)) {
+  for (const match of content.matchAll(linkPattern)) {
     const index = match.index ?? 0;
     if (index > lastIndex) parts.push({ text: content.slice(lastIndex, index) });
-    const raw = match[0];
-    const url = raw.replace(/[),.;!?]+$/, "");
-    parts.push({ text: url, url });
-    if (url.length < raw.length) parts.push({ text: raw.slice(url.length) });
-    lastIndex = index + raw.length;
+    const raw = match[3] ?? "";
+    const url = match[2] ?? raw.replace(/[),.;!?]+$/, "");
+    if (url) parts.push({ text: "", url, label: match[1] });
+    if (raw && url.length < raw.length) parts.push({ text: raw.slice(url.length) });
+    lastIndex = index + match[0].length;
   }
   if (lastIndex < content.length) parts.push({ text: content.slice(lastIndex) });
   return <div className="whitespace-pre-wrap break-words">{parts.map((part, index) => {
     if (!part.url) return <span key={index}>{part.text}</span>;
     const isOpportunity = part.url.includes("/app/opportunities/");
-    return <a key={index} href={part.url} target="_blank" rel="noopener noreferrer" title={part.url} className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-300 bg-white px-3 py-2 align-middle text-xs font-semibold text-[#087eaa] shadow-sm transition hover:bg-cyan-50 hover:text-[#075c80] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"><ArrowRight size={14} className="shrink-0"/><span className="truncate">{isOpportunity ? "Abrir licitação" : "Acessar link oficial"}</span></a>;
+    const label = isOpportunity ? "Ver no OrbeEdital" : (part.label || "Acessar link oficial");
+    return <a key={index} href={part.url} target="_blank" rel="noopener noreferrer" title={part.url} className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-300 bg-white px-3 py-2 align-middle text-xs font-semibold text-[#087eaa] shadow-sm transition hover:bg-cyan-50 hover:text-[#075c80] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"><ArrowRight size={14} className="shrink-0"/><span className="truncate">{label}</span></a>;
   })}</div>;
 }
 
