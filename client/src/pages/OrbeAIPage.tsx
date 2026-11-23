@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import {
   Sparkles, Target, MapPin, CalendarClock, Building2, RefreshCw, Gauge, ShieldCheck,
-  Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle,
+  Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle, Trash2,
 } from "lucide-react";
 
 function extractOpportunityQuery(value: string) {
@@ -40,6 +40,7 @@ const suggestions = [
 export function OrbeAIPage() {
   const [conversationId, setConversationId] = useState("");
   const conversations = trpc.orbeAi.chatConversations.useQuery();
+  const deleteChat = trpc.orbeAi.chatDelete.useMutation();
   useEffect(() => {
     if (conversationId || !conversations.isFetched) return;
     const latest = conversations.data?.[0]?.conversationId;
@@ -84,6 +85,20 @@ export function OrbeAIPage() {
     profile.data?.profile?.catserCodes?.length
   );
 
+  const removeConversation = async (id: string) => {
+    if (!window.confirm("Excluir esta conversa da Orbe IA? As mensagens serão apagadas permanentemente.")) return;
+    try {
+      await deleteChat.mutateAsync({ conversationId: id });
+      if (conversationId === id) {
+        setConversationId(crypto.randomUUID());
+        setLocalMessages([]);
+      }
+      await conversations.refetch();
+      toast.success("Conversa excluída.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a conversa.");
+    }
+  };
   const startNewConversation = () => {
     setConversationId(crypto.randomUUID());
     setLocalMessages([]);
@@ -170,7 +185,10 @@ export function OrbeAIPage() {
       </div>
 
       {conversations.data && conversations.data.length > 0 && <div className="flex gap-2 overflow-x-auto border-b px-4 py-2">
-        {conversations.data.map(item => <button key={item.conversationId} type="button" onClick={() => { setConversationId(item.conversationId); setLocalMessages([]); }} className={`max-w-[190px] shrink-0 rounded-lg border px-3 py-2 text-left text-[11px] transition ${conversationId === item.conversationId ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}><span className="block truncate font-semibold">{item.preview || "Conversa anterior"}</span><span className="mt-0.5 block">{new Date(item.updatedAt).toLocaleDateString("pt-BR")}</span></button>)}
+        {conversations.data.map(item => <div key={item.conversationId} className={`flex max-w-[230px] shrink-0 items-center rounded-lg border transition ${conversationId === item.conversationId ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+          <button type="button" onClick={() => { setConversationId(item.conversationId); setLocalMessages([]); }} className="min-w-0 flex-1 px-3 py-2 text-left text-[11px]"><span className="block truncate font-semibold">{item.preview || "Conversa anterior"}</span><span className="mt-0.5 block">{new Date(item.updatedAt).toLocaleDateString("pt-BR")}</span></button>
+          <button type="button" aria-label="Excluir conversa" title="Excluir conversa" disabled={deleteChat.isPending} onClick={() => void removeConversation(item.conversationId)} className="mr-1 rounded-md p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"><Trash2 size={15}/></button>
+        </div>)}
       </div>}
       <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
         {!messages.length && <div className="mx-auto max-w-2xl py-6 text-center">
