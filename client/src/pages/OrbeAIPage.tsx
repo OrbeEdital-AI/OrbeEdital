@@ -64,7 +64,7 @@ export function OrbeAIPage() {
   };
   const radar = trpc.orbeAi.radar.useMutation({
     onSuccess: result => {
-      const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência`).join("\n");
+      const summary = result.items.slice(0, 5).map((item, index) => `${index + 1}. ${item.title} — ${item.score}% de aderência\nAbrir no OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}${item.sourceUrl ? `\nFonte oficial: ${item.sourceUrl}` : ""}`).join("\n");
       const response = result.matchedCount
         ? `Concluí o Radar. Verifiquei ${result.candidateCount.toLocaleString("pt-BR")} oportunidades e encontrei ${result.matchedCount.toLocaleString("pt-BR")} compatibilidades. Estas são as primeiras recomendações:\n\n${summary}\n\nA pontuação indica aderência ao perfil, não garante habilitação ou vitória. Abra cada oportunidade para conferir o edital.`
         : "Concluí o Radar, mas não encontrei oportunidades que atingissem o critério mínimo de aderência. Podemos revisar os produtos, serviços e códigos do perfil da empresa.";
@@ -126,7 +126,7 @@ export function OrbeAIPage() {
       } else if (asksRadar) {
         const result = await radar.mutateAsync();
         const summary = result.items.slice(0, 12).map((item, index) =>
-          `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}`
+          `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}. Link OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}${item.sourceUrl ? `; fonte oficial: ${item.sourceUrl}` : ""}`
         ).join("\n");
         const toolResult = result.matchedCount
           ? `Radar executado agora. ${result.candidateCount} oportunidades verificadas; ${result.matchedCount} compatibilidades; ${result.displayedCount} exibidas.\n${summary}\nAderência não representa chance de vitória nem habilitação.`
