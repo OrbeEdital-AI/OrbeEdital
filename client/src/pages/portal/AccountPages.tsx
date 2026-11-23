@@ -79,6 +79,9 @@ export function SavedSearches() {
   );
 }
 
+const ALL_UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+const isAllCoverage = (value: string) => /^(todos?|todas?|todo o brasil|brasil inteiro)$/i.test(value.trim());
+
 export function ProfilePage() {
   const query = trpc.account.profile.useQuery();
   const utils = trpc.useUtils();
@@ -89,6 +92,8 @@ export function ProfilePage() {
     },
     onError: error => toast.error(error.message),
   });
+  const [allStates, setAllStates] = useState(false);
+  const [allMunicipalities, setAllMunicipalities] = useState(false);
   const [draft, setDraft] = useState({
     legalName: "",
     cnpj: "",
@@ -112,6 +117,8 @@ export function ProfilePage() {
     const profile = company.profile;
     const list = (value: unknown) =>
       Array.isArray(value) ? value.join(", ") : "";
+    setAllStates(Array.isArray(profile?.servedStates) && profile.servedStates.length === ALL_UFS.length);
+    setAllMunicipalities(Array.isArray(profile?.servedMunicipalities) && profile.servedMunicipalities.length === 0);
     setDraft({
       legalName: company.legalName ?? "",
       cnpj: company.cnpj ?? "",
@@ -176,8 +183,8 @@ export function ProfilePage() {
       products: csv(draft.products),
       services: csv(draft.services),
       keywords: csv(draft.keywords),
-      servedStates: csv(draft.servedStates, true) as any,
-      servedMunicipalities: csv(draft.servedMunicipalities),
+      servedStates: (allStates || isAllCoverage(draft.servedStates) ? ALL_UFS : csv(draft.servedStates, true)) as any,
+      servedMunicipalities: allMunicipalities || isAllCoverage(draft.servedMunicipalities) ? [] : csv(draft.servedMunicipalities),
       catmatCodes: csv(draft.catmatCodes),
       catserCodes: csv(draft.catserCodes),
       minimumValue: draft.minimumValue ? Number(draft.minimumValue) : null,
@@ -219,8 +226,16 @@ export function ProfilePage() {
       </>)}
 
       {block("Cobertura de atendimento", "Informe onde sua empresa pode atender oportunidades.", <>
-        {field("servedStates", "Estados atendidos", "SP, RJ, MG")}
-        {field("servedMunicipalities", "Municípios atendidos", "Campinas, Niterói")}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={allStates || isAllCoverage(draft.servedStates)} onChange={event => { setAllStates(event.target.checked); change("servedStates", event.target.checked ? "Todos" : ""); }} /> Todo o Brasil (27 UFs)</label>
+          {!(allStates || isAllCoverage(draft.servedStates)) && field("servedStates", "Estados atendidos", "SP, RJ, MG ou Todos")}
+          <p className="text-xs text-slate-500">Marcar todos envia as 27 UFs válidas ao cadastro, sem gerar erro de validação.</p>
+        </div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700"><input type="checkbox" checked={allMunicipalities || isAllCoverage(draft.servedMunicipalities)} onChange={event => { setAllMunicipalities(event.target.checked); change("servedMunicipalities", event.target.checked ? "Todos" : ""); }} /> Todos os municípios</label>
+          {!(allMunicipalities || isAllCoverage(draft.servedMunicipalities)) && field("servedMunicipalities", "Municípios atendidos", "Campinas, Niterói ou Todos")}
+          <p className="text-xs text-slate-500">Todos os municípios = sem restrição municipal no perfil.</p>
+        </div>
       </>)}
 
       {block("Códigos de catálogo", "Use códigos separados por vírgula quando forem conhecidos.", <>
