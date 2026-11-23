@@ -106,43 +106,35 @@ function buildFilters(filters: OpportunityFilters) {
     const tokens = cleaned.match(/[a-z0-9]+(?:[.,][0-9]+)?/g) ?? [];
     const stopwords = new Set(["de", "da", "do", "das", "dos", "em", "para", "com", "um", "uma"]);
     const terms = tokens.filter(token => !stopwords.has(token)).slice(0, 24);
-    const aliases: Record<string, string[]> = {
-      tv: ["tv", "televisor", "televisao", "smart tv"],
-      televisor: ["televisor", "tv", "televisao"],
-      televisao: ["televisao", "televisor", "tv"],
-      notebook: ["notebook", "laptop"],
-      laptop: ["laptop", "notebook"],
-      celular: ["celular", "smartphone"],
-      smartphone: ["smartphone", "celular"],
-      impressora: ["impressora", "multifuncional"],
-      legumes: ["legumes", "legume", "hortalica"],
-      legume: ["legume", "legumes", "hortalica"],
-    };
-    const fields = [
-      normalizedSearchField(opportunities.title),
-      normalizedSearchField(opportunities.description),
+    // General-purpose lexical search: no product-specific dictionary.
+    // PostgreSQL Portuguese stemming handles ordinary inflections; LIKE fallback
+    // retains technical codes such as 15W, 43, AB-123 and other literal terms.
+    const textFields = [
+      sql`concat_ws(' ', ${opportunities.title}, ${opportunities.description})`,
     ];
-    const itemFields = [
-      sql`translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`,
-      sql`translate(lower(coalesce(oi.specifications, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`,
-    ];
-    // Escape SQL LIKE wildcards from user input; retain literal product numbers.
+    const itemText = sql`concat_ws(' ', oi.description, oi.specifications, oi.catalog_code)`;
+    const normalized = (field: ReturnType<typeof sql>) =>
+      sql`translate(lower(${field}), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`;
     const pattern = (term: string) => "%" + term.replace(/[\\%_]/g, "\\$&") + "%";
-    const matchingField = (field: ReturnType<typeof sql>) => {
-      if (quoted) return sql`${field} like ${pattern(cleaned)} escape '\\'`;
-      return and(...terms.map(term =>
-        or(...(aliases[term] ?? [term]).map(option =>
-          sql`${field} like ${pattern(option)} escape '\\'`
-        ))!
-      ))!;
+    const match = (field: ReturnType<typeof sql>) => {
+      const value = normalized(field);
+      if (quoted) return sql`${value} like ${pattern(cleaned)} escape '\\'`;
+      // Require every meaningful term in the SAME combined notice text or item.
+      // Portuguese stemming applies to alphabetic words, while numbers/model
+      // identifiers remain literal and mandatory.
+      return and(...terms.map(term => {
+        const literal = sql`${value} like ${pattern(term)} escape '\\'`;
+        if (!/^[a-z]{4,}$/.test(term)) return literal;
+        return or(literal, sql`to_tsvector('portuguese', ${field}) @@ plainto_tsquery('portuguese', ${term})`)!;
+      }))!;
     };
     if (terms.length) {
       clauses.push(or(
-        ...fields.map(matchingField),
+        ...textFields.map(match),
         sql`exists (
           select 1 from opportunity_items oi
           where oi.opportunity_id = ${opportunities.id}
-          and (${or(...itemFields.map(matchingField))})
+          and (${match(itemText)})
         )`,
       )!);
     }
