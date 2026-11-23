@@ -22,6 +22,28 @@ function extractOpportunityQuery(value: string) {
   return cleaned.slice(0, 160);
 }
 
+function ChatMessageContent({ content, role }: { content: string; role: "user" | "assistant" }) {
+  if (role === "user") return <p className="whitespace-pre-wrap break-words">{content}</p>;
+  const urlPattern = /https?:\/\/[^\s<>\[\]"']+/g;
+  const parts: Array<{ text: string; url?: string }> = [];
+  let lastIndex = 0;
+  for (const match of content.matchAll(urlPattern)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) parts.push({ text: content.slice(lastIndex, index) });
+    const raw = match[0];
+    const url = raw.replace(/[),.;!?]+$/, "");
+    parts.push({ text: url, url });
+    if (url.length < raw.length) parts.push({ text: raw.slice(url.length) });
+    lastIndex = index + raw.length;
+  }
+  if (lastIndex < content.length) parts.push({ text: content.slice(lastIndex) });
+  return <div className="whitespace-pre-wrap break-words">{parts.map((part, index) => {
+    if (!part.url) return <span key={index}>{part.text}</span>;
+    const isOpportunity = part.url.includes("/app/opportunities/");
+    return <a key={index} href={part.url} target="_blank" rel="noopener noreferrer" title={part.url} className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-300 bg-white px-3 py-2 align-middle text-xs font-semibold text-[#087eaa] shadow-sm transition hover:bg-cyan-50 hover:text-[#075c80] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"><ArrowRight size={14} className="shrink-0"/><span className="truncate">{isOpportunity ? "Abrir licitação" : "Acessar link oficial"}</span></a>;
+  })}</div>;
+}
+
 function dateLabel(value: string | Date | null) {
   if (!value) return "Prazo não informado";
   const parsed = new Date(value);
@@ -222,7 +244,7 @@ export function OrbeAIPage() {
         </div>}
         {messages.map((message, index) => <div key={index} className={`flex items-start gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
-          <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm border border-slate-200 bg-[#f1f5f9] text-[#243449]"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
+          <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm border border-slate-200 bg-[#f1f5f9] text-[#243449]"}`}><ChatMessageContent content={message.content} role={message.role}/></div>
         </div>)}
         {(isWorking || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
