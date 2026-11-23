@@ -172,13 +172,13 @@ export function OrbeAIPage() {
           `${index + 1}. ${item.title} — ${item.municipality ?? "Município não informado"}/${item.state ?? "UF não informada"}; valor: ${currency(item.estimatedValue)}; prazo: ${dateLabel(item.proposalDeadline)}; fonte: ${item.sourceName}; modalidade: ${item.modality ?? "não informada"}; órgão: ${item.agencyName ?? "não informado"}; link OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}; fonte oficial: ${item.sourceUrl ?? "não informada"}`
         ).join("\n");
         const toolResult = result.total
-          ? `Busca realizada na base sincronizada do OrbeEdital para "${query}". Foram encontrados ${result.total} registros abertos; exibindo ${result.items.length}.\n${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.`
-          : `Busca realizada na base sincronizada do OrbeEdital para "${query}". Nenhuma oportunidade aberta correspondente foi encontrada. Tente outros termos ou ajuste os filtros em Oportunidades.`;
+          ? `Busca estrita realizada na base sincronizada do OrbeEdital para a expressão exata "${query}" no objeto ou em um item individual do edital. Foram encontrados ${result.total} registros abertos com a expressão; exibindo ${result.items.length}. Não trate como compatível qualquer item que não contenha a expressão pesquisada.\n${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.`
+          : `Busca estrita realizada na base sincronizada do OrbeEdital para a expressão exata "${query}". Nenhuma oportunidade aberta contém essa expressão no objeto ou em um item individual. Não sugira editais vagamente relacionados como se fossem correspondências; ofereça ampliar a busca apenas com autorização do usuário.`;
         if (controller.signal.aborted) return;
         await persistToolResult(toolResult, message);
         if (controller.signal.aborted) return;
         setLocalMessages(current => [...current, { role: "assistant", content: result.total
-          ? `Consultei a base de oportunidades do OrbeEdital e encontrei ${result.total} registros compatíveis. Mostrei até ${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.`
+          ? `Consultei a base de oportunidades do OrbeEdital e encontrei ${result.total} registros contendo a expressão pesquisada. Mostrei até ${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.`
           : "Consultei a base sincronizada e não encontrei oportunidades abertas com esses termos. Tente uma expressão mais curta ou amplie a busca." }]);
       } else if (asksRadar) {
         const result = await trpcUtils.client.orbeAi.radar.mutate(undefined, { signal: controller.signal });
