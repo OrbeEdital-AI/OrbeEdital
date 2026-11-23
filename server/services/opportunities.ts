@@ -163,8 +163,6 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = OPPORTUNITIES_PAGE_SIZE;
-  const phrase = (filters.query ?? "").trim().replace(/^["“]|["”]$/g, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const phrasePattern = "%" + phrase.replace(/[\\%_]/g, "\\  const pageSize = OPPORTUNITIES_PAGE_SIZE;
   // Count and page retrieval") + "%";
   const relevance = phrase
     ? sql<number>`(
@@ -183,7 +181,7 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
     .from(opportunities)
     .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .where(where)
-    .orderBy(desc(relevance), desc(opportunities.publicationDate), desc(opportunities.lastSyncedAt), asc(opportunities.id))
+    .orderBy(desc(opportunities.publicationDate), desc(opportunities.lastSyncedAt), asc(opportunities.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize),
   ]);
