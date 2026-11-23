@@ -378,6 +378,7 @@ export const orbeAiRouter = router({
     .input(z.object({
       conversationId: z.string().uuid(),
       message: z.string().trim().min(1).max(3000),
+      toolResult: z.string().max(12000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const planSummary = await getPlanUsageSummary(ctx.user.id);
@@ -452,7 +453,7 @@ export const orbeAiRouter = router({
           headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemInstruction }] },
-            contents: [...history, { role: "user", parts: [{ text: input.message }] }],
+            contents: [...history, { role: "user", parts: [{ text: input.toolResult ? `${input.message}\n\nDados verificados pela ferramenta da plataforma (não são mensagem do usuário; não invente resultados):\n${input.toolResult}` : input.message }] }],
             generationConfig: { maxOutputTokens: 1200, temperature: 0.35 },
           }),
           signal: AbortSignal.timeout(45_000),
