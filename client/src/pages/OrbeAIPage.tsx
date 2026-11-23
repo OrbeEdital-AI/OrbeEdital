@@ -1,11 +1,11 @@
 import { AdminPagination } from "./portal/common";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import {
   Sparkles, Target, MapPin, CalendarClock, Building2, RefreshCw, Gauge, ShieldCheck,
-  Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle, Trash2,
+  Send, Plus, Bot, UserRound, Search, FileSearch, ClipboardCheck, ArrowRight, MessageCircle, Trash2, Square,
 } from "lucide-react";
 
 function extractOpportunityQuery(value: string) {
@@ -41,6 +41,15 @@ const suggestions = [
 
 export function OrbeAIPage() {
   const [conversationId, setConversationId] = useState("");
+  const trpcUtils = trpc.useUtils();
+  const activeRequest = useRef<AbortController | null>(null);
+  const [isWorking, setIsWorking] = useState(false);
+  const stopWork = () => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setIsWorking(false);
+    setLocalMessages(current => [...current, { role: "assistant", content: "Pesquisa interrompida a seu pedido." }]);
+  };
   const conversations = trpc.orbeAi.chatConversations.useQuery();
   const deleteChat = trpc.orbeAi.chatDelete.useMutation();
   useEffect(() => {
@@ -108,7 +117,10 @@ export function OrbeAIPage() {
   };
   const submitMessage = async (value = draft) => {
     const message = value.trim();
-    if (!message || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) return;
+    if (!message || isWorking || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setIsWorking(true);
     setLocalMessages(current => [...current, { role: "user", content: message }]);
     setDraft("");
 
@@ -129,19 +141,23 @@ export function OrbeAIPage() {
           setLocalMessages(current => [...current, { role: "assistant", content: "Diga o produto, serviço ou assunto que deseja localizar. Exemplo: encontre licitações de material hospitalar em PE." }]);
           return;
         }
-        const result = await searchBase.mutateAsync({ query, page: 1 });
+        const result = await trpcUtils.client.orbeAi.searchBase.mutate({ query, page: 1 }, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         const summary = result.items.map((item, index) =>
           `${index + 1}. ${item.title} — ${item.municipality ?? "Município não informado"}/${item.state ?? "UF não informada"}; valor: ${currency(item.estimatedValue)}; prazo: ${dateLabel(item.proposalDeadline)}; fonte: ${item.sourceName}; modalidade: ${item.modality ?? "não informada"}; órgão: ${item.agencyName ?? "não informado"}; link OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}; fonte oficial: ${item.sourceUrl ?? "não informada"}`
         ).join("\n");
         const toolResult = result.total
           ? `Busca realizada na base sincronizada do OrbeEdital para "${query}". Foram encontrados ${result.total} registros abertos; exibindo ${result.items.length}.\n${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.`
           : `Busca realizada na base sincronizada do OrbeEdital para "${query}". Nenhuma oportunidade aberta correspondente foi encontrada. Tente outros termos ou ajuste os filtros em Oportunidades.`;
+        if (controller.signal.aborted) return;
         await persistToolResult(toolResult, message);
+        if (controller.signal.aborted) return;
         setLocalMessages(current => [...current, { role: "assistant", content: result.total
           ? `Consultei a base de oportunidades do OrbeEdital e encontrei ${result.total} registros compatíveis. Mostrei até ${result.items.length} resultados iniciais, com fonte, prazo e link para conferência. A consulta usa os dados da última sincronização concluída, não uma busca ao vivo em todos os portais.`
           : "Consultei a base sincronizada e não encontrei oportunidades abertas com esses termos. Tente uma expressão mais curta ou amplie a busca." }]);
       } else if (asksRadar) {
-        const result = await radar.mutateAsync();
+        const result = await trpcUtils.client.orbeAi.radar.mutate(undefined, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         const summary = result.items.slice(0, 12).map((item, index) =>
           `${index + 1}. ${item.title} — ${item.score}% de aderência; ${item.municipality ?? "local não informado"}/${item.state ?? "UF não informada"}; prazo: ${dateLabel(item.proposalDeadline)}; valor: ${currency(item.estimatedValue)}. Motivos: ${item.reasons.join("; ")}. Link OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}${item.sourceUrl ? `; fonte oficial: ${item.sourceUrl}` : ""}`
         ).join("\n");
@@ -164,7 +180,9 @@ export function OrbeAIPage() {
         await Promise.all([history.refetch(), conversations.refetch()]);
       }
     } catch (error) {
-      setLocalMessages(current => [...current, { role: "assistant", content: error instanceof Error ? error.message : "Não foi possível concluir essa ação. Tente novamente." }]);
+      if (!controller.signal.aborted) setLocalMessages(current => [...current, { role: "assistant", content: error instanceof Error ? error.message : "Não foi possível concluir essa ação. Tente novamente." }]);
+    } finally {
+      if (activeRequest.current === controller) { activeRequest.current = null; setIsWorking(false); }
     }
   };
 
@@ -205,20 +223,21 @@ export function OrbeAIPage() {
           <div className={`mt-0.5 rounded-full p-2 ${message.role === "user" ? "bg-[#173d60] text-white" : "bg-cyan-100 text-cyan-900"}`}>{message.role === "user" ? <UserRound size={16}/> : <Bot size={16}/>}</div>
           <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-tr-sm bg-[#173d60] text-white" : "rounded-tl-sm bg-slate-100 text-slate-800"}`}><p className="whitespace-pre-wrap">{message.content}</p></div>
         </div>)}
-        {(send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
+        {(isWorking || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending) && <div className="flex items-center gap-3"><div className="rounded-full bg-cyan-100 p-2 text-cyan-900"><Bot size={16}/></div><div className="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-500"><span className="inline-flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> {radar.isPending || searchBase.isPending ? "Consultando oportunidades na base sincronizada…" : analyzeEdital.isPending ? "Lendo edital e documentos oficiais…" : "Analisando sua pergunta…"}</span></div></div>}
         {history.isLoading && <p className="text-center text-xs text-slate-400">Carregando conversa…</p>}
       </div>
 
       <div className="border-t bg-white p-3 sm:p-4">
         <div className="mb-3 flex flex-wrap gap-2">
           <button type="button" disabled={radar.isPending || !hasProfile} onClick={() => radar.mutate()} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"><Target size={14}/>{radar.isPending ? "Executando Radar…" : "Executar meu Radar"}</button>
+          {(isWorking || radar.isPending || send.isPending || analyzeEdital.isPending) && <button type="button" onClick={stopWork} className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100"><Square size={13} fill="currentColor"/> Parar pesquisa</button>}
           <Link href="/app/opportunities" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Search size={14}/> Abrir oportunidades</Link>
           <Link href="/app/profile" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Building2 size={14}/> Perfil da empresa</Link>
         </div>
         {!hasProfile && <p className="mb-2 text-xs text-amber-700">Complete o perfil da empresa para receber recomendações mais relevantes.</p>}
         <form onSubmit={event => { event.preventDefault(); submitMessage(); }} className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100">
           <textarea value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submitMessage(); } }} rows={2} maxLength={3000} placeholder="Pergunte sobre licitações, editais ou sua empresa…" className="max-h-36 min-h-[48px] flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400"/>
-          <button type="submit" disabled={!draft.trim() || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
+          <button type="submit" disabled={!draft.trim() || isWorking || send.isPending || radar.isPending || searchBase.isPending || analyzeEdital.isPending || !conversationId} className="mb-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#087eaa] text-white transition hover:bg-[#066b91] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem"><Send size={17}/></button>
         </form>
         <p className="mt-2 text-[10px] leading-4 text-slate-400">A Orbe IA pode cometer erros. Confirme exigências, prazos e decisões no edital e nas fontes oficiais. Não substitui análise jurídica ou a conferência do órgão.</p>
       </div>
