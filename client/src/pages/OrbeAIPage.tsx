@@ -11,9 +11,9 @@ import {
 function extractOpportunityQuery(value: string) {
   const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   const cleaned = normalized
-    .replace(/^(?:por favor[, ]*)?(?:(?:encontre|encontrar|busque|buscar|pesquise|pesquisar|ache|achar|procure|procurar|localize|localizar|mostre|mostrar|liste|listar|quero|preciso|necessito|me mostre|me encontre)\\s+(?:por\\s+|me\\s+|um\\s+|uma\\s+|os\\s+|as\\s+|alguns?\\s+|algumas?\\s+)?)*/i, "")
-    .replace(/^(?:(?:licitacoes?|oportunidades?|pregoes?|editais?)\\s+(?:de|para|sobre|com|do|da|dos|das)\\s+)/, "")
-    .replace(/^(?:de|para|sobre|por)\\s+/, "")
+    .replace(/^(?:por favor[, ]*)?(?:(?:encontre|encontrar|busque|buscar|pesquise|pesquisar|ache|achar|procure|procurar|localize|localizar|mostre|mostrar|liste|listar|quero|preciso|necessito|me mostre|me encontre)\s+(?:por\s+|me\s+|um\s+|uma\s+|os\s+|as\s+|alguns?\s+|algumas?\s+)?)*/i, "")
+    .replace(/^(?:(?:licitacoes?|oportunidades?|pregoes?|editais?)\s+(?:de|para|sobre|com|do|da|dos|das)\s+)/, "")
+    .replace(/^(?:de|para|sobre|por)\s+/, "")
     .replace(/\b(?:em|no|na|nos|nas)\s+[a-z]{2}\b/g, "")
     .replace(/\b(?:abertas?|vigentes?|atuais?|abertos?)\b/g, "")
     .replace(/[.,;!?]+/g, " ")
@@ -117,8 +117,8 @@ export function OrbeAIPage() {
       && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
-    const asksSearch = /\\b(busque|buscar|encontre|encontrar|ache|achar|pesquise|pesquisar|liste|listar|procure|procurar|localize|localizar|mostre|mostrar)\\b/.test(normalized)
-      && !/\\b(como|porque|por que|explicar|funciona|aprender)\\b/.test(normalized);
+    const asksSearch = /\b(busque|buscar|encontre|encontrar|ache|achar|pesquise|pesquisar|liste|listar|procure|procurar|localize|localizar|mostre|mostrar)\b/.test(normalized)
+      && !/\b(como|porque|por que|explicar|funciona|aprender)\b/.test(normalized);
     const asksAnalysis = /\b(analis(e|ar)|leia|ler|examinar|verificar)\b/.test(normalized)
       && /\b(edital|documento|anexo|retificacao)\w*/.test(normalized);
 
