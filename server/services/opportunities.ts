@@ -98,42 +98,53 @@ function buildFilters(filters: OpportunityFilters) {
   const clauses = [];
   const query = filters.query?.trim();
   if (query) {
-    // Product vocabulary: aliases are alternatives within a term, not additional
-    // mandatory words. Preserve all other terms, including model numbers.
+    // All meaningful terms must match the SAME product description (or the same
+    // notice title/description), not unrelated fields/items within a notice.
+    // Quoted queries enforce a contiguous exact phrase, ignoring case/accents.
+    const quoted = /^["“](.*)["”]$/.exec(query);
+    const cleaned = (quoted?.[1] ?? query).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const tokens = cleaned.match(/[a-z0-9]+(?:[.,][0-9]+)?/g) ?? [];
+    const stopwords = new Set(["de", "da", "do", "das", "dos", "em", "para", "com", "um", "uma"]);
+    const terms = tokens.filter(token => !stopwords.has(token)).slice(0, 24);
     const aliases: Record<string, string[]> = {
-      tv: ["tv", "televisor", "televisao", "televisão", "smart tv"],
-      televisor: ["televisor", "tv", "televisao", "televisão"],
-      televisao: ["televisao", "televisão", "televisor", "tv"],
-      televisaoo: ["televisão", "televisor", "tv"],
-      full: ["full", "fhd", "1920x1080", "1920 x 1080"],
-      hd: ["hd", "high definition", "1080p"],
-      notebook: ["notebook", "laptop", "computador portatil", "computador portátil"],
-      computador: ["computador", "desktop", "microcomputador", "pc"],
-      celular: ["celular", "smartphone", "telefone movel", "telefone móvel"],
+      tv: ["tv", "televisor", "televisao", "smart tv"],
+      televisor: ["televisor", "tv", "televisao"],
+      televisao: ["televisao", "televisor", "tv"],
+      notebook: ["notebook", "laptop"],
+      laptop: ["laptop", "notebook"],
+      celular: ["celular", "smartphone"],
+      smartphone: ["smartphone", "celular"],
       impressora: ["impressora", "multifuncional"],
-      legumes: ["legumes", "legume", "hortalica", "hortaliça"],
-      legume: ["legume", "legumes", "hortalica", "hortaliça"],
+      legumes: ["legumes", "legume", "hortalica"],
+      legume: ["legume", "legumes", "hortalica"],
     };
-    const terms = query.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/\s+/).filter(Boolean).slice(0, 12);
-    const normalized = terms.filter(term => !["de", "da", "do", "das", "dos", "em", "para"].includes(term));
-    for (const term of normalized) {
-      // "in natura" is a meaningful product qualifier; "in" is not a
-      // useful standalone token for substring search.
-      if (term === "in") continue;
-      const options = aliases[term] ?? [term];
-      const matches = options.flatMap(option => {
-        const like = "%" + option.replace(/[%_]/g, "\\$&") + "%";
-        return [
-          sql`${normalizedSearchField(opportunities.title)} like ${like}`,
-          sql`${normalizedSearchField(opportunities.description)} like ${like}`,
-          sql`${normalizedSearchField(opportunities.agencyName)} like ${like}`,
-          sql`${normalizedSearchField(opportunities.processNumber)} like ${like}`,
-          sql`${normalizedSearchField(opportunities.procurementNumber)} like ${like}`,
-          sql`${normalizedSearchField(opportunities.agencyCnpj)} like ${like}`,
-          sql`exists (select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id} and (translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.specifications, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like} or translate(lower(coalesce(oi.catalog_code, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${like}))`,
-        ];
-      });
-      clauses.push(or(...matches)!);
+    const fields = [
+      normalizedSearchField(opportunities.title),
+      normalizedSearchField(opportunities.description),
+    ];
+    const itemFields = [
+      sql`translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`,
+      sql`translate(lower(coalesce(oi.specifications, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN})`,
+    ];
+    // Escape SQL LIKE wildcards from user input; retain literal product numbers.
+    const pattern = (term: string) => "%" + term.replace(/[\\%_]/g, "\\$&") + "%";
+    const matchingField = (field: ReturnType<typeof sql>) => {
+      if (quoted) return sql`${field} like ${pattern(cleaned)} escape '\\'`;
+      return and(...terms.map(term =>
+        or(...(aliases[term] ?? [term]).map(option =>
+          sql`${field} like ${pattern(option)} escape '\\'`
+        ))!
+      ))!;
+    };
+    if (terms.length) {
+      clauses.push(or(
+        ...fields.map(matchingField),
+        sql`exists (
+          select 1 from opportunity_items oi
+          where oi.opportunity_id = ${opportunities.id}
+          and (${or(...itemFields.map(matchingField))})
+        )`,
+      )!);
     }
   }
   if (filters.states?.length) clauses.push(inArray(opportunities.state, filters.states.map(state => state.toUpperCase())));
