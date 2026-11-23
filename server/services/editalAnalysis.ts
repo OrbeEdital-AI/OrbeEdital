@@ -671,8 +671,17 @@ export async function analyzeOpportunityEdital(opportunityId: string, userId: st
     // Technical plans attached by the contracting authority are reference
     // material, not bidder deliverables unless the notice explicitly says so.
     const technicalReference = /(?:^|\\b)(?:plantas? (?:el[eé]tricas?|de arquitetura|de implanta[cç][aã]o)|diagramas? (?:uni|multi)filare?s?|projetos? (?:executivos?|de arquitetura|el[eé]tricos?)|planilha de acabamentos e especifica[cç][oõ]es)(?:\\b|$)/i;
+    const habilitationDeliverable = /(?:habilita[cç][aã]o jur[ií]dica|regularidade (?:fiscal|social|trabalhista)|certid[oõ]es? de regularidade|balan[cç]o patrimonial|demonstra[cç][oõ]es? cont[aá]beis|certid[aã]o negativa de fal[eê]ncia|documentos? de habilita[cç][aã]o)/i;
     analysis.documentChecklist = [...new Set(analysis.documentChecklist)].filter(item =>
-      !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")) && !technicalReference.test(item)
+      !qualificationText.has(item.trim().toLocaleLowerCase("pt-BR")) &&
+      !technicalReference.test(item) &&
+      !habilitationDeliverable.test(item)
+    );
+    // Do not assert absence of technical qualifications based only on an ETP.
+    analysis.missingInformation = analysis.missingInformation.map(item =>
+      /n[aã]o h[aá] (?:men[cç][aã]o|exig[eê]ncia).*atestados?|aus[eê]ncia.*atestados?/i.test(item)
+        ? "Atestados de capacidade técnica: ausência não confirmada em todos os documentos; verificar edital, termo de referência e anexos."
+        : item
     );
     if (pncpDates?.proposalReceiptStartsAt) analysis.proposalStartAt = pncpDates.proposalReceiptStartsAt;
     if (pncpDates?.proposalReceiptEndsAt) analysis.proposalDeadline = pncpDates.proposalReceiptEndsAt;
