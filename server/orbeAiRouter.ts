@@ -339,6 +339,18 @@ export const orbeAiRouter = router({
     return [...conversations.values()].slice(0, 12);
   }),
 
+  chatDelete: protectedProcedure
+    .input(z.object({ conversationId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      await db.delete(auditLogs).where(and(
+        eq(auditLogs.actorUserId, ctx.user.id),
+        eq(auditLogs.action, "orbe_ai.chat.message"),
+        eq(auditLogs.entityId, input.conversationId),
+      ));
+      return { deleted: true };
+    }),
+
   chatHistory: protectedProcedure
     .input(z.object({ conversationId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
