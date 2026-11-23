@@ -722,6 +722,32 @@ export function OpportunityDetailPage() {
                 </ul>
               </div>
             )}
+            {(() => {
+              const analysis = editalAnalysis.data.analysis;
+              const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+              const evidence = analysis.evidence ?? [];
+              const supported = (claim: string) => {
+                const words = normalized(claim).match(/[a-z0-9]{5,}/g)?.filter(word => !["documentos", "exigidos", "conforme", "licitacao", "empresa", "devera"].includes(word)) ?? [];
+                return evidence.filter((item: { topic: string; excerpt: string; document: string | null; page: string | null }) => {
+                  const text = normalized(item.topic + " " + item.excerpt);
+                  return words.length > 0 && words.filter(word => text.includes(word)).length >= Math.min(2, words.length);
+                });
+              };
+              const requirements = [...(analysis.qualificationRequirements ?? []), ...(analysis.documentChecklist ?? []), ...(analysis.attentionPoints ?? []), ...(analysis.risks ?? [])];
+              const unlinked = requirements.filter((claim: string) => supported(claim).length === 0);
+              const uncovered = (analysis.documentsAnalyzed ?? []).filter((name: string) => !evidence.some((item: { document: string | null }) => item.document && (normalized(item.document).includes(normalized(name)) || normalized(name).includes(normalized(item.document)))));
+              return <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                <h4 className="text-sm font-semibold text-[#102B4E]">Diagnóstico de participação · verificação preliminar</h4>
+                <p className="mt-1 text-xs text-slate-700">A IA ainda não confirmou a compatibilidade da sua empresa com as exigências. Nenhum requisito é considerado atendido sem documentação comprobatória.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-lg text-[#102B4E]">{requirements.length}</strong>Exigências e pontos levantados</div>
+                  <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-lg text-amber-800">{unlinked.length}</strong>Sem evidência textual associada</div>
+                  <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-lg text-amber-800">{uncovered.length + (analysis.documentsNotProcessed?.length ?? 0)}</strong>Documentos sem evidência ou não processados</div>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">Associação textual indicativa, não validação jurídica ou confirmação da página. Consulte os trechos originais abaixo.</p>
+                {unlinked.length > 0 && <details className="mt-3 text-xs text-slate-700"><summary className="cursor-pointer font-semibold">Ver exigências que precisam de confirmação documental ({unlinked.length})</summary><ul className="mt-2 list-disc space-y-1 pl-5">{unlinked.map((claim: string, index: number) => <li key={index}>{claim} — não foi possível associar uma evidência específica.</li>)}</ul></details>}
+              </div>;
+            })()}
             {(editalAnalysis.data.analysis.documentChecklist?.length > 0) && (
               <div className="rounded-lg border border-cyan-200 bg-white p-4">
                 <h4 className="text-sm font-semibold text-[#102B4E]">Preparação documental · checklist interativo</h4>
