@@ -67,7 +67,7 @@ export const orbeAiRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "A busca assistida da Orbe IA é exclusiva do plano Profissional." });
       }
       const result = await searchOpportunities({
-        query: input.query,
+        query: `"${input.query.replace(/^["“]|["”]$/g, "")}"`,
         onlyOpen: true,
         page: input.page,
       }, ctx.user.id);
@@ -81,10 +81,12 @@ export const orbeAiRouter = router({
           returned: result.items.length,
           page: result.page,
           source: "synced_database",
+          matchingMode: "exact_phrase_same_notice_or_item",
         },
       });
       return {
         query: input.query,
+        matchingMode: "exact_phrase_same_notice_or_item" as const,
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
