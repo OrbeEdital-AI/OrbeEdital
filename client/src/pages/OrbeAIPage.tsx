@@ -11,7 +11,9 @@ import {
 function extractOpportunityQuery(value: string) {
   const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   const cleaned = normalized
-    .replace(/^.*?\b(?:licitacoes?|oportunidades?|pregoes?|editais?)\s+(?:de|para|sobre|com|do|da|dos|das)\s+/, "")
+    .replace(/^(?:por favor[, ]*)?(?:(?:encontre|encontrar|busque|buscar|pesquise|pesquisar|ache|achar|procure|procurar|localize|localizar|mostre|mostrar|liste|listar|quero|preciso|necessito|me mostre|me encontre)\\s+(?:por\\s+|me\\s+|um\\s+|uma\\s+|os\\s+|as\\s+|alguns?\\s+|algumas?\\s+)?)*/i, "")
+    .replace(/^(?:(?:licitacoes?|oportunidades?|pregoes?|editais?)\\s+(?:de|para|sobre|com|do|da|dos|das)\\s+)/, "")
+    .replace(/^(?:de|para|sobre|por)\\s+/, "")
     .replace(/\b(?:em|no|na|nos|nas)\s+[a-z]{2}\b/g, "")
     .replace(/\b(?:abertas?|vigentes?|atuais?|abertos?)\b/g, "")
     .replace(/[.,;!?]+/g, " ")
@@ -115,8 +117,8 @@ export function OrbeAIPage() {
       && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
     const opportunityId = message.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i)?.[0]
       ?? message.match(/\/app\/opportunities\/([0-9a-f-]{36})/i)?.[1];
-    const asksSearch = /\b(busque|buscar|encontre|encontrar|ache|achar|pesquise|pesquisar|liste|listar)\b/.test(normalized)
-      && /\b(licitac|oportunidad|pregao|edital)\w*/.test(normalized);
+    const asksSearch = /\\b(busque|buscar|encontre|encontrar|ache|achar|pesquise|pesquisar|liste|listar|procure|procurar|localize|localizar|mostre|mostrar)\\b/.test(normalized)
+      && !/\\b(como|porque|por que|explicar|funciona|aprender)\\b/.test(normalized);
     const asksAnalysis = /\b(analis(e|ar)|leia|ler|examinar|verificar)\b/.test(normalized)
       && /\b(edital|documento|anexo|retificacao)\w*/.test(normalized);
 
@@ -129,7 +131,7 @@ export function OrbeAIPage() {
         }
         const result = await searchBase.mutateAsync({ query, page: 1 });
         const summary = result.items.map((item, index) =>
-          `${index + 1}. ${item.title} — ${item.municipality ?? "Município não informado"}/${item.state ?? "UF não informada"}; valor: ${currency(item.estimatedValue)}; prazo: ${dateLabel(item.proposalDeadline)}; fonte: ${item.sourceName}; modalidade: ${item.modality ?? "não informada"}; órgão: ${item.agencyName ?? "não informado"}; link: ${item.sourceUrl ?? "não disponível"}`
+          `${index + 1}. ${item.title} — ${item.municipality ?? "Município não informado"}/${item.state ?? "UF não informada"}; valor: ${currency(item.estimatedValue)}; prazo: ${dateLabel(item.proposalDeadline)}; fonte: ${item.sourceName}; modalidade: ${item.modality ?? "não informada"}; órgão: ${item.agencyName ?? "não informado"}; link OrbeEdital: ${window.location.origin}/app/opportunities/${item.id}; fonte oficial: ${item.sourceUrl ?? "não informada"}`
         ).join("\n");
         const toolResult = result.total
           ? `Busca realizada na base sincronizada do OrbeEdital para "${query}". Foram encontrados ${result.total} registros abertos; exibindo ${result.items.length}.\n${summary}\nA base reflete as últimas sincronizações concluídas; não representa consulta em tempo real a todos os portais.`
