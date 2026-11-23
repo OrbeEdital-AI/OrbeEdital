@@ -169,17 +169,6 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = OPPORTUNITIES_PAGE_SIZE;
-  // Count and page retrieval") + "%";
-  const relevance = phrase
-    ? sql<number>`(
-        case when ${normalizedSearchField(opportunities.title)} like ${phrasePattern} then 100 else 0 end
-        + case when ${normalizedSearchField(opportunities.description)} like ${phrasePattern} then 70 else 0 end
-        + case when exists (
-          select 1 from opportunity_items oi where oi.opportunity_id = ${opportunities.id}
-          and translate(lower(coalesce(oi.description, '')), ${SEARCH_ACCENTED}, ${SEARCH_PLAIN}) like ${phrasePattern}
-        ) then 90 else 0 end
-      )`
-    : sql<number>`0`;
   // Count and page retrieval are independent; execute concurrently to reduce request latency.
   const [countRows, rows] = await Promise.all([
     db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where),
