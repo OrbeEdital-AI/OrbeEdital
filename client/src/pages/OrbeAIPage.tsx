@@ -229,7 +229,7 @@ export function OrbeAIPage() {
 
       <div className="border-t bg-white p-3 sm:p-4">
         <div className="mb-3 flex flex-wrap gap-2">
-          <button type="button" disabled={radar.isPending || !hasProfile} onClick={() => radar.mutate()} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"><Target size={14}/>{radar.isPending ? "Executando Radar…" : "Executar meu Radar"}</button>
+          <button type="button" disabled={isWorking || radar.isPending || !hasProfile} onClick={() => void submitMessage("Encontrar licitações para minha empresa")} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"><Target size={14}/>{radar.isPending ? "Executando Radar…" : "Executar meu Radar"}</button>
           {(isWorking || radar.isPending || send.isPending || analyzeEdital.isPending) && <button type="button" onClick={stopWork} className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100"><Square size={13} fill="currentColor"/> Parar pesquisa</button>}
           <Link href="/app/opportunities" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Search size={14}/> Abrir oportunidades</Link>
           <Link href="/app/profile" className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Building2 size={14}/> Perfil da empresa</Link>
