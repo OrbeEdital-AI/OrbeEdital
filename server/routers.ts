@@ -97,7 +97,12 @@ const profileUpdateSchema = z.object({
   products: z.array(z.string().trim().min(1).max(160)).max(100),
   services: z.array(z.string().trim().min(1).max(160)).max(100),
   keywords: z.array(z.string().trim().min(1).max(100)).max(100),
-  servedStates: z.array(z.enum(stateCodes as [string, ...string[]])).max(27),
+  servedStates: z.preprocess(value => {
+    if (!Array.isArray(value)) return value;
+    const entries = value.map(item => typeof item === "string" ? item.trim().toUpperCase() : item);
+    if (entries.some(item => typeof item === "string" && /^(TODOS?|TODAS?|TODO O BRASIL|BRASIL INTEIRO)$/.test(item))) return [...stateCodes];
+    return entries;
+  }, z.array(z.enum(stateCodes as [string, ...string[]])).max(27)),
   servedMunicipalities: z.array(z.string().trim().min(1).max(160)).max(100),
   catmatCodes: z.array(z.string().trim().min(1).max(40)).max(200),
   catserCodes: z.array(z.string().trim().min(1).max(40)).max(200),
