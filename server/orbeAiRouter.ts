@@ -296,7 +296,7 @@ export const orbeAiRouter = router({
         coverageLimited: false,
         itemRowsLimited: false,
         learnedInterestTerms: interestTerms.length,
-        matchingMode: "weighted_relevance_threshold_v3",
+        matchingMode: "product_or_item_evidence_v4",
         provider: "internal",
         planCode: planSummary.plan?.code ?? null,
       },
