@@ -160,14 +160,18 @@ export async function searchOpportunities(filters: OpportunityFilters, userId: s
   const where = buildFilters(filters);
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = OPPORTUNITIES_PAGE_SIZE;
-  const [totalRow] = await db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where);
-  const rows = await db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code })
+  // Count and page retrieval are independent; execute concurrently to reduce request latency.
+  const [countRows, rows] = await Promise.all([
+    db.select({ total: count() }).from(opportunities).innerJoin(connectors, eq(opportunities.connectorId, connectors.id)).where(where),
+    db.select({ opportunity: opportunities, sourceName: connectors.name, sourceCode: connectors.code })
     .from(opportunities)
     .innerJoin(connectors, eq(opportunities.connectorId, connectors.id))
     .where(where)
     .orderBy(desc(opportunities.lastSyncedAt), desc(opportunities.publicationDate), desc(opportunities.createdAt), asc(opportunities.id))
     .limit(pageSize)
-    .offset((page - 1) * pageSize);
+    .offset((page - 1) * pageSize),
+  ]);
+  const totalRow = countRows[0];
   const ids = rows.map(row => row.opportunity.id);
   const saved = ids.length ? await db.select({ id: favorites.opportunityId }).from(favorites).where(and(eq(favorites.userId, userId), inArray(favorites.opportunityId, ids))) : [];
   const favoriteIds = new Set(saved.map(row => row.id));
