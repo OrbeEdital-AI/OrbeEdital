@@ -5,7 +5,7 @@ export async function probeSergipe(timeoutMs = 18000) {
   let response: Response;
   try {
     response = await fetch(ENDPOINT, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
@@ -15,7 +15,9 @@ export async function probeSergipe(timeoutMs = 18000) {
   }
   if (!response.ok) throw new Error(`Sergipe: servidor respondeu HTTP ${response.status} em ${Date.now() - startedAt} ms.`);
   const type = response.headers.get("content-type") ?? "";
-  if (!type.toLowerCase().includes("json")) throw new Error(`Sergipe: resposta não é JSON (tipo: ${type || "não informado"}).`);
+  const isExcel = /spreadsheetml|excel|octet-stream/i.test(type);
+  const isCsv = /csv/i.test(type);
+  if (!isExcel && !isCsv && !type.toLowerCase().includes("json")) throw new Error(`Sergipe: formato não suportado (tipo: ${type || "não informado"}).`);
   // Read only a bounded preview to avoid exhausting serverless memory.
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Sergipe: resposta sem corpo.");
@@ -44,6 +46,12 @@ export async function probeSergipe(timeoutMs = 18000) {
   const buffer = new Uint8Array(bytes);
   let offset = 0;
   for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.length; }
+  if (isExcel) return { status: "xlsx_detected", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: null, displayed: 0, notices: [], warning: "Exportação XLSX confirmada. O arquivo foi recebido em modo diagnóstico, mas ainda exige parser de planilha e validação de colunas antes de extrair licitações. Nenhum registro foi importado." };
+  if (isCsv) {
+    const lines = new TextDecoder("utf-8").decode(buffer).replace(/^\\uFEFF/, "").split(/\\r?\\n/).filter(Boolean);
+    const separator = (lines[0]?.match(/;/g)?.length ?? 0) > (lines[0]?.match(/,/g)?.length ?? 0) ? ";" : ",";
+    return { status: "csv_detected", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: Math.max(0, lines.length - 1), displayed: 0, notices: [], warning: `CSV detectado (separador ${separator}; colunas: ${(lines[0] ?? "").slice(0, 180)}). É necessário validar o esquema antes da importação.` };
+  }
   let payload: unknown;
   try { payload = JSON.parse(new TextDecoder().decode(buffer)); }
   catch { throw new Error("Sergipe: resposta recebida, mas JSON inválido."); }
