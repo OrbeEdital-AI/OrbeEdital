@@ -69,12 +69,13 @@ export function previewXlsx(input: Uint8Array) {
   const id = find(/numero|identificador|codigo|processo/);
   const agency = find(/orgao|unidade gestora|secretaria/);
   const object = find(/objeto|descricao/);
-  const situation = find(/situacao|status/);
+  const situation = find(/situacao|status|fase|andamento/);
+  const date = find(/data.*(abertura|sessao|proposta)|prazo.*(final|encerramento)/);
   const notices = rows.slice(1,31).map((row, i) => ({
     key: id >= 0 ? (row[id] ?? String(i+1)).slice(0,200) : String(i+1),
     agency: agency >= 0 ? (row[agency] ?? null) : null,
     object: object >= 0 ? (row[object] ?? null) : null,
     situation: situation >= 0 ? (row[situation] ?? null) : null,
   }));
-  return { headers, totalExtracted: rows.length - 1, notices, schemaRecognized: id >= 0 && object >= 0, truncated: rows.length > 5000 };
+  return { headers, totalExtracted: rows.length - 1, notices, schemaRecognized: id >= 0 && object >= 0, truncated: rows.length > 5000, fieldCoverage: { identifier: id >= 0, agency: agency >= 0, object: object >= 0, situation: situation >= 0, deadline: date >= 0 }, safeForPublication: false };
 }
