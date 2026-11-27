@@ -48,7 +48,7 @@ export async function probeSergipe(timeoutMs = 18000) {
   for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.length; }
   if (isExcel) return { status: "xlsx_detected", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: null, displayed: 0, notices: [], warning: "Exportação XLSX confirmada. O arquivo foi recebido em modo diagnóstico, mas ainda exige parser de planilha e validação de colunas antes de extrair licitações. Nenhum registro foi importado." };
   if (isCsv) {
-    const lines = new TextDecoder("utf-8").decode(buffer).replace(/^\\uFEFF/, "").split(/\\r?\\n/).filter(Boolean);
+    const lines = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
     const separator = (lines[0]?.match(/;/g)?.length ?? 0) > (lines[0]?.match(/,/g)?.length ?? 0) ? ";" : ",";
     return { status: "csv_detected", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: Math.max(0, lines.length - 1), displayed: 0, notices: [], warning: `CSV detectado (separador ${separator}; colunas: ${(lines[0] ?? "").slice(0, 180)}). É necessário validar o esquema antes da importação.` };
   }
