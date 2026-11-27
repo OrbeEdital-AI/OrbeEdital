@@ -1,3 +1,4 @@
+import { previewXlsx } from "./xlsx-preview";
 /** Experimental Sergipe transparency API probe. Admin only, no database writes. */
 const ENDPOINT = "https://portal.cge.se.gov.br/secc/api/transparencia/export/licitacoes";
 export async function probeSergipe(timeoutMs = 18000) {
@@ -46,7 +47,14 @@ export async function probeSergipe(timeoutMs = 18000) {
   const buffer = new Uint8Array(bytes);
   let offset = 0;
   for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.length; }
-  if (isExcel) return { status: "xlsx_detected", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: null, displayed: 0, notices: [], warning: "Exportação XLSX confirmada. O arquivo foi recebido em modo diagnóstico, mas ainda exige parser de planilha e validação de colunas antes de extrair licitações. Nenhum registro foi importado." };
+  if (isExcel) {
+    try {
+      const preview = previewXlsx(buffer);
+      return { status: preview.schemaRecognized ? "xlsx_preview" : "xlsx_schema_review", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: preview.totalExtracted, displayed: preview.notices.length, notices: preview.notices, warning: preview.schemaRecognized ? "Prévia administrativa extraída do XLSX. Nenhuma licitação foi importada; situação e prazo ainda exigem validação." : `XLSX lido, mas colunas ainda não reconhecidas: ${preview.headers.slice(0,12).join(", ")}. Nenhuma licitação foi importada.` };
+    } catch (error) {
+      return { status: "xlsx_parse_error", httpStatus: response.status, elapsedMs: Date.now() - startedAt, bytesRead: bytes, totalExtracted: null, displayed: 0, notices: [], warning: `XLSX recebido, mas não foi possível interpretar a planilha: ${error instanceof Error ? error.message : "formato inesperado"}.` };
+    }
+  }
   if (isCsv) {
     const lines = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
     const separator = (lines[0]?.match(/;/g)?.length ?? 0) > (lines[0]?.match(/,/g)?.length ?? 0) ? ";" : ",";
