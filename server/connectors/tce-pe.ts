@@ -15,8 +15,8 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
 }> {
   if (!Number.isInteger(year) || year < 2011 || year > new Date().getFullYear() + 1) throw new Error("Invalid year");
   const url = new URL(ENDPOINT);
-  // ANOPROCESSO is an output-only field for LicitacaoUG; ANOMODALIDADE is documented as an input filter.
-  url.searchParams.set("ANOMODALIDADE", String(year));
+  // ANOMODALIDADE is modality year, not process year; never send the selected year in that filter.
+  // The endpoint is probed without an unverified year filter; returned rows are filtered locally.
   // Keep the total request bounded by the serverless execution window.
   // A transient upstream timeout gets one retry, with a shared deadline.
   const deadline = Date.now() + timeoutMs;
@@ -80,6 +80,7 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
     if (!key || keys.has(key)) continue;
     keys.add(key);
     const amount = Number(row.VALORORCAMENTOESTIMATIVO);
+    if (field(row, "ANOPROCESSO") !== String(year)) continue;
     notices.push({
       key, agency: field(row,"UG"), object: field(row,"OBJETOCONFORMEEDITAL") ?? field(row,"DESCRICAOOBJETO"),
       modality: field(row,"NOMEMODALIDADE"), situation: field(row,"SITUACAOLICITACAO"),
@@ -89,5 +90,5 @@ export async function probeTcePe(year: number, timeoutMs = 22000): Promise<{
   }
   const limit = Number(data.limiteResultado ?? 10000);
   const count = Number(data.tamanhoResultado ?? notices.length);
-  return {notices, count, truncated: notices.length >= limit || count >= limit, status: "read_only_preview", endpoint: url.toString()};
+  return {notices, count, truncated: notices.length >= limit || count >= limit, status: "read_only_preview_unfiltered_remote", endpoint: url.toString()};
 }
