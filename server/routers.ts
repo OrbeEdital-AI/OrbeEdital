@@ -1,3 +1,4 @@
+import { probeCandidateSource } from "./connectors/candidate-sources";
 import { probeTcePe } from "./connectors/tce-pe";
 import { probeSergipe } from "./connectors/sergipe";
 import { runRadarAutomatic } from "./services/orberadar-automatic";
@@ -464,6 +465,7 @@ export const appRouter = router({
       }),
     }),
 
+    radarCandidateSourceProbe: superadminProcedure.input(z.object({ source: z.enum(["tce-rs", "dados-gov"]) })).mutation(async ({input}) => probeCandidateSource(input.source)),
     radarSergipePilot: superadminProcedure.mutation(async () => probeSergipe()),
     radarTcePePilot: superadminProcedure.input(z.object({year:z.number().int().min(2011).max(2030)})).mutation(async ({input}) => {
       const result = await probeTcePe(input.year);
