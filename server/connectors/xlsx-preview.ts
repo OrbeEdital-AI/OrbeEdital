@@ -77,5 +77,14 @@ export function previewXlsx(input: Uint8Array) {
     object: object >= 0 ? (row[object] ?? null) : null,
     situation: situation >= 0 ? (row[situation] ?? null) : null,
   }));
-  return { headers, totalExtracted: rows.length - 1, notices, schemaRecognized: id >= 0 && object >= 0, truncated: rows.length > 5000, fieldCoverage: { identifier: id >= 0, agency: agency >= 0, object: object >= 0, situation: situation >= 0, deadline: date >= 0 }, safeForPublication: false };
+  const statusCounts = { finalized: 0, failed: 0, revoked: 0, openCandidate: 0, unknown: 0 };
+  for (const row of rows.slice(1)) {
+    const status = situation >= 0 ? (row[situation] ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : "";
+    if (/homologad|finalizad|encerrad|concluid|adjudicad/.test(status)) statusCounts.finalized++;
+    else if (/fracassad|desert/.test(status)) statusCounts.failed++;
+    else if (/revogad|anulad|cancelad/.test(status)) statusCounts.revoked++;
+    else if (/abert|recebendo proposta|em disputa|publicad/.test(status)) statusCounts.openCandidate++;
+    else statusCounts.unknown++;
+  }
+  return { statusCounts, headers, totalExtracted: rows.length - 1, notices, schemaRecognized: id >= 0 && object >= 0, truncated: rows.length > 5000, fieldCoverage: { identifier: id >= 0, agency: agency >= 0, object: object >= 0, situation: situation >= 0, deadline: date >= 0 }, safeForPublication: false };
 }
