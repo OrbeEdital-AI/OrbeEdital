@@ -90,8 +90,10 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               <p className="mt-2 text-sm text-slate-700">{candidate.access}</p>
               <p className="mt-1 text-xs text-slate-600">{candidate.notes}</p>
               <p className="mt-2 text-xs text-slate-500">Prioridade: {candidate.priority}</p>
+              <div className="mt-2">
               <a href={candidate.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-cyan-800 hover:underline">Consultar fonte <ExternalLink size={13}/></a>
               {(candidate.name.includes("TCE-RS") || candidate.name.includes("Dados Abertos")) && <button type="button" disabled={candidateProbe.isPending} onClick={() => candidateProbe.mutate({ source: candidate.name.includes("TCE-RS") ? "tce-rs" : "dados-gov" })} className="mt-3 block rounded-lg border border-cyan-200 px-3 py-2 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-50">Testar acesso ao catálogo</button>
+              </div>
             </article>
           ))}
         </div>
