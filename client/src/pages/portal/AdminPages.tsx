@@ -40,6 +40,10 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
     },
     onError: error => toast.error(error.message),
   });
+  const candidateProbe = trpc.admin.radarCandidateSourceProbe.useMutation({
+    onSuccess: result => toast.info(`${result.source}: HTTP ${result.httpStatus} em ${result.elapsedMs} ms. ${result.warning}`),
+    onError: error => toast.error(error.message),
+  });
   const [taskUids, setTaskUids] = useState<Record<string, string>>({});
   const [sourceConfirmation, setSourceConfirmation] = useState<{ title: string; description: string; action: () => void } | null>(null);
   const [frequencyMinutes, setFrequencyMinutes] = useState<
@@ -87,6 +91,7 @@ export function SourcesPage({ isAdmin }: { isAdmin: boolean }) {
               <p className="mt-1 text-xs text-slate-600">{candidate.notes}</p>
               <p className="mt-2 text-xs text-slate-500">Prioridade: {candidate.priority}</p>
               <a href={candidate.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-cyan-800 hover:underline">Consultar fonte <ExternalLink size={13}/></a>
+              {(candidate.name.includes("TCE-RS") || candidate.name.includes("Dados Abertos")) && <button type="button" disabled={candidateProbe.isPending} onClick={() => candidateProbe.mutate({ source: candidate.name.includes("TCE-RS") ? "tce-rs" : "dados-gov" })} className="mt-3 block rounded-lg border border-cyan-200 px-3 py-2 text-xs font-semibold text-cyan-900 hover:bg-cyan-50 disabled:opacity-50">Testar acesso ao catálogo</button>
             </article>
           ))}
         </div>
